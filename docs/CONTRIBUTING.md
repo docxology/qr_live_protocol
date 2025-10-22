@@ -26,16 +26,18 @@ Thank you for your interest in contributing to QRLP! This guide will help you ge
 git clone https://github.com/your-username/qr_live_protocol.git
 cd qr_live_protocol
 
-# Create virtual environment
-python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+# Modern setup with uv (recommended)
+uv venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
-# Install development dependencies
-pip install -r requirements.txt
-pip install -e .
+# Install with development dependencies
+uv pip install -e .[dev]
 
-# Install development tools
-pip install pytest black flake8 mypy
+# Alternative: Traditional pip setup
+# python3 -m venv venv
+# source venv/bin/activate
+# pip install -r requirements.txt
+# pip install -e .[dev]
 
 # Run tests to verify setup
 pytest tests/
@@ -47,20 +49,23 @@ pytest tests/
 qr_live_protocol/
 ├── src/                    # Core QRLP source code
 │   ├── __init__.py
-│   ├── qr_live_protocol.py # Main coordinator
+│   ├── core.py             # Main coordinator (QRLiveProtocol)
 │   ├── qr_generator.py     # QR code generation
 │   ├── time_provider.py    # Time synchronization
 │   ├── blockchain_verifier.py  # Blockchain verification
 │   ├── identity_manager.py # Identity management
 │   ├── web_server.py       # Web interface
+│   ├── cli.py              # Command-line interface
 │   └── config.py           # Configuration management
 ├── templates/              # Web interface templates
 ├── examples/               # Example scripts and demos
 ├── tests/                  # Unit and integration tests
 ├── docs/                   # Documentation
-├── main.py                 # Entry point
-├── setup.py                # Package setup
-└── requirements.txt        # Dependencies
+├── main.py                 # Modern demo launcher
+├── setup.sh                # Quick setup script with uv
+├── pyproject.toml          # Modern Python project configuration
+├── setup.py                # Legacy setup (deprecated, use pyproject.toml)
+└── requirements.txt        # Legacy dependencies (for compatibility)
 ```
 
 ## Types of Contributions
@@ -348,7 +353,7 @@ git push origin feature/awesome-new-feature
 ```bash
 # Enable debug logging
 export QRLP_LOG_LEVEL=DEBUG
-python3 main.py
+python main.py
 
 # Use debugger
 import pdb; pdb.set_trace()

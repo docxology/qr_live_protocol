@@ -10,7 +10,7 @@ QRLP is designed specifically for livestreaming applications where authenticity 
 
 1. **Start QRLP**
    ```bash
-   python3 main.py
+   python main.py
    # Or: qrlp live
    ```
 

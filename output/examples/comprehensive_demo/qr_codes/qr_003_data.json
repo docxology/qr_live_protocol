@@ -1,0 +1,44 @@
+{
+  "timestamp": "2025-10-22T17:36:42.538382+00:00",
+  "identity_hash": "zht1orREG5xXOh/iApqrqBEACp3pmJRgzfkFKLigMJigevLT4gV9ilELbpn2UoeA+piDv7c4aXGJSYwvbR/zn0969o5y+1fLfFLnsCnbgFVH/AXRb9tV6dWB3Os=",
+  "blockchain_hashes": {},
+  "time_server_verification": {
+    "time.nist.gov": {
+      "timestamp": "2025-10-22T17:36:42.539716+00:00",
+      "offset": 0.07578253746032715,
+      "last_sync": 1761154602.03772
+    },
+    "pool.ntp.org": {
+      "timestamp": "2025-10-22T17:36:42.580008+00:00",
+      "offset": 0.1160736083984375,
+      "last_sync": 1761154602.03772
+    },
+    "time.google.com": {
+      "timestamp": "2025-10-22T17:36:42.535324+00:00",
+      "offset": 0.07138967514038086,
+      "last_sync": 1761154602.03772
+    },
+    "time.cloudflare.com": {
+      "timestamp": "2025-10-22T17:36:42.538419+00:00",
+      "offset": 0.07448554039001465,
+      "last_sync": 1761154602.03772
+    }
+  },
+  "user_data": "twzKe32U8GyuudW3dVUDdIiA5AEtQAlwT9rqUIaCAE8WmVDWK0X5Aq5WMYa0SyiETX5r6KBDAVjPV8XX/RPi2JECGzm9TXJKtKcNE/+behwFPwEy4vYx0FDIiyquTP+WDt0jZVrU23galrEURQuKfb246hgUo5E+o6htS7Q3+OLBcfkZHY2bj/Ye/kTZ7JTssQ129rWKTlX5wFSdhttrZPgbRosqdqVWwxZXnxrOO2JOcTUMFUJxb6bHh5ih0amm6r72C7pyk81buHFv8j/kXNtKda4rYgvhSqx81muejjUCeU/fK7PXYdUS1qBORqzcUW4w8qYIltFIbxUKKoGW+pxX/YtK1nu4APDTsGgItyfTZ82rLCPVFeJlwaTv2e8=",
+  "sequence_number": 3,
+  "digital_signature": "83d6cb9b802e9b86d2b12b04ef5799a7a0fd1653c484efda6ccf6866a93e8c366d0e0e36dd14b3582bbfa1cfc944e5b79fd7c68d9a86b74b5f173ac098b4e7d6dfad358ef6e7d980ef73921b1f46806f72bfcb365a5f4d6b0e414592c75cdf610d1bd77615507aee2d0898ee2b4610bbb88acc2c159af0428dc21520e106eabcaed8b5a90c2de21e05aee2c4448887d212db825ce57bdaddb3267f322d6cc4f94a2f073b8cc8a92ee5288f68306a4ff8208ec37a4d700d5cf49b20ed28f81db014d2c877ba45b07ac1689e312d7417aa8212b620b417089b47ca3f63d727d2912316778eb5b4be7b3aeeb32ff182b1a2e628adb4e1b50d9931494a9f983cf36b",
+  "signing_key_id": "5254a4af9519715be8dd94e2d3529d33",
+  "signature_algorithm": "rsa",
+  "_hmac": "008468dee6be298dd883afee911df3b8f97e92df2a6f23a8ce3cfb7d676c58c7",
+  "_hmac_key_id": "9291a7f5853bf2b446cccc2a932a5dc9",
+  "_hmac_algorithm": "sha256",
+  "_integrity_checked_at": "2025-10-22T17:36:42.508297+00:00",
+  "_encrypted_fields": [
+    "user_data",
+    "identity_hash",
+    "custom_data"
+  ],
+  "_encryption_key_id": "7f6926b2ff030d04f624ae703ccdcc2d",
+  "_data_key_id": "7f6926b2ff030d04f624ae703ccdcc2d",
+  "_encrypted_at": "2025-10-22T17:36:42.518565+00:00"
+}

@@ -1,0 +1,53 @@
+{
+  "timestamp": "2025-10-22T17:45:40.432347+00:00",
+  "identity_hash": "ao5Vn5Wni4aW8ZS/fBTpYrBzw/Zvbbv2RQP0RRaTGahocJPiWtRCL+4KBstXFkv+wlH5t5q87JVyQ06A9pgfUjkqcGBQ5PZfIRuFQ+p/0R0gTImdjVNz6P2hvBM=",
+  "blockchain_hashes": {
+    "litecoin": "e09b3032324e40e499998edfabfcd209e01e01045ad55e689671abb56af7a535",
+    "ethereum": "654d0c607ecf280806bbe13158bbcf293e4f6352362d1830c4dde1001d45b411",
+    "bitcoin": "00000000000000000001bae012cf2eb3f60a58b264e0bd84de8ec76edaf9e70e"
+  },
+  "time_server_verification": {
+    "time.nist.gov": {
+      "timestamp": "2025-10-22T17:45:46.048150+00:00",
+      "offset": 0.033527374267578125,
+      "last_sync": 1761155146.014616
+    },
+    "pool.ntp.org": {
+      "timestamp": "2025-10-22T17:45:46.026135+00:00",
+      "offset": 0.011512041091918945,
+      "last_sync": 1761155146.014616
+    },
+    "time.google.com": {
+      "timestamp": "2025-10-22T17:45:46.047478+00:00",
+      "offset": 0.03285551071166992,
+      "last_sync": 1761155146.014616
+    },
+    "time.cloudflare.com": {
+      "timestamp": "2025-10-22T17:45:46.047127+00:00",
+      "offset": 0.03250408172607422,
+      "last_sync": 1761155146.014616
+    },
+    "http://worldtimeapi.org/api/timezone/UTC": {
+      "timestamp": "2025-10-22T17:45:46.032164+00:00",
+      "offset": 0.017541170120239258,
+      "last_sync": 1761155146.014616
+    }
+  },
+  "user_data": "x2up4kkbLXyNm50kPNJB73cciirgxc7RMGDZkbDO+WurqpZPr1BZtaIU018tNYehwgfLHgHYWeH+s3RmtR8QRuzNltYydJDDXQHTIFp0csPK655vqtDATftr3kU9jpIyvuy6btisq5BaHTFlrnhHQZjYh/K9RY5IKnNXTaYhmhyethHPGxb+nmIgCc37RGnWiI9ulgHC3mHMv+/qQC3kagjSvok=",
+  "sequence_number": 2,
+  "digital_signature": "6722ffc3bcda26051d025013263a673bf260b6c32f2b730135a40f130c0bc2cca211846dcf155570e5c0782e074bca474f04ffd3617ebeb25480bde1339e682abbd7c6b40e15cc4200537f97aa8699a0887083fcb9dede8a53779a9e4fc4587a5f80413b00b493e09b49f031cb4dee823ad0193621e59990afb9f3a4a53862f6d78e6309ce83b352381a9763ad6bf7a5655503d3b307d458a46c6d9d730d1548b6c2823bb06753dc0b7983bf2664dfcc51a4f19af16f945110b81a5f2040ef85414314f5bfd0089e0061dd4418f22069e3a342f4105235a02453b6bc173e999b5ce5e44c998f0b0e13e92ed8dbe52888abec371a27fb6427094914e1c693d1db",
+  "signing_key_id": "5254a4af9519715be8dd94e2d3529d33",
+  "signature_algorithm": "rsa",
+  "_hmac": "b6793de992cbc3f602e4bc7570ca1fcf8fd79332df039c431053ac76768d1159",
+  "_hmac_key_id": "4a0270b269ec05e03d81e58fcdb0e6ab",
+  "_hmac_algorithm": "sha256",
+  "_integrity_checked_at": "2025-10-22T17:45:46.087192+00:00",
+  "_encrypted_fields": [
+    "user_data",
+    "identity_hash",
+    "custom_data"
+  ],
+  "_encryption_key_id": "c15a8c809d5ebdf75249912725292217",
+  "_data_key_id": null,
+  "_encrypted_at": "2025-10-22T17:45:46.087251+00:00"
+}

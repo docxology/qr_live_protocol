@@ -21,6 +21,19 @@ requests>=2.31.0
 # Data processing
 python-dateutil>=2.8.2
 
+# Cryptographic operations (core security features)
+cryptography>=41.0.0
+
+# Async support for performance
+aiohttp>=3.8.0
+
+# Development and testing
+pytest>=7.4.0
+pytest-cov>=4.1.0
+black>=23.0.0
+flake8>=6.0.0
+mypy>=1.5.0
+
 # Optional dependencies for enhanced functionality
 # Uncomment as needed:
 
@@ -31,19 +44,10 @@ python-dateutil>=2.8.2
 # pyzbar>=0.1.9
 # opencv-python>=4.8.0
 
-# Cryptographic operations
-# cryptography>=41.0.0
-
 # Database support
 # sqlalchemy>=2.0.0
 
-# Async support
-# aiohttp>=3.8.0
+# MQTT support
 # asyncio-mqtt>=0.16.0
 
-# Development and testing
-# pytest>=7.4.0
-# pytest-cov>=4.1.0
-# black>=23.0.0
-# flake8>=6.0.0
-# mypy>=1.5.0 
+# Note: uv (fast Python package manager) will be auto-installed if not available 

@@ -22,13 +22,20 @@ The QR Live Protocol (QRLP) is a comprehensive system for generating and display
 ### 1. Installation
 
 ```bash
-# Install QRLP
+# Install QRLP (when available on PyPI)
 pip install qr-live-protocol
 
-# Or install from source
+# Or install from source with modern setup
 git clone https://github.com/your-org/qr_live_protocol.git
 cd qr_live_protocol
-pip install -e .
+
+# Modern setup with uv (recommended)
+uv venv
+source .venv/bin/activate
+uv pip install -e .[dev]
+
+# Start live QR display
+qrlp live
 ```
 
 ### 2. Start Live QR Display
@@ -41,7 +48,7 @@ qrlp live
 qrlp live --port 8080 --no-browser
 
 # Start with custom identity file
-qrlp live --identity-file ./my-identity.json
+qrlp live --identity-file ./my-identity.pem
 ```
 
 ### 3. Generate Single QR Code

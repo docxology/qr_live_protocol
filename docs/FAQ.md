@@ -81,7 +81,7 @@ The easiest method:
 ```bash
 git clone https://github.com/your-org/qr_live_protocol.git
 cd qr_live_protocol
-python3 main.py
+python main.py
 ```
 
 This automatically handles dependencies and setup. See [Installation Guide](INSTALLATION.md) for detailed instructions.
@@ -105,7 +105,7 @@ Yes! QRLP runs well on Raspberry Pi 3B+ and newer models. Recommended:
 
 ### How do I integrate with OBS Studio?
 
-1. Start QRLP: `python3 main.py`
+1. Start QRLP: `python main.py`
 2. In OBS, add "Browser Source"
 3. Set URL to: `http://localhost:8080/viewer`
 4. Set Width: 800, Height: 600

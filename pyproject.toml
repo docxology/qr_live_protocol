@@ -1,0 +1,160 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "qr-live-protocol"
+version = "1.0.0"
+description = "Generate live, verifiable QR codes for streaming and official video releases"
+authors = [
+    {name = "QRLP Development Team", email = "contact@qrlp.org"},
+]
+readme = "README.md"
+license = {text = "CC-BY-NC-SA-4.0"}
+requires-python = ">=3.8"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: End Users/Desktop",
+    "Topic :: Multimedia :: Video",
+    "Topic :: Security :: Cryptography",
+    "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Operating System :: OS Independent",
+]
+keywords = [
+    "qr-code", "livestream", "verification", "blockchain",
+    "timestamp", "cryptography", "video", "authentication"
+]
+
+dependencies = [
+    "qrcode[pil]>=7.4.2",
+    "Pillow>=10.0.0",
+    "Flask>=3.0.0",
+    "Flask-CORS>=4.0.0",
+    "Flask-SocketIO>=5.3.6",
+    "click>=8.1.7",
+    "ntplib>=0.4.0",
+    "requests>=2.31.0",
+    "python-dateutil>=2.8.2",
+    "cryptography>=41.0.0",
+    "aiohttp>=3.8.0",
+    "bleach>=6.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "black>=23.0.0",
+    "flake8>=6.0.0",
+    "mypy>=1.5.0",
+]
+full = [
+    "PyYAML>=6.0.1",
+    "pyzbar>=0.1.9",
+    "opencv-python>=4.8.0",
+    "cryptography>=41.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/your-org/qr_live_protocol"
+"Bug Reports" = "https://github.com/your-org/qr_live_protocol/issues"
+Source = "https://github.com/your-org/qr_live_protocol"
+Documentation = "https://qrlp.readthedocs.io/"
+
+[project.scripts]
+qrlp = "src.cli:cli"
+"qr-live-protocol" = "src.cli:cli"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[tool.hatch.build.targets.wheel.package-data]
+src = [
+    "templates/*.html",
+    "static/*",
+    "static/**/*"
+]
+
+[tool.black]
+line-length = 100
+target-version = ['py38', 'py39', 'py310', 'py311', 'py312', 'py313']
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+
+[[tool.mypy.overrides]]
+module = [
+    "qrcode.*",
+    "PIL.*",
+    "flask.*",
+    "flask_cors.*",
+    "flask_socketio.*",
+    "ntplib.*",
+    "pyzbar.*",
+    "cv2.*",
+]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+minversion = "7.4"
+addopts = "-ra -q --cov=src --cov-report=html --cov-report=term-missing"
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+[tool.coverage.run]
+source = ["src"]
+omit = [
+    "*/tests/*",
+    "*/test_*",
+    "src/__main__.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "black>=23.0.0",
+    "flake8>=6.0.0",
+    "mypy>=1.5.0",
+]

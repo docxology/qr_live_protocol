@@ -2,7 +2,23 @@
 Setup script for QR Live Protocol (QRLP).
 
 Provides installation and packaging configuration for QRLP.
+When run without arguments, performs a complete setup installation.
 """
+
+import sys
+import os
+
+# Check if no arguments provided - run default setup via pip
+if len(sys.argv) == 1:
+    print("=" * 70)
+    print("QRLP Setup - Installing dependencies and package")
+    print("=" * 70)
+    print()
+    os.execvp(sys.executable, [
+        sys.executable, "-m", "pip", "install", 
+        "--break-system-packages", "."
+    ])
+    # execvp replaces the process, so we never reach here
 
 from setuptools import setup, find_packages
 from pathlib import Path

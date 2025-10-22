@@ -11,7 +11,7 @@ Welcome to the QR Live Protocol (QRLP) documentation! This index will help you f
 4. **[Streaming Integration](STREAMING.md)** - OBS Studio and streaming setup
 
 ### Quick Links
-- **[One-Command Setup](INSTALLATION.md#method-1-one-command-setup-recommended)** - `python3 main.py`
+- **[One-Command Setup](INSTALLATION.md#method-1-one-command-setup-recommended)** - `python main.py`
 - **[OBS Integration](STREAMING.md#obs-studio-integration)** - Add browser source
 - **[Configuration Examples](CONFIGURATION.md#configuration-examples)** - Ready-to-use configs
 
@@ -166,7 +166,7 @@ Welcome to the QR Live Protocol (QRLP) documentation! This index will help you f
 ### Command Quick Reference
 ```bash
 # Installation and setup
-python3 main.py                    # One-command setup and start
+python main.py                    # One-command setup and start
 qrlp live                          # Start live QR generation
 qrlp generate --output qr.png      # Generate single QR code
 qrlp status                        # Check system status
@@ -199,7 +199,8 @@ examples/livestream_demo.py      # Complete demo
 templates/                       # Web interface templates
 docs/                           # Documentation
 requirements.txt                # Dependencies
-setup.py                       # Package setup
+pyproject.toml                 # Modern Python project configuration
+setup.py                       # Legacy setup (deprecated, use pyproject.toml)
 ```
 
 ---

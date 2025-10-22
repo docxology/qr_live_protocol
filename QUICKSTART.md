@@ -1,21 +1,34 @@
 # QR Live Protocol - Quick Start Guide
 
-## 🚀 One-Command Setup and Launch
+## 🚀 Modern Setup and Launch
 
-To get QRLP running with a live QR code display updating every second:
+To get QRLP running with a live QR code display using modern Python tooling:
 
 ```bash
-python3 main.py
+# Modern setup with uv (recommended)
+uv venv
+source .venv/bin/activate
+uv pip install -e .[dev]
+python main.py
 ```
 
-This single command will:
-1. ✅ Check Python version and system requirements
-2. 🏗️  Create virtual environment (if needed for macOS/Linux)
-3. 📦 Install all required dependencies (Flask, qrcode, etc.)
-4. 🔧 Set up the QRLP package
-5. 🌐 Start the web server
-6. 📱 Begin live QR generation (updates every 1 second!)
-7. 🌍 Automatically open your browser to view the live display
+Or for the traditional approach:
+
+```bash
+# Traditional pip setup
+python3 -m venv venv
+source venv/bin/activate
+pip install -e .[dev]
+python main.py
+```
+
+This setup will:
+1. ✅ Create modern virtual environment with uv
+2. 📦 Install all dependencies with dependency resolution
+3. 🔧 Set up the QRLP package for development
+4. 🌐 Start the web server
+5. 📱 Begin live QR generation (updates every 1 second!)
+6. 🌍 Automatically open your browser to view the live display
 
 ## 🎯 What You'll See
 
@@ -38,19 +51,16 @@ The browser will open to `http://localhost:8080` showing:
 
 ```bash
 # Full setup and demo (default)
-python3 main.py
-
-# Quick setup (no package upgrades)
-python3 main.py --quick
+python main.py
 
 # Don't auto-open browser
-python3 main.py --no-browser
+python main.py --no-browser
 
 # Use custom port
-python3 main.py --port 9000
+python main.py --port 9000
 
-# Setup only, don't run demo
-python3 main.py --setup-only
+# Alternative: Use uv for everything
+uv venv && source .venv/bin/activate && uv pip install -e .[dev] && python main.py
 ```
 
 ## 🔍 What's in the QR Code
@@ -98,7 +108,10 @@ qrlp verify '{"timestamp":"2025-01-11T..."}'
 qrlp status
 
 # Initialize config file
-qrlp config-init
+qrlp config-init --output config.json
+
+# Use setup script for quick installation
+./setup.sh
 ```
 
 ### Direct Python Usage
@@ -118,6 +131,16 @@ qr_data, qr_image = qrlp.generate_single_qr()
 qrlp.start_live_generation()
 ```
 
+### Setup Script Usage
+```bash
+# Quick setup with setup.sh
+./setup.sh
+
+# Or install uv and use it
+curl -LsSf https://astral.sh/uv/install.sh | sh
+uv venv && source .venv/bin/activate && uv pip install -e .[dev]
+```
+
 ## 📊 Monitoring
 
 Visit these URLs while the demo is running:
@@ -134,27 +157,42 @@ Visit these URLs while the demo is running:
 # Update pip first
 python3 -m pip install --upgrade pip
 
-# Then run setup
-python3 main.py --quick
+# Then run setup with uv (recommended)
+uv venv && source .venv/bin/activate && uv pip install -e .[dev]
+
+# Or traditional pip approach
+python3 -m venv venv && source venv/bin/activate && pip install -e .[dev]
 ```
 
 ### Port Already in Use
 ```bash
 # Use different port
-python3 main.py --port 8081
+python main.py --port 8081
 ```
 
 ### Browser Doesn't Open
 ```bash
 # Disable auto-open and manually navigate
-python3 main.py --no-browser
+python main.py --no-browser
 # Then open: http://localhost:8080
 ```
 
 ### Permission Issues
 ```bash
 # Install for user only
-python3 -m pip install --user -r requirements.txt
+pip install --user -r requirements.txt
+python main.py
+```
+
+### uv Not Available
+```bash
+# Install uv first
+curl -LsSf https://astral.sh/uv/install.sh | sh
+# or
+pip install uv
+
+# Then use uv for setup
+uv venv && source .venv/bin/activate && uv pip install -e .[dev]
 ```
 
 ## 🎉 Success Indicators

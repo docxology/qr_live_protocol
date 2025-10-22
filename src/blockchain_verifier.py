@@ -193,19 +193,37 @@ class BlockchainVerifier:
     def _update_if_needed(self) -> None:
         """Update blockchain data if cache is stale."""
         current_time = time.time()
-        
+
+        # Check if any chain needs updating
+        needs_update = False
         for chain in self.settings.enabled_chains:
             last_update = self.last_update.get(chain, 0)
             if current_time - last_update > self.settings.cache_duration:
-                threading.Thread(target=self._update_chain, args=(chain,), daemon=True).start()
+                needs_update = True
+                break
+
+        # Only update if needed and not already updating
+        if needs_update and not hasattr(self, '_updating'):
+            self._updating = True
+            try:
+                # Use a single thread to update all chains sequentially
+                threading.Thread(target=self._update_all_chains, daemon=True).start()
+            finally:
+                # Reset the flag after a delay to prevent rapid-fire updates
+                threading.Timer(1.0, lambda: setattr(self, '_updating', False) if hasattr(self, '_updating') else None).start()
     
     def _update_all_chains(self) -> bool:
         """Update all enabled blockchain chains."""
         success_count = 0
         
         for chain in self.settings.enabled_chains:
-            if self._update_chain(chain):
-                success_count += 1
+            try:
+                if self._update_chain(chain):
+                    success_count += 1
+            except Exception as e:
+                print(f"{chain.title()} API error: {e}")
+                # Continue with other chains even if one fails
+                continue
         
         return success_count > 0
     
@@ -271,12 +289,12 @@ class BlockchainVerifier:
                 response = requests.get("https://blockstream.info/api/blocks/tip/hash", timeout=5)
                 if response.status_code == 200:
                     block_hash = response.text.strip()
-                    
+
                     # Get block details
                     block_response = requests.get(f"https://blockstream.info/api/block/{block_hash}", timeout=5)
                     if block_response.status_code == 200:
                         block_data = block_response.json()
-                        
+
                         return BlockchainInfo(
                             chain="bitcoin",
                             block_number=block_data["height"],
@@ -284,19 +302,19 @@ class BlockchainVerifier:
                             timestamp=datetime.fromtimestamp(block_data["timestamp"], timezone.utc),
                             retrieved_at=time.time()
                         )
-            except Exception:
-                pass
-            
+            except Exception as e:
+                print(f"Blockstream.info API failed: {e}")
+
             # Fallback to mempool.space
             try:
                 response = requests.get("https://mempool.space/api/blocks/tip/hash", timeout=5)
                 if response.status_code == 200:
                     block_hash = response.text.strip()
-                    
+
                     block_response = requests.get(f"https://mempool.space/api/block/{block_hash}", timeout=5)
                     if block_response.status_code == 200:
                         block_data = block_response.json()
-                        
+
                         return BlockchainInfo(
                             chain="bitcoin",
                             block_number=block_data["height"],
@@ -304,8 +322,8 @@ class BlockchainVerifier:
                             timestamp=datetime.fromtimestamp(block_data["timestamp"], timezone.utc),
                             retrieved_at=time.time()
                         )
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Mempool.space API failed: {e}")
             
             # Final fallback to blockcypher
             try:

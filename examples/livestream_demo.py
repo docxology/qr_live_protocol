@@ -136,7 +136,11 @@ class QRLPDemo:
             "streaming_session": f"demo_{int(time.time())}"
         }
         
-        demo_file = Path("demo_identity.json")
+        # Create output directory structure (use absolute path from project root)
+        output_dir = Path(__file__).parent.parent / "output" / "examples" / "livestream_demo"
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        demo_file = output_dir / "demo_identity.json"
         with open(demo_file, 'w') as f:
             json.dump(identity_data, f, indent=2)
         

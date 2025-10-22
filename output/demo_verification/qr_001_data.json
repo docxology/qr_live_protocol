@@ -1,0 +1,44 @@
+{
+  "timestamp": "2025-10-22T17:45:37.267202+00:00",
+  "identity_hash": "1mThy0T5qzKvyPbqv5iF/7swQdQu9Mg9/MViicSaPieo9H94ysa6X3HGEJB667LXK8DUUpTAi1ol0LxRlyT19ozEv1MMtWj3MC74XlWj2I0onVDCxT3bySKIyQc=",
+  "blockchain_hashes": {},
+  "time_server_verification": {
+    "time.nist.gov": {
+      "timestamp": "2025-10-22T17:45:37.262848+00:00",
+      "offset": 0.02849555015563965,
+      "last_sync": 1761155137.202882
+    },
+    "pool.ntp.org": {
+      "timestamp": "2025-10-22T17:45:37.267756+00:00",
+      "offset": 0.03340435028076172,
+      "last_sync": 1761155137.202882
+    },
+    "time.google.com": {
+      "timestamp": "2025-10-22T17:45:37.267184+00:00",
+      "offset": 0.03283214569091797,
+      "last_sync": 1761155137.202882
+    },
+    "time.cloudflare.com": {
+      "timestamp": "2025-10-22T17:45:37.271900+00:00",
+      "offset": 0.037548065185546875,
+      "last_sync": 1761155137.202882
+    }
+  },
+  "user_data": "DeTLr/oASuE6z+sr4ikpTw1upfljBUnWut2lcPwDjcxtx8U9GJ1BOFRQ/RXFz3pBO+d6nLZypAXI9TJEOvgONizHDnb4KZ6nybpWgcUHUPihDUQo/OT+ys+7w9g3EwOJBIcufetTOjqpCYrFFQXZhea+cg1DU7WxmTCGERxnSNXZVqrDpzu6SnpBFfi0+4CQpEbclmJAyR+7seBZyQBUzNe2gMI=",
+  "sequence_number": 1,
+  "digital_signature": "a09823131171b3b8d8cdab7360796de34c1f0cf7d47a9b729deea9ec117b95f77876af6222eb5f61970e424e92bcf1a4d5264f4328504c005e3ae5291acc43223c5c6fa78c16e8092fa0be512e30023b02df20d4795142c70bed5ef485a9f9e3211856f14c6c08056f95351803ad1b5e386841f9de945e211f19ca38842f57977cbcabd2ac87c7af9b516a9c3393eeb55fc3758b09a4847b1131ec0bac49dd9dbe558b0a2b53924f36437f03527429625defb0d2751e093e18592ad6fcab1bcb849480d25a7e486b27441f9ac83fe124d6a5914baa381ad598eaf34de5b3e261db10313d347134dfc233235154addae320bcf2124baf7fd1ffd0a2ad603f069d",
+  "signing_key_id": "5254a4af9519715be8dd94e2d3529d33",
+  "signature_algorithm": "rsa",
+  "_hmac": "585eb617fc6bb321eb042ab4849b4216d837a461dd4fca0699f2c3a7f3140346",
+  "_hmac_key_id": "4a0270b269ec05e03d81e58fcdb0e6ab",
+  "_hmac_algorithm": "sha256",
+  "_integrity_checked_at": "2025-10-22T17:45:37.297999+00:00",
+  "_encrypted_fields": [
+    "user_data",
+    "identity_hash",
+    "custom_data"
+  ],
+  "_encryption_key_id": "c15a8c809d5ebdf75249912725292217",
+  "_data_key_id": null,
+  "_encrypted_at": "2025-10-22T17:45:37.298040+00:00"
+}

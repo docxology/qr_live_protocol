@@ -5,562 +5,429 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>QR Live Protocol - Live Display</title>
     
-    <!-- Bootstrap CSS for responsive design -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    
-    <!-- Custom CSS -->
     <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
         body {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #000;
+            color: #fff;
+            font-family: 'Courier New', monospace;
             min-height: 100vh;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            padding: 20px;
+        }
+        
+        .header {
+            text-align: center;
+            padding: 30px 0;
+            border-bottom: 2px solid #333;
+            margin-bottom: 30px;
+        }
+        
+        .header h1 {
+            font-size: 3rem;
+            color: #ff0000;
+            text-shadow: 0 0 20px rgba(255, 0, 0, 0.8);
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            color: #fff;
+            font-size: 1.2rem;
+        }
+        
+        .status-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 30px;
+            background: #1a1a1a;
+            border: 2px solid #333;
+            border-radius: 10px;
+            margin-bottom: 30px;
+        }
+        
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .status-dot {
+            width: 15px;
+            height: 15px;
+            border-radius: 50%;
+            background: #00ff00;
+            box-shadow: 0 0 10px #00ff00;
+            animation: pulse 2s infinite;
+        }
+        
+        .status-dot.disconnected {
+            background: #ff0000;
+            box-shadow: 0 0 10px #ff0000;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
         }
         
         .qr-container {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-            border-radius: 20px;
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
-            padding: 30px;
-            margin: 20px 0;
+            max-width: 1400px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
         }
         
         .qr-display {
-            text-align: center;
-            padding: 20px;
-            background: white;
+            background: linear-gradient(45deg, #0a0a0a, #1a1a1a);
+            border: 2px solid #333;
             border-radius: 15px;
-            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+            text-align: center;
+            box-shadow: 0 0 30px rgba(255, 0, 0, 0.2);
+        }
+        
+        .qr-display h2 {
+            color: #ff0000;
             margin-bottom: 20px;
+            font-size: 1.8rem;
         }
         
         .qr-image {
             max-width: 100%;
             height: auto;
-            border: 3px solid #f8f9fa;
+            border: 4px solid #ff0000;
             border-radius: 10px;
-            margin: 20px 0;
+            background: white;
+            padding: 10px;
+            box-shadow: 0 0 20px rgba(255, 0, 0, 0.3);
         }
         
-        .status-indicator {
-            display: inline-block;
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            margin-right: 8px;
+        .qr-info {
+            background: linear-gradient(45deg, #0a0a0a, #1a1a1a);
+            border: 2px solid #333;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 0 30px rgba(255, 0, 0, 0.2);
         }
         
-        .status-connected {
-            background-color: #28a745;
-            animation: pulse 2s infinite;
+        .qr-info h2 {
+            color: #ff0000;
+            margin-bottom: 20px;
+            font-size: 1.8rem;
         }
         
-        .status-disconnected {
-            background-color: #dc3545;
-        }
-        
-        @keyframes pulse {
-            0% { opacity: 1; }
-            50% { opacity: 0.5; }
-            100% { opacity: 1; }
-        }
-        
-        .info-card {
-            background: rgba(255, 255, 255, 0.8);
-            border-radius: 10px;
+        .info-item {
+            background: rgba(255, 0, 0, 0.1);
             padding: 15px;
             margin-bottom: 15px;
-            border-left: 4px solid #007bff;
+            border-radius: 8px;
+            border-left: 4px solid #ff0000;
         }
         
-        .timestamp {
-            font-family: 'Courier New', monospace;
+        .info-label {
+            color: #ff0000;
             font-weight: bold;
-            color: #007bff;
+            display: block;
+            margin-bottom: 5px;
+        }
+        
+        .info-value {
+            color: #fff;
+            word-break: break-all;
+            font-size: 0.95rem;
         }
         
         .hash-display {
             font-family: 'Courier New', monospace;
-            font-size: 0.9em;
+            font-size: 0.85em;
             word-break: break-all;
-            background: #f8f9fa;
-            padding: 5px 10px;
+            background: #0a0a0a;
+            padding: 8px 12px;
             border-radius: 5px;
             margin: 5px 0;
+            border: 1px solid #333;
         }
         
         .verification-badge {
             display: inline-block;
-            padding: 3px 8px;
+            padding: 4px 10px;
             border-radius: 12px;
             font-size: 0.8em;
             font-weight: bold;
             margin: 2px;
+            background: rgba(255, 0, 0, 0.2);
+            border: 1px solid #ff0000;
+            color: #ff0000;
         }
         
-        .verified {
-            background-color: #d4edda;
-            color: #155724;
-        }
-        
-        .unverified {
-            background-color: #f8d7da;
-            color: #721c24;
+        .verification-badge.verified {
+            background: rgba(0, 255, 0, 0.2);
+            border: 1px solid #00ff00;
+            color: #00ff00;
         }
         
         .loading {
             text-align: center;
+            color: #ff0000;
+            font-size: 1.5rem;
             padding: 50px;
-            color: #666;
         }
         
-        .spinner {
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #007bff;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 20px;
+        .timestamp-display {
+            color: #ff0000;
+            font-size: 1.1rem;
         }
         
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+        .sequence-badge {
+            background: #ff0000;
+            color: #fff;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-weight: bold;
         }
         
-        .header-title {
-            color: white;
-            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
-            margin-bottom: 0;
-        }
-        
-        .header-subtitle {
-            color: rgba(255, 255, 255, 0.8);
-            margin-bottom: 30px;
+        @media (max-width: 768px) {
+            .qr-container {
+                grid-template-columns: 1fr;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .status-bar {
+                flex-direction: column;
+                gap: 10px;
+            }
         }
     </style>
 </head>
 <body>
-    <div class="container-fluid py-4">
-        <div class="row justify-content-center">
-            <div class="col-12 text-center mb-4">
-                <h1 class="header-title">🔲 QR Live Protocol</h1>
-                <p class="header-subtitle">Live, Verifiable QR Codes for Streaming</p>
+    <div class="header">
+        <h1>🔐 QR Live Protocol</h1>
+        <p>Real-time encrypted QR codes with cryptographic verification</p>
+    </div>
+    
+    <div class="status-bar">
+        <div class="status-indicator">
+            <div class="status-dot" id="connectionStatus"></div>
+            <span id="connectionText">Connecting...</span>
+        </div>
+        <div class="timestamp-display" id="currentTime">--:--:--</div>
+        <div class="sequence-badge" id="sequenceNumber">#0</div>
+    </div>
+    
+    <div class="qr-container">
+        <div class="qr-display">
+            <h2>📱 Live QR Code</h2>
+            <div id="qrDisplay" class="loading">
+                <p>🔄 Waiting for QR code...</p>
             </div>
         </div>
         
-        <div class="row justify-content-center">
-            <!-- QR Display Column -->
-            <div class="col-lg-8 col-md-10">
-                <div class="qr-container">
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                        <h3 class="mb-0">Live QR Code</h3>
-                        <div class="connection-status">
-                            <span class="status-indicator" id="status-indicator"></span>
-                            <span id="connection-status">Connecting...</span>
-                        </div>
-                    </div>
-                    
-                    <div class="qr-display" id="qr-display">
-                        <div class="loading">
-                            <div class="spinner"></div>
-                            <p>Waiting for QR code...</p>
-                        </div>
-                    </div>
-                    
-                    <!-- QR Information -->
-                    <div id="qr-info" style="display: none;">
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="info-card">
-                                    <h6><i class="bi bi-clock"></i> Timestamp</h6>
-                                    <div class="timestamp" id="qr-timestamp">-</div>
-                                </div>
-                                
-                                <div class="info-card">
-                                    <h6><i class="bi bi-hash"></i> Sequence</h6>
-                                    <div id="qr-sequence">#-</div>
-                                </div>
-                            </div>
-                            
-                            <div class="col-md-6">
-                                <div class="info-card">
-                                    <h6><i class="bi bi-fingerprint"></i> Identity</h6>
-                                    <div class="hash-display" id="qr-identity">-</div>
-                                </div>
-                                
-                                <div class="info-card">
-                                    <h6><i class="bi bi-shield-check"></i> Verification</h6>
-                                    <div id="verification-badges">
-                                        <span class="verification-badge unverified">Time Server</span>
-                                        <span class="verification-badge unverified">Blockchain</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- Blockchain Info -->
-                        <div class="info-card">
-                            <h6><i class="bi bi-link-45deg"></i> Blockchain Verification</h6>
-                            <div id="blockchain-info">
-                                <em>No blockchain data available</em>
-                            </div>
-                        </div>
-                        
-                        <!-- User Data Info -->
-                        <div class="info-card">
-                            <h6><i class="bi bi-person-circle"></i> User Message</h6>
-                            <div id="user-data-display" class="hash-display">
-                                <em>No user message</em>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Controls/Statistics Column -->
-            <div class="col-lg-4 col-md-6">
-                <div class="qr-container">
-                    <h4>User Input</h4>
-                    
-                    <div class="info-card">
-                        <h6><i class="bi bi-pencil-square"></i> Custom Message</h6>
-                        <div class="mb-3">
-                            <textarea 
-                                class="form-control" 
-                                id="user-text-input" 
-                                rows="3" 
-                                placeholder="Enter text to include in QR codes..."
-                                maxlength="500"
-                                oninput="updateUserData()">
-                            </textarea>
-                            <div class="form-text">
-                                <small id="char-counter">0/500 characters</small>
-                            </div>
-                        </div>
-                        <div class="d-grid">
-                            <button class="btn btn-success" onclick="saveUserData()">
-                                <i class="bi bi-check-circle"></i> Save Message
-                            </button>
-                        </div>
-                    </div>
-                    
-                    <hr>
-                    
-                    <h4>Live Statistics</h4>
-                    
-                    <div class="info-card">
-                        <h6>Connection</h6>
-                        <div id="server-url">{{ server_url }}</div>
-                        <small class="text-muted">Server URL</small>
-                    </div>
-                    
-                    <div class="info-card">
-                        <h6>Updates</h6>
-                        <div id="update-count">0</div>
-                        <small class="text-muted">Total QR updates received</small>
-                    </div>
-                    
-                    <div class="info-card">
-                        <h6>Last Update</h6>
-                        <div id="last-update">Never</div>
-                        <small class="text-muted">Time of last QR update</small>
-                    </div>
-                    
-                    <hr>
-                    
-                    <div class="d-grid gap-2">
-                        <button class="btn btn-primary" onclick="requestUpdate()">
-                            <i class="bi bi-arrow-clockwise"></i> Request Update
-                        </button>
-                        
-                        <button class="btn btn-outline-secondary" onclick="downloadQR()">
-                            <i class="bi bi-download"></i> Download QR
-                        </button>
-                        
-                        <button class="btn btn-outline-info" onclick="copyQRData()">
-                            <i class="bi bi-clipboard"></i> Copy Data
-                        </button>
-                    </div>
+        <div class="qr-info">
+            <h2>🔍 Verification Details</h2>
+            <div id="qrInfo">
+                <div class="info-item">
+                    <span class="info-label">Status:</span>
+                    <span class="info-value">Waiting for data...</span>
                 </div>
             </div>
         </div>
     </div>
-    
-    <!-- Bootstrap JS and dependencies -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    
-    <!-- Bootstrap Icons -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
-    
-    <!-- Socket.IO for real-time updates -->
-    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-    
-    <!-- Custom JavaScript -->
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
     <script>
-        // Global variables
-        let socket;
-        let currentQRData = null;
-        let updateCount = 0;
+        // Initialize WebSocket connection
+        const socket = io();
         
-        // Initialize when page loads
-        document.addEventListener('DOMContentLoaded', function() {
-            initializeSocketIO();
-            loadUserData();
+        // Elements
+        const qrDisplay = document.getElementById('qrDisplay');
+        const qrInfo = document.getElementById('qrInfo');
+        const connectionStatus = document.getElementById('connectionStatus');
+        const connectionText = document.getElementById('connectionText');
+        const currentTime = document.getElementById('currentTime');
+        const sequenceNumber = document.getElementById('sequenceNumber');
+        
+        // Connection status
+        let isConnected = false;
+        
+        // Update current time
+        function updateCurrentTime() {
+            const now = new Date();
+            currentTime.textContent = now.toISOString().slice(11, 19) + ' UTC';
+        }
+        
+        setInterval(updateCurrentTime, 1000);
+        updateCurrentTime();
+        
+        // Socket event handlers
+        socket.on('connect', function() {
+            console.log('Connected to QRLP server');
+            isConnected = true;
+            connectionStatus.classList.remove('disconnected');
+            connectionText.textContent = 'Connected';
+            socket.emit('request_qr_update');
         });
         
-        function initializeSocketIO() {
-            socket = io();
-            
-            socket.on('connect', function() {
-                console.log('Connected to QRLP server');
-                updateConnectionStatus(true);
-                socket.emit('request_qr_update');
-            });
-            
-            socket.on('disconnect', function() {
-                console.log('Disconnected from QRLP server');
-                updateConnectionStatus(false);
-            });
-            
-            socket.on('qr_update', function(data) {
-                console.log('Received QR update:', data);
-                updateQRDisplay(data);
-                updateCount++;
-                updateStatistics();
-            });
-            
-            socket.on('user_data_updated', function(data) {
-                console.log('User data updated:', data);
-                document.getElementById('user-text-input').value = data.user_data || '';
-                updateCharacterCounter();
-            });
-        }
+        socket.on('disconnect', function() {
+            console.log('Disconnected from QRLP server');
+            isConnected = false;
+            connectionStatus.classList.add('disconnected');
+            connectionText.textContent = 'Disconnected';
+        });
         
-        function updateConnectionStatus(connected) {
-            const indicator = document.getElementById('status-indicator');
-            const status = document.getElementById('connection-status');
-            
-            if (connected) {
-                indicator.className = 'status-indicator status-connected';
-                status.textContent = 'Connected';
-            } else {
-                indicator.className = 'status-indicator status-disconnected';
-                status.textContent = 'Disconnected';
-            }
-        }
+        socket.on('qr_update', function(data) {
+            console.log('Received QR update:', data);
+            updateQRDisplay(data);
+        });
         
+        // Update QR display
         function updateQRDisplay(data) {
-            currentQRData = data;
-            
-            // Update QR image
-            const qrDisplay = document.getElementById('qr-display');
-            qrDisplay.innerHTML = `
-                <img src="${data.qr_image}" alt="Live QR Code" class="qr-image">
-            `;
-            
-            // Show and update QR information
-            const qrInfo = document.getElementById('qr-info');
-            qrInfo.style.display = 'block';
-            
-            // Update timestamp
-            const timestamp = new Date(data.qr_data.timestamp);
-            document.getElementById('qr-timestamp').textContent = timestamp.toLocaleString();
-            
-            // Update sequence
-            document.getElementById('qr-sequence').textContent = `#${data.qr_data.sequence_number}`;
-            
-            // Update identity (show first 32 chars)
-            const identityShort = data.qr_data.identity_hash.substring(0, 32) + '...';
-            document.getElementById('qr-identity').textContent = identityShort;
-            
-            // Update verification badges
-            updateVerificationBadges(data.qr_data);
-            
-            // Update blockchain info
-            updateBlockchainInfo(data.qr_data.blockchain_hashes);
-            
-            // Update user data display
-            updateUserDataDisplay(data.qr_data.user_data);
-        }
-        
-        function updateVerificationBadges(qrData) {
-            const badges = document.getElementById('verification-badges');
-            badges.innerHTML = '';
-            
-            // Time server verification
-            if (qrData.time_server_verification && Object.keys(qrData.time_server_verification).length > 0) {
-                badges.innerHTML += '<span class="verification-badge verified">Time Server ✓</span>';
-            } else {
-                badges.innerHTML += '<span class="verification-badge unverified">Time Server ✗</span>';
-            }
-            
-            // Blockchain verification
-            if (qrData.blockchain_hashes && Object.keys(qrData.blockchain_hashes).length > 0) {
-                badges.innerHTML += '<span class="verification-badge verified">Blockchain ✓</span>';
-            } else {
-                badges.innerHTML += '<span class="verification-badge unverified">Blockchain ✗</span>';
-            }
-        }
-        
-        function updateBlockchainInfo(blockchainHashes) {
-            const blockchainInfo = document.getElementById('blockchain-info');
-            
-            if (!blockchainHashes || Object.keys(blockchainHashes).length === 0) {
-                blockchainInfo.innerHTML = '<em>No blockchain data available</em>';
-                return;
-            }
-            
-            let html = '';
-            for (const [chain, hash] of Object.entries(blockchainHashes)) {
-                html += `
-                    <div class="mb-3">
-                        <div class="d-flex justify-content-between align-items-center mb-1">
-                            <strong>${chain.charAt(0).toUpperCase() + chain.slice(1)}:</strong>
-                            <button class="btn btn-sm btn-outline-secondary" onclick="copyText('${hash}')" title="Copy hash">
-                                <i class="bi bi-clipboard"></i>
-                            </button>
-                        </div>
-                        <div class="hash-display" style="font-size: 0.75em; line-height: 1.2; word-break: break-all;">
-                            ${hash}
-                        </div>
+            if (data.qr_image && data.qr_data) {
+                // Update QR image
+                qrDisplay.innerHTML = `<img src="${data.qr_image}" class="qr-image" alt="QRLP QR Code">`;
+                
+                // Update sequence number
+                sequenceNumber.textContent = `#${data.qr_data.sequence_number || 0}`;
+                
+                // Build info HTML
+                let infoHtml = '';
+                
+                // Sequence and timestamp
+                infoHtml += `
+                    <div class="info-item">
+                        <span class="info-label">Sequence Number:</span>
+                        <span class="info-value">${data.qr_data.sequence_number || 0}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Timestamp:</span>
+                        <span class="info-value timestamp-display">${(data.qr_data.timestamp || '').slice(0, 19).replace('T', ' ')}</span>
                     </div>
                 `;
+                
+                // Identity hash
+                if (data.qr_data.identity_hash) {
+                    infoHtml += `
+                        <div class="info-item">
+                            <span class="info-label">Identity Hash:</span>
+                            <div class="hash-display">${data.qr_data.identity_hash}</div>
+                        </div>
+                    `;
+                }
+                
+                // HMAC integrity
+                if (data.qr_data._hmac) {
+                    infoHtml += `
+                        <div class="info-item">
+                            <span class="info-label">HMAC Integrity:</span>
+                            <div class="hash-display">${data.qr_data._hmac.substring(0, 64)}...</div>
+                            <span class="verification-badge verified">✓ Verified</span>
+                        </div>
+                    `;
+                }
+                
+                // Encryption status
+                if (data.qr_data._encrypted_fields) {
+                    const fields = Array.isArray(data.qr_data._encrypted_fields) 
+                        ? data.qr_data._encrypted_fields.join(', ')
+                        : data.qr_data._encrypted_fields;
+                    infoHtml += `
+                        <div class="info-item">
+                            <span class="info-label">Encrypted Fields:</span>
+                            <span class="info-value">${fields}</span>
+                            <span class="verification-badge verified">🔐 Encrypted</span>
+                        </div>
+                    `;
+                }
+                
+                // Digital signature
+                if (data.qr_data.digital_signature) {
+                    infoHtml += `
+                        <div class="info-item">
+                            <span class="info-label">Digital Signature:</span>
+                            <span class="info-value">${data.qr_data.digital_signature.algorithm || 'Unknown'}</span>
+                            <span class="verification-badge verified">✓ Signed</span>
+                        </div>
+                    `;
+                }
+                
+                // Blockchain info
+                const blockchains = data.qr_data.blockchain_hashes || {};
+                if (Object.keys(blockchains).length > 0) {
+                    infoHtml += `
+                        <div class="info-item">
+                            <span class="info-label">Blockchain Verified:</span>
+                            <span class="info-value">${Object.keys(blockchains).join(', ')}</span>
+                        </div>
+                    `;
+                } else {
+                    infoHtml += `
+                        <div class="info-item">
+                            <span class="info-label">Blockchain Verified:</span>
+                            <span class="info-value">None (APIs disabled)</span>
+                        </div>
+                    `;
+                }
+                
+                // Time servers
+                const timeServers = data.qr_data.time_server_verification || {};
+                if (Object.keys(timeServers).length > 0) {
+                    infoHtml += `
+                        <div class="info-item">
+                            <span class="info-label">Time Servers:</span>
+                            <span class="info-value">${Object.keys(timeServers).length} verified</span>
+                        </div>
+                    `;
+                }
+                
+                // User data
+                if (data.qr_data.user_data) {
+                    const userData = typeof data.qr_data.user_data === 'object' 
+                        ? JSON.stringify(data.qr_data.user_data, null, 2)
+                        : data.qr_data.user_data;
+                    infoHtml += `
+                        <div class="info-item">
+                            <span class="info-label">User Data:</span>
+                            <div class="hash-display">${userData}</div>
+                        </div>
+                    `;
+                }
+                
+                qrInfo.innerHTML = infoHtml;
             }
-            
-            blockchainInfo.innerHTML = html;
         }
         
-        function updateUserDataDisplay(userData) {
-            const userDataDisplay = document.getElementById('user-data-display');
-            
-            if (userData && userData.user_text) {
-                userDataDisplay.innerHTML = userData.user_text;
-            } else {
-                userDataDisplay.innerHTML = '<em>No user message</em>';
+        // Fallback: Poll for updates if WebSocket fails
+        function pollForUpdates() {
+            if (!isConnected) {
+                fetch('/api/qr/current')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.qr_image && data.qr_data) {
+                            updateQRDisplay(data);
+                        }
+                    })
+                    .catch(error => console.log('Poll failed:', error));
             }
         }
         
-        function updateStatistics() {
-            document.getElementById('update-count').textContent = updateCount;
-            document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
-        }
+        setInterval(pollForUpdates, 5000);
         
-        function requestUpdate() {
-            if (socket && socket.connected) {
+        // Request initial update
+        setTimeout(() => {
+            if (isConnected) {
                 socket.emit('request_qr_update');
             } else {
-                alert('Not connected to server');
+                pollForUpdates();
             }
-        }
-        
-        function downloadQR() {
-            if (!currentQRData) {
-                alert('No QR code available to download');
-                return;
-            }
-            
-            // Create download link
-            const link = document.createElement('a');
-            link.href = currentQRData.qr_image;
-            link.download = `qrlp_qr_${currentQRData.qr_data.sequence_number}.png`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        }
-        
-        function copyQRData() {
-            if (!currentQRData) {
-                alert('No QR data available to copy');
-                return;
-            }
-            
-            const dataText = JSON.stringify(currentQRData.qr_data, null, 2);
-            navigator.clipboard.writeText(dataText).then(function() {
-                alert('QR data copied to clipboard!');
-            }).catch(function(err) {
-                console.error('Failed to copy: ', err);
-                alert('Failed to copy QR data');
-            });
-        }
-        
-        function copyText(text) {
-            navigator.clipboard.writeText(text).then(function() {
-                // Show brief success indication
-                event.target.innerHTML = '<i class="bi bi-check"></i>';
-                setTimeout(() => {
-                    event.target.innerHTML = '<i class="bi bi-clipboard"></i>';
-                }, 1000);
-            }).catch(function(err) {
-                console.error('Failed to copy: ', err);
-                alert('Failed to copy text');
-            });
-        }
-        
-        // User Input Functions
-        function updateUserData() {
-            updateCharacterCounter();
-        }
-        
-        function updateCharacterCounter() {
-            const textInput = document.getElementById('user-text-input');
-            const counter = document.getElementById('char-counter');
-            const currentLength = textInput.value.length;
-            counter.textContent = `${currentLength}/500 characters`;
-            
-            if (currentLength > 450) {
-                counter.style.color = '#dc3545';
-            } else if (currentLength > 400) {
-                counter.style.color = '#ffc107';
-            } else {
-                counter.style.color = '#6c757d';
-            }
-        }
-        
-        function saveUserData() {
-            const textInput = document.getElementById('user-text-input');
-            const userData = textInput.value.trim();
-            
-            if (socket && socket.connected) {
-                socket.emit('update_user_data', { user_text: userData });
-            } else {
-                // Fallback to HTTP API
-                fetch('/api/user-data', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ user_text: userData })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        alert('User data saved successfully!');
-                    } else {
-                        alert('Error saving user data: ' + data.error);
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    alert('Failed to save user data');
-                });
-            }
-        }
-        
-        function loadUserData() {
-            fetch('/api/user-data')
-                .then(response => response.json())
-                .then(data => {
-                    if (data.user_data) {
-                        document.getElementById('user-text-input').value = data.user_data;
-                        updateCharacterCounter();
-                    }
-                })
-                .catch(error => {
-                    console.error('Error loading user data:', error);
-                });
-        }
+        }, 1000);
     </script>
 </body>
 </html>

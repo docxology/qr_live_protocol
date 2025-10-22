@@ -1,0 +1,43 @@
+{
+  "timestamp": "2025-10-22T17:36:42.285710+00:00",
+  "identity_hash": "cd4fc598950b33248fe9f07aa181de9f3735659fb2873abdf178a3f74beeef73",
+  "blockchain_hashes": {},
+  "time_server_verification": {
+    "time.nist.gov": {
+      "timestamp": "2025-10-22T17:36:42.286812+00:00",
+      "offset": 0.07578253746032715,
+      "last_sync": 1761154602.03772
+    },
+    "pool.ntp.org": {
+      "timestamp": "2025-10-22T17:36:42.327103+00:00",
+      "offset": 0.1160736083984375,
+      "last_sync": 1761154602.03772
+    },
+    "time.google.com": {
+      "timestamp": "2025-10-22T17:36:42.282419+00:00",
+      "offset": 0.07138967514038086,
+      "last_sync": 1761154602.03772
+    },
+    "time.cloudflare.com": {
+      "timestamp": "2025-10-22T17:36:42.285515+00:00",
+      "offset": 0.07448554039001465,
+      "last_sync": 1761154602.03772
+    }
+  },
+  "user_data": {
+    "demo": "basic_generation",
+    "timestamp": "2025-10-22T10:36:42.210565",
+    "purpose": "Demonstrate HMAC integrity"
+  },
+  "sequence_number": 1,
+  "digital_signature": "240994c9efd5e4cd76db5a87841446cf7303ec69f2dbeadf0dfa096e4a9f42d6b4c8af20bfda5f9b0aa90478e10c6488df1865dfe2476131f8032474039aa9ceb41f0f8c62fd18aa7d541a235c057a02db2722bc275158d2f2387cc2baa3511aa7e96c119d1b673273606ec8218de04ba1c68980320c146f052caa76c0b86ea308df56d59ad9af18eb178704e813399d52d209907ec906c700f0a473c382827f79a6de3b0057073449d8bc47ca51de8e1104bfe434ceb2904736c987f654c4fdab392c8e1c1f467be9969a342c7c662a744fb2a1fe60acba271bb12d626a3356ecb71a022b0f09090b61e561e1837538a9b292413d26f99616eeceab1609914b",
+  "signing_key_id": "5254a4af9519715be8dd94e2d3529d33",
+  "signature_algorithm": "rsa",
+  "_hmac": "43eb8325ff57ae819d6e2e44b276483c67b44f4300a304982ae3eedc6897402b",
+  "_hmac_key_id": "9291a7f5853bf2b446cccc2a932a5dc9",
+  "_hmac_algorithm": "sha256",
+  "_integrity_checked_at": "2025-10-22T17:36:42.287875+00:00",
+  "_encrypted_fields": null,
+  "_encryption_key_id": null,
+  "_data_key_id": null
+}

@@ -1,0 +1,671 @@
+# Core Module Cursor Rules
+
+## Philosophy
+- **"Show not tell"** - Implement real, working code with cryptographic verification
+- **Modular design** - Single responsibility for each function and class
+- **Test-first development** - Write tests before implementation
+- **Security by design** - Cryptographic operations are core, not optional
+
+## Code Style
+
+### Type Hints (Required)
+```python
+# ✅ Correct - All parameters and returns have type hints
+def generate_single_qr(self, user_data: Optional[Dict] = None,
+                      sign_data: bool = True, encrypt_data: bool = False) -> tuple[QRData, bytes]:
+    """Generate QR with cryptographic enhancements."""
+
+# ❌ Incorrect - Missing type hints
+def generate_qr(self, data):
+    """Generate QR code."""
+```
+
+### Error Handling (Required)
+```python
+# ✅ Correct - Comprehensive error handling
+def verify_qr_data(self, qr_json: str) -> Dict[str, bool]:
+    """Verify QR data with all security layers."""
+    try:
+        # Parse and decrypt if needed
+        raw_data = json.loads(qr_json)
+
+        if '_encrypted_fields' in raw_data:
+            decrypted_data = self.encryptor.decrypt_qr_payload(raw_data)
+            verification_data = decrypted_data
+        else:
+            verification_data = raw_data
+
+        # Verify all layers with specific error handling
+        results = {
+            'valid_json': True,
+            'hmac_verified': self.hmac_manager.verify_integrity_checked_qr(verification_data),
+            'signature_verified': False,
+            'identity_verified': False,
+            'time_verified': False,
+            'blockchain_verified': False,
+            'encrypted': '_encrypted_fields' in raw_data
+        }
+
+        # Continue with other verifications...
+
+    except json.JSONDecodeError as e:
+        return {
+            'valid_json': False,
+            'error': f'Invalid JSON: {e}',
+            'hmac_verified': False,
+            'signature_verified': False,
+            'identity_verified': False,
+            'time_verified': False,
+            'blockchain_verified': False,
+            'encrypted': False
+        }
+    except CryptoError as e:
+        return {
+            'valid_json': False,
+            'error': f'Cryptographic error: {e}',
+            'hmac_verified': False,
+            'signature_verified': False,
+            'identity_verified': False,
+            'time_verified': False,
+            'blockchain_verified': False,
+            'encrypted': False
+        }
+
+# ❌ Incorrect - Bare except clause
+def verify_qr_data(self, qr_json: str):
+    try:
+        # Some code
+        pass
+    except:
+        return {'error': 'Something went wrong'}
+```
+
+### Cryptographic Integration (Required)
+```python
+# ✅ Correct - All QR data includes HMAC integrity checking
+def generate_single_qr(self, user_data=None, sign_data=True, encrypt_data=False):
+    """Generate QR with cryptographic enhancements."""
+    # Core generation
+    qr_data = QRData(...)
+    qr_dict = qr_data.__dict__.copy()
+
+    # Always apply HMAC integrity checking
+    hmac_qr_data = self.hmac_manager.create_integrity_checked_qr(qr_dict)
+
+    # Apply optional cryptographic enhancements
+    if sign_data:
+        signed_data = self.signature_manager.create_signed_qr_data(hmac_qr_data, key_id)
+        return signed_data
+
+    if encrypt_data:
+        encrypted_data = self.encryptor.encrypt_qr_payload(hmac_qr_data)
+        return encrypted_data
+
+    return hmac_qr_data
+
+# ❌ Incorrect - No cryptographic enhancements
+def generate_qr(self, data):
+    """Generate basic QR code."""
+    qr = qrcode.QRCode()
+    qr.add_data(json.dumps(data))
+    return qr.make_image()
+```
+
+## Implementation Patterns
+
+### Configuration Validation
+```python
+# ✅ Required - Validate configuration before use
+def __init__(self, config: QRLPConfig = None):
+    """Initialize with validated configuration."""
+    self.config = config or QRLPConfig()
+
+    # Validate configuration immediately
+    issues = self.config.validate()
+    if issues:
+        raise ConfigurationError(f"Invalid configuration: {issues}")
+
+    # Initialize components with validated config
+    self._initialize_components()
+
+# ❌ Incorrect - No configuration validation
+def __init__(self, config=None):
+    self.config = config or QRLPConfig()
+    # No validation - could fail later
+```
+
+### Component Initialization
+```python
+# ✅ Required - Initialize all components in proper order
+def _initialize_components(self):
+    """Initialize all QRLP components."""
+    # Core components first
+    self.qr_generator = QRGenerator(self.config.qr_settings)
+    self.time_provider = TimeProvider(self.config.time_settings)
+    self.blockchain_verifier = BlockchainVerifier(self.config.blockchain_settings)
+    self.identity_manager = IdentityManager(self.config.identity_settings)
+
+    # Cryptographic components
+    self.key_manager = KeyManager()
+    self.signature_manager = QRSignatureManager(self.key_manager)
+    self.encryptor = DataEncryptor()
+    self.hmac_manager = HMACManager()
+
+# ❌ Incorrect - Missing cryptographic components
+def _initialize_components(self):
+    self.qr_generator = QRGenerator(self.config.qr_settings)
+    # Missing crypto components
+```
+
+### Callback System
+```python
+# ✅ Required - Safe callback system with error handling
+def add_update_callback(self, callback: Callable[[QRData, bytes], None]) -> None:
+    """Add callback with validation."""
+    if not callable(callback):
+        raise ValueError("Callback must be callable")
+
+    if callback not in self._callbacks:
+        self._callbacks.append(callback)
+
+def _notify_callbacks(self, qr_data: QRData, qr_image: bytes):
+    """Notify callbacks with error handling."""
+    for callback in self._callbacks[:]:  # Copy list to avoid modification during iteration
+        try:
+            callback(qr_data, qr_image)
+        except Exception as e:
+            # Log error but continue with other callbacks
+            print(f"Callback error: {e}")
+
+# ❌ Incorrect - Unsafe callback system
+def add_callback(self, callback):
+    self.callbacks.append(callback)  # No validation
+
+def notify_callbacks(self, data, image):
+    for callback in self.callbacks:
+        callback(data, image)  # No error handling
+```
+
+## Security Requirements
+
+### Input Validation
+```python
+# ✅ Required - Validate all inputs
+def verify_qr_data(self, qr_json: str) -> Dict[str, bool]:
+    """Verify with comprehensive input validation."""
+    # Length check
+    if len(qr_json) > MAX_QR_DATA_LENGTH:
+        return {'valid_json': False, 'error': 'QR data too large'}
+
+    # Type check
+    if not isinstance(qr_json, str):
+        return {'valid_json': False, 'error': 'QR data must be string'}
+
+    # JSON validation
+    try:
+        raw_data = json.loads(qr_json)
+    except json.JSONDecodeError as e:
+        return {'valid_json': False, 'error': f'Invalid JSON: {e}'}
+
+    # Structure validation
+    if not isinstance(raw_data, dict):
+        return {'valid_json': False, 'error': 'QR data must be JSON object'}
+
+    # Continue with verification...
+
+# ❌ Incorrect - No input validation
+def verify_qr_data(self, qr_json):
+    data = json.loads(qr_json)  # Could fail with any input
+    return self._verify_data(data)
+```
+
+### Cryptographic Operations
+```python
+# ✅ Required - All QR data includes HMAC integrity
+def generate_single_qr(self, user_data=None, sign_data=True, encrypt_data=False):
+    """Generate QR with cryptographic integrity."""
+    # Create base QR data
+    qr_data = QRData(...)
+
+    # Always add HMAC integrity checking
+    qr_dict = qr_data.__dict__.copy()
+    hmac_qr_data = self.hmac_manager.create_integrity_checked_qr(qr_dict)
+
+    # Add digital signature if requested
+    if sign_data and self._has_signing_key():
+        signed_data = self.signature_manager.create_signed_qr_data(hmac_qr_data, key_id)
+
+    # Add encryption if requested
+    if encrypt_data:
+        encrypted_data = self.encryptor.encrypt_qr_payload(hmac_qr_data)
+
+    return hmac_qr_data  # Always return data with HMAC
+
+# ❌ Incorrect - No cryptographic integrity
+def generate_qr(self, data):
+    """Generate basic QR without security."""
+    return json.dumps(data)  # No HMAC, no signature, no encryption
+```
+
+## Testing Requirements
+
+### Unit Test Structure
+```python
+# ✅ Required - Comprehensive unit tests
+class TestQRLiveProtocol:
+    def test_generate_single_qr_basic(self, qrlp_instance):
+        """Test basic QR generation."""
+        qr_data, qr_image = qrlp_instance.generate_single_qr()
+
+        # Verify structure
+        assert isinstance(qr_data, QRData)
+        assert isinstance(qr_image, bytes)
+        assert len(qr_image) > 0
+
+        # Verify cryptographic features
+        qr_dict = qr_data.__dict__
+        assert '_hmac' in qr_dict  # HMAC always present
+
+        # Verify image format
+        assert qr_image.startswith(b'\x89PNG\r\n\x1a\n')
+
+    def test_verify_qr_data_comprehensive(self, qrlp_instance):
+        """Test comprehensive QR verification."""
+        qr_data, _ = qrlp_instance.generate_single_qr()
+        qr_json = qr_data.to_json()
+
+        results = qrlp_instance.verify_qr_data(qr_json)
+
+        # All verification fields present
+        expected_keys = [
+            'valid_json', 'identity_verified', 'time_verified',
+            'blockchain_verified', 'signature_verified', 'hmac_verified', 'encrypted'
+        ]
+        for key in expected_keys:
+            assert key in results
+
+        # HMAC always verified
+        assert results['hmac_verified'] is True
+
+# ❌ Incorrect - Minimal testing
+class TestQRLiveProtocol:
+    def test_basic(self):
+        qrlp = QRLiveProtocol()
+        # Only basic test
+```
+
+### Integration Test Coverage
+```python
+# ✅ Required - Full workflow testing
+class TestFullWorkflow:
+    def test_basic_qr_lifecycle(self, qrlp_instance):
+        """Test complete QR lifecycle."""
+        # Generate QR
+        qr_data, qr_image = qrlp_instance.generate_single_qr({"test": "data"})
+
+        # Verify structure
+        assert qr_data.user_data == {"test": "data"}
+        assert qr_data.sequence_number >= 1
+
+        # Verify JSON format
+        qr_json = qr_data.to_json()
+        parsed = json.loads(qr_json)
+        assert parsed['user_data'] == {"test": "data"}
+
+        # Verify with same instance
+        results = qrlp_instance.verify_qr_data(qr_json)
+        assert results['hmac_verified'] is True
+
+    def test_cross_instance_verification(self, qrlp_instance, temp_key_dir):
+        """Test verification across different instances."""
+        # Generate with first instance
+        qr_data, _ = qrlp_instance.generate_single_qr()
+
+        # Create second instance for verification
+        test_config = QRLPConfig()
+        test_config.identity_settings.identity_file = None
+        test_config.blockchain_settings.enabled_chains = set()
+        test_config.time_settings.time_servers = []
+
+        verifier = QRLiveProtocol(test_config)
+        verifier.key_manager = qrlp_instance.key_manager  # Share keys
+
+        # Verify with second instance
+        qr_json = qr_data.to_json()
+        results = verifier.verify_qr_data(qr_json)
+
+        assert results['valid_json'] is True
+        assert results['hmac_verified'] is True
+
+# ❌ Incorrect - No integration testing
+class TestQRLiveProtocol:
+    def test_generation(self):
+        # Only basic generation test
+```
+
+## Performance Standards
+
+### Response Times
+```python
+# ✅ Required - Performance requirements documented
+def generate_single_qr(self, user_data=None, sign_data=True, encrypt_data=False):
+    """Generate QR code in under 100ms."""
+    start_time = time.time()
+
+    # Core generation logic...
+
+    end_time = time.time()
+    generation_time = end_time - start_time
+
+    if generation_time > 0.1:  # 100ms limit
+        print(f"Warning: QR generation took {generation_time:.3f}s")
+
+    return qr_data, qr_image
+
+# ❌ Incorrect - No performance considerations
+def generate_qr(self, data):
+    # No performance monitoring
+    return make_qr(data)
+```
+
+### Memory Management
+```python
+# ✅ Required - Memory management
+class QRLiveProtocol:
+    def __init__(self, config):
+        self._qr_cache = {}
+        self._crypto_cache = {}
+        self._cache_ttl = 60  # 1 minute
+        self._max_cache_size = 1000
+
+    def _cleanup_caches(self):
+        """Clean up expired cache entries."""
+        current_time = time.time()
+
+        # Remove expired QR cache entries
+        expired_qr = [
+            key for key, (cached_time, _) in self._qr_cache.items()
+            if current_time - cached_time > self._cache_ttl
+        ]
+        for key in expired_qr:
+            del self._qr_cache[key]
+
+        # Remove expired crypto cache entries
+        expired_crypto = [
+            key for key, (cached_time, _) in self._crypto_cache.items()
+            if current_time - cached_time > self._crypto_cache_ttl
+        ]
+        for key in expired_crypto:
+            del self._crypto_cache[key]
+
+# ❌ Incorrect - No memory management
+class QRLiveProtocol:
+    def __init__(self):
+        self.cache = {}  # No size limits or cleanup
+```
+
+## Error Handling Patterns
+
+### Specific Exception Types
+```python
+# ✅ Required - Specific exception handling
+def verify_qr_data(self, qr_json: str) -> Dict[str, bool]:
+    """Verify QR with specific error handling."""
+    try:
+        raw_data = json.loads(qr_json)
+
+        if '_encrypted_fields' in raw_data:
+            try:
+                decrypted_data = self.encryptor.decrypt_qr_payload(raw_data)
+            except EncryptionError as e:
+                return {'valid_json': False, 'error': f'Decryption failed: {e}'}
+            verification_data = decrypted_data
+        else:
+            verification_data = raw_data
+
+        # Continue verification...
+
+    except json.JSONDecodeError as e:
+        return {'valid_json': False, 'error': f'Invalid JSON: {e}'}
+    except CryptoError as e:
+        return {'valid_json': False, 'error': f'Cryptographic error: {e}'}
+    except Exception as e:
+        return {'valid_json': False, 'error': f'Unexpected error: {e}'}
+
+# ❌ Incorrect - Generic error handling
+def verify_qr_data(self, qr_json):
+    try:
+        # Some code
+        pass
+    except Exception as e:
+        return {'error': str(e)}
+```
+
+### Graceful Degradation
+```python
+# ✅ Required - Graceful degradation for crypto failures
+def generate_single_qr(self, user_data=None, sign_data=True, encrypt_data=False):
+    """Generate QR with graceful crypto degradation."""
+    try:
+        # Attempt full cryptographic generation
+        return self._generate_full_crypto_qr(user_data, sign_data, encrypt_data)
+
+    except CryptoError as e:
+        # Log crypto error but continue with reduced functionality
+        print(f"Cryptographic error: {e}")
+        return self._generate_basic_qr(user_data)
+
+    except Exception as e:
+        # Log unexpected error
+        print(f"Unexpected error: {e}")
+        raise QRLiveProtocolError(f"QR generation failed: {e}")
+
+# ❌ Incorrect - Fail fast on any error
+def generate_qr(self, data):
+    # Any error stops execution
+    return make_qr(data)  # Fails completely on any issue
+```
+
+## Documentation Standards
+
+### Docstring Requirements
+```python
+# ✅ Required - Comprehensive docstrings
+def generate_single_qr(self, user_data: Optional[Dict] = None,
+                      sign_data: bool = True, encrypt_data: bool = False) -> tuple[QRData, bytes]:
+    """
+    Generate a single QR code with current verification data.
+
+    This method creates a QR code containing timestamped information with
+    cryptographic verification including HMAC integrity checking, optional
+    digital signatures, and optional field-level encryption.
+
+    Args:
+        user_data: Optional custom data to include in QR code
+        sign_data: Whether to digitally sign the QR data for authenticity
+        encrypt_data: Whether to encrypt sensitive fields in QR data
+
+    Returns:
+        Tuple of (QRData object, QR image as PNG bytes)
+
+    Raises:
+        QRLiveProtocolError: If QR generation fails
+        CryptoError: If cryptographic operations fail
+
+    Example:
+        >>> qrlp = QRLiveProtocol()
+        >>> qr_data, qr_image = qrlp.generate_single_qr(
+        ...     user_data={"event": "livestream"},
+        ...     sign_data=True,
+        ...     encrypt_data=True
+        ... )
+        >>> verification = qrlp.verify_qr_data(qr_data.to_json())
+        >>> assert verification['signature_verified'] == True
+    """
+
+# ❌ Incorrect - Minimal or missing docstrings
+def generate_qr(self, data):
+    """Generate QR code."""
+    # No detailed documentation
+```
+
+## Code Organization
+
+### Import Organization
+```python
+# ✅ Required - Organized imports
+# Standard library imports first
+import json
+import time
+import threading
+from datetime import datetime, timezone
+from typing import Dict, List, Optional, Union, Callable
+from dataclasses import dataclass, asdict
+
+# Third-party imports second
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import rsa, ec, padding
+from cryptography.exceptions import InvalidSignature
+
+# Local imports last
+from .qr_generator import QRGenerator
+from .time_provider import TimeProvider
+from .blockchain_verifier import BlockchainVerifier
+from .identity_manager import IdentityManager
+from .config import QRLPConfig
+from .crypto import KeyManager, QRSignatureManager, DataEncryptor, HMACManager
+
+# ❌ Incorrect - Disorganized imports
+import json
+from cryptography.hazmat.primitives import hashes
+import time
+from .crypto import KeyManager
+from typing import Dict
+```
+
+### Class Structure
+```python
+# ✅ Required - Proper class organization
+class QRLiveProtocol:
+    """Main QR Live Protocol coordinator."""
+
+    def __init__(self, config: QRLPConfig = None):
+        """Initialize QRLP with configuration."""
+        self.config = config or QRLPConfig()
+
+        # Validate configuration
+        issues = self.config.validate()
+        if issues:
+            raise ConfigurationError(f"Invalid configuration: {issues}")
+
+        # Initialize components in dependency order
+        self._initialize_core_components()
+        self._initialize_crypto_components()
+        self._initialize_caches()
+
+    def generate_single_qr(self, user_data=None, sign_data=True, encrypt_data=False):
+        """Generate QR with cryptographic enhancements."""
+
+    def verify_qr_data(self, qr_json: str) -> Dict[str, bool]:
+        """Verify QR data comprehensively."""
+
+    def _initialize_core_components(self):
+        """Initialize core QRLP components."""
+        self.qr_generator = QRGenerator(self.config.qr_settings)
+        self.time_provider = TimeProvider(self.config.time_settings)
+        self.blockchain_verifier = BlockchainVerifier(self.config.blockchain_settings)
+        self.identity_manager = IdentityManager(self.config.identity_settings)
+
+    def _initialize_crypto_components(self):
+        """Initialize cryptographic components."""
+        self.key_manager = KeyManager()
+        self.signature_manager = QRSignatureManager(self.key_manager)
+        self.encryptor = DataEncryptor()
+        self.hmac_manager = HMACManager()
+
+# ❌ Incorrect - Poor organization
+class QRLiveProtocol:
+    def __init__(self, config=None):
+        self.config = config or QRLPConfig()
+        self.generator = QRGenerator(self.config.qr_settings)
+        # All initialization in one method
+
+    def make_qr(self, data):
+        # Mixed concerns in one method
+```
+
+## Security Standards
+
+### Cryptographic Key Management
+```python
+# ✅ Required - Secure key management
+class QRLiveProtocol:
+    def __init__(self, config):
+        self.key_manager = KeyManager()
+
+        # Generate keys for different purposes
+        self.signing_key_id = self._ensure_signing_key()
+        self.encryption_key_id = self._ensure_encryption_key()
+
+    def _ensure_signing_key(self) -> str:
+        """Ensure signing key exists."""
+        keys = self.key_manager.list_keys()
+        signing_keys = [k for k, v in keys.items() if v.purpose == "qr_signing"]
+
+        if signing_keys:
+            return signing_keys[0]
+
+        # Generate new signing key
+        public_key, private_key = self.key_manager.generate_keypair(
+            algorithm="rsa", key_size=2048, purpose="qr_signing"
+        )
+        return list(self.key_manager.list_keys().keys())[0]
+
+# ❌ Incorrect - No key management
+def generate_signed_qr(self, data):
+    # No key management - hardcoded or missing keys
+    return sign_with_hardcoded_key(data)
+```
+
+### Input Sanitization
+```python
+# ✅ Required - Input sanitization for security
+def verify_qr_data(self, qr_json: str) -> Dict[str, bool]:
+    """Verify QR with input sanitization."""
+    # Length validation
+    if len(qr_json) > MAX_QR_SIZE:
+        return {'valid_json': False, 'error': 'QR data too large'}
+
+    # Type validation
+    if not isinstance(qr_json, str):
+        return {'valid_json': False, 'error': 'QR data must be string'}
+
+    # Content validation
+    try:
+        raw_data = json.loads(qr_json)
+        if not isinstance(raw_data, dict):
+            return {'valid_json': False, 'error': 'QR data must be JSON object'}
+    except json.JSONDecodeError as e:
+        return {'valid_json': False, 'error': f'Invalid JSON: {e}'}
+
+    # Continue with verification...
+
+# ❌ Incorrect - No input validation
+def verify_qr_data(self, qr_json):
+    data = json.loads(qr_json)  # Vulnerable to any input
+    return self._verify(data)
+```
+
+## Summary
+
+These rules ensure that the QRLiveProtocol core module is implemented with:
+
+1. **Security by design** - Cryptographic operations are core functionality
+2. **Comprehensive error handling** - All edge cases covered with specific error types
+3. **Performance optimization** - Caching and memory management for production use
+4. **Thorough testing** - Unit and integration tests for all functionality
+5. **Clear documentation** - Comprehensive docstrings and usage examples
+6. **Modular architecture** - Single responsibility and proper component separation
+
+All implementations must follow these patterns to maintain code quality, security, and maintainability.
+

@@ -1,0 +1,45 @@
+{
+  "timestamp": "2025-10-22T17:36:42.381420+00:00",
+  "identity_hash": "cd4fc598950b33248fe9f07aa181de9f3735659fb2873abdf178a3f74beeef73",
+  "blockchain_hashes": {},
+  "time_server_verification": {
+    "time.nist.gov": {
+      "timestamp": "2025-10-22T17:36:42.382239+00:00",
+      "offset": 0.07578253746032715,
+      "last_sync": 1761154602.03772
+    },
+    "pool.ntp.org": {
+      "timestamp": "2025-10-22T17:36:42.422530+00:00",
+      "offset": 0.1160736083984375,
+      "last_sync": 1761154602.03772
+    },
+    "time.google.com": {
+      "timestamp": "2025-10-22T17:36:42.377846+00:00",
+      "offset": 0.07138967514038086,
+      "last_sync": 1761154602.03772
+    },
+    "time.cloudflare.com": {
+      "timestamp": "2025-10-22T17:36:42.380942+00:00",
+      "offset": 0.07448554039001465,
+      "last_sync": 1761154602.03772
+    }
+  },
+  "user_data": {
+    "demo": "digital_signature",
+    "document_id": "demo_doc_123",
+    "author": "QRLP Demo",
+    "classification": "confidential",
+    "signing_timestamp": "2025-10-22T10:36:42.306276"
+  },
+  "sequence_number": 2,
+  "digital_signature": "975c8a5ad78ddc3aaff0838ac6e4459f147dae376a37fb0942e68fe8b802b1dd91b622c6147d4ded9e747bfbb4b92c50b5545c4d56c1a8e5cb85f48cc291b9152ce27e756d9cab0a686ee27aef32968e738671e7b8cdd179d0f9915a503f119d1ffd940b05dd4c8a9459a6b31de14b14d401897c798c45c0e2c40c791e8bdcb5adbcf87562dbbb763e0ae5ca91fd5149697b1bc6845f1f8b082fe4e37f0679cc334e39b67d93b45f4dcbbf8fdde2d4b340be8d39d8c1a95250974252ce43a3d5105f61b6eb8db386d2453850b0c430464a750464e0c33a05cfff0a3ef2bcd75d02b6abbc80ce518e7a9f98116aa522e0a90980197b2d4410f0383786165a638e",
+  "signing_key_id": "5254a4af9519715be8dd94e2d3529d33",
+  "signature_algorithm": "rsa",
+  "_hmac": "5782ba7a9cd348ab78e59b44b01d58f4aa3ae130b9202537a87f3a6dd57a958d",
+  "_hmac_key_id": "9291a7f5853bf2b446cccc2a932a5dc9",
+  "_hmac_algorithm": "sha256",
+  "_integrity_checked_at": "2025-10-22T17:36:42.306512+00:00",
+  "_encrypted_fields": null,
+  "_encryption_key_id": null,
+  "_data_key_id": null
+}

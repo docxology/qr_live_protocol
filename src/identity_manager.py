@@ -11,7 +11,7 @@ import platform
 import uuid
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Optional, Any, List
 from dataclasses import dataclass, asdict
@@ -255,14 +255,17 @@ class IdentityManager:
         # Create identity info
         self.identity_info = IdentityInfo(
             identity_hash="",  # Will be calculated
-            creation_time=datetime.utcnow(),
+            creation_time=datetime.now(timezone.utc),
             system_info=system_info,
             file_hashes=file_hashes,
             custom_data={}
         )
         
         # Generate the actual hash
-        self.identity_info.identity_hash = self._generate_identity_hash()
+        self.cached_hash = self._generate_identity_hash()
+        self.identity_info.identity_hash = self.cached_hash
+        self.last_hash_time = time.time()
+        self.hash_generations += 1
     
     def _generate_identity_hash(self) -> str:
         """Generate cryptographic hash of identity."""
@@ -277,9 +280,28 @@ class IdentityManager:
             system_str = json.dumps(self.identity_info.system_info, sort_keys=True)
             components.append(f"system:{system_str}")
         
-        # Add file hashes
+        # Add current file hashes (recalculate from actual files)
         if self.identity_info.file_hashes:
-            files_str = json.dumps(self.identity_info.file_hashes, sort_keys=True)
+            current_file_hashes = {}
+            for filename, stored_hash in self.identity_info.file_hashes.items():
+                # Determine the actual file path
+                file_path = None
+                if (filename == 'identity_file' and
+                    self.settings.identity_file and
+                    os.path.exists(self.settings.identity_file)):
+                    file_path = self.settings.identity_file
+                elif (self.settings.identity_file and
+                      filename == os.path.basename(self.settings.identity_file)):
+                    file_path = self.settings.identity_file
+                elif os.path.exists(filename):
+                    file_path = filename
+
+                if file_path and os.path.exists(file_path):
+                    current_file_hashes[filename] = self._calculate_file_hash(file_path)
+                else:
+                    current_file_hashes[filename] = stored_hash  # Keep stored hash if file not found
+
+            files_str = json.dumps(current_file_hashes, sort_keys=True)
             components.append(f"files:{files_str}")
         
         # Add custom data
@@ -353,13 +375,28 @@ class IdentityManager:
         """Check if identity components have changed."""
         if not self.identity_info:
             return True
-        
-        # Check if identity file has changed
-        if (self.settings.identity_file and 
-            os.path.exists(self.settings.identity_file)):
-            current_hash = self._calculate_file_hash(self.settings.identity_file)
-            stored_hash = self.identity_info.file_hashes.get('identity_file')
-            if current_hash != stored_hash:
-                return True
-        
+
+        # Check all tracked files for changes
+        for filename, stored_hash in self.identity_info.file_hashes.items():
+            # Determine the actual file path to check
+            file_path = None
+
+            # If it's the identity_file from settings
+            if (filename == 'identity_file' and
+                self.settings.identity_file and
+                os.path.exists(self.settings.identity_file)):
+                file_path = self.settings.identity_file
+            # If it's an alias that matches the identity file basename
+            elif (self.settings.identity_file and
+                  filename == os.path.basename(self.settings.identity_file)):
+                file_path = self.settings.identity_file
+            # If the filename itself is a valid path
+            elif os.path.exists(filename):
+                file_path = filename
+
+            if file_path and os.path.exists(file_path):
+                current_hash = self._calculate_file_hash(file_path)
+                if current_hash != stored_hash:
+                    return True
+
         return False 

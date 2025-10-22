@@ -19,37 +19,40 @@
             justify-content: center;
             align-items: center;
             min-height: 100vh;
-            overflow: hidden;
+            overflow: auto;
+            padding: 20px;
         }
         
         .qr-container {
             text-align: center;
-            background: linear-gradient(45deg, #1a1a1a, #2a2a2a);
+            background: linear-gradient(45deg, #0a0a0a, #1a1a1a);
             border: 2px solid #333;
             border-radius: 20px;
             padding: 40px;
-            box-shadow: 0 0 50px rgba(0, 255, 255, 0.3);
+            box-shadow: 0 0 50px rgba(255, 0, 0, 0.3);
             animation: pulse 3s ease-in-out infinite;
+            max-width: 1200px;
+            width: 100%;
         }
         
         @keyframes pulse {
-            0%, 100% { box-shadow: 0 0 50px rgba(0, 255, 255, 0.3); }
-            50% { box-shadow: 0 0 80px rgba(0, 255, 255, 0.6); }
+            0%, 100% { box-shadow: 0 0 50px rgba(255, 0, 0, 0.3); }
+            50% { box-shadow: 0 0 80px rgba(255, 0, 0, 0.6); }
         }
         
         .qr-title {
             font-size: 2.5rem;
             margin-bottom: 20px;
-            color: #00ffff;
-            text-shadow: 0 0 20px rgba(0, 255, 255, 0.8);
+            color: #ff0000;
+            text-shadow: 0 0 20px rgba(255, 0, 0, 0.8);
         }
         
         .qr-image {
             max-width: 500px;
             max-height: 500px;
-            border: 4px solid #00ffff;
+            border: 4px solid #ff0000;
             border-radius: 10px;
-            box-shadow: 0 0 30px rgba(0, 255, 255, 0.5);
+            box-shadow: 0 0 30px rgba(255, 0, 0, 0.5);
             background: white;
             padding: 10px;
         }
@@ -64,14 +67,14 @@
         }
         
         .info-item {
-            background: rgba(0, 255, 255, 0.1);
+            background: rgba(255, 0, 0, 0.1);
             padding: 15px;
             border-radius: 8px;
-            border-left: 4px solid #00ffff;
+            border-left: 4px solid #ff0000;
         }
         
         .info-label {
-            color: #00ffff;
+            color: #ff0000;
             font-weight: bold;
             display: block;
             margin-bottom: 5px;
@@ -84,7 +87,7 @@
         }
         
         .status-indicator {
-            position: absolute;
+            position: fixed;
             top: 20px;
             right: 20px;
             width: 20px;
@@ -93,6 +96,7 @@
             background: #00ff00;
             box-shadow: 0 0 10px #00ff00;
             animation: blink 1s infinite;
+            z-index: 1000;
         }
         
         .status-indicator.disconnected {
@@ -106,27 +110,141 @@
         }
         
         .timestamp {
-            position: absolute;
+            position: fixed;
             bottom: 20px;
             left: 20px;
             font-size: 1.2rem;
-            color: #00ffff;
+            color: #ff0000;
             font-family: monospace;
+            z-index: 1000;
         }
         
         .loading {
             text-align: center;
-            color: #00ffff;
+            color: #ff0000;
             font-size: 1.5rem;
         }
         
         .sequence-number {
-            position: absolute;
+            position: fixed;
             top: 20px;
             left: 20px;
             font-size: 1.5rem;
-            color: #00ffff;
+            color: #ff0000;
             font-family: monospace;
+            z-index: 1000;
+        }
+        
+        /* Editable Input Section */
+        .custom-input-section {
+            margin-top: 30px;
+            padding: 20px;
+            background: rgba(255, 0, 0, 0.1);
+            border: 2px solid #ff0000;
+            border-radius: 10px;
+        }
+        
+        .custom-input-title {
+            color: #ff0000;
+            font-size: 1.5rem;
+            margin-bottom: 15px;
+            font-weight: bold;
+        }
+        
+        .input-group {
+            margin-bottom: 15px;
+            text-align: left;
+        }
+        
+        .input-label {
+            color: #ff0000;
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        
+        .input-field {
+            width: 100%;
+            padding: 10px;
+            background: #1a1a1a;
+            border: 2px solid #333;
+            border-radius: 5px;
+            color: #fff;
+            font-family: 'Courier New', monospace;
+            font-size: 1rem;
+        }
+        
+        .input-field:focus {
+            outline: none;
+            border-color: #ff0000;
+            box-shadow: 0 0 10px rgba(255, 0, 0, 0.3);
+        }
+        
+        .submit-button {
+            background: #ff0000;
+            color: #fff;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 5px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .submit-button:hover {
+            background: #cc0000;
+            box-shadow: 0 0 20px rgba(255, 0, 0, 0.5);
+        }
+        
+        .submit-button:active {
+            transform: scale(0.98);
+        }
+        
+        /* QR Data Display Section */
+        .qr-data-section {
+            margin-top: 30px;
+            padding: 20px;
+            background: rgba(255, 0, 0, 0.05);
+            border: 2px solid #333;
+            border-radius: 10px;
+            text-align: left;
+        }
+        
+        .qr-data-title {
+            color: #ff0000;
+            font-size: 1.5rem;
+            margin-bottom: 15px;
+            font-weight: bold;
+        }
+        
+        .qr-data-content {
+            background: #0a0a0a;
+            padding: 15px;
+            border-radius: 5px;
+            border: 1px solid #333;
+            color: #fff;
+            font-family: monospace;
+            font-size: 0.9rem;
+            max-height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        
+        .qr-data-field {
+            margin-bottom: 10px;
+        }
+        
+        .qr-data-key {
+            color: #ff0000;
+            font-weight: bold;
+        }
+        
+        .qr-data-value {
+            color: #fff;
+            margin-left: 10px;
         }
         
         @media (max-width: 768px) {
@@ -156,6 +274,22 @@
         <div id="qrDisplay" class="loading">
             <p>🔄 Waiting for QR code...</p>
         </div>
+        
+        <!-- Custom Input Section -->
+        <div class="custom-input-section">
+            <div class="custom-input-title">📝 Custom QR Information</div>
+            <div class="input-group">
+                <label class="input-label">Custom Message:</label>
+                <input type="text" id="customMessage" class="input-field" placeholder="Enter custom message for QR code..." />
+            </div>
+            <div class="input-group">
+                <label class="input-label">Additional Data:</label>
+                <input type="text" id="additionalData" class="input-field" placeholder="Enter additional data (optional)..." />
+            </div>
+            <button class="submit-button" onclick="sendCustomData()">🔄 Update QR Code</button>
+        </div>
+        
+        <!-- QR Information Display -->
         <div class="qr-info" id="qrInfo" style="display: none;">
             <div class="info-item">
                 <span class="info-label">Identity Hash:</span>
@@ -174,6 +308,17 @@
                 <span class="info-value" id="generatedTime">-</span>
             </div>
         </div>
+        
+        <!-- QR Data Details Section -->
+        <div class="qr-data-section">
+            <div class="qr-data-title">🔐 QR Data Details</div>
+            <div class="qr-data-content" id="qrDataDetails">
+                <div class="qr-data-field">
+                    <span class="qr-data-key">Status:</span>
+                    <span class="qr-data-value">Waiting for QR data...</span>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
@@ -184,6 +329,7 @@
         // Elements
         const qrDisplay = document.getElementById('qrDisplay');
         const qrInfo = document.getElementById('qrInfo');
+        const qrDataDetails = document.getElementById('qrDataDetails');
         const statusIndicator = document.getElementById('statusIndicator');
         const timestamp = document.getElementById('timestamp');
         const sequenceNumber = document.getElementById('sequenceNumber');
@@ -219,6 +365,39 @@
             updateQRDisplay(data);
         });
         
+        // Send custom data to server
+        function sendCustomData() {
+            const customMessage = document.getElementById('customMessage').value;
+            const additionalData = document.getElementById('additionalData').value;
+            
+            const userData = {
+                user_text: customMessage || 'QRLP Viewer',
+                additional_data: additionalData || ''
+            };
+            
+            // Send to server via WebSocket
+            if (isConnected) {
+                socket.emit('update_user_data', userData);
+                console.log('Sent custom data:', userData);
+            } else {
+                // Fallback to HTTP POST
+                fetch('/api/user_input', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ user_input: customMessage })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    console.log('User data updated via HTTP:', data);
+                })
+                .catch(error => {
+                    console.error('Failed to update user data:', error);
+                });
+            }
+        }
+        
         // Update QR display
         function updateQRDisplay(data) {
             if (data.qr_image && data.qr_data) {
@@ -249,7 +428,86 @@
                 
                 // Show info panel
                 qrInfo.style.display = 'grid';
+                
+                // Update detailed QR data display
+                updateQRDataDetails(data.qr_data);
             }
+        }
+        
+        // Update detailed QR data display
+        function updateQRDataDetails(qrData) {
+            let html = '';
+            
+            // Display key fields
+            const fields = [
+                { key: 'sequence_number', label: 'Sequence Number' },
+                { key: 'timestamp', label: 'Timestamp' },
+                { key: 'identity_hash', label: 'Identity Hash' },
+                { key: '_hmac', label: 'HMAC Integrity' },
+                { key: '_hmac_algorithm', label: 'HMAC Algorithm' },
+                { key: 'user_data', label: 'User Data' },
+                { key: '_encrypted_fields', label: 'Encrypted Fields' },
+                { key: 'digital_signature', label: 'Digital Signature' }
+            ];
+            
+            fields.forEach(field => {
+                if (qrData[field.key] !== undefined && qrData[field.key] !== null) {
+                    let value = qrData[field.key];
+                    
+                    // Format complex objects
+                    if (typeof value === 'object') {
+                        value = JSON.stringify(value, null, 2);
+                    }
+                    
+                    // Truncate long values
+                    const displayValue = String(value).length > 100 
+                        ? String(value).substring(0, 100) + '...'
+                        : String(value);
+                    
+                    html += `
+                        <div class="qr-data-field">
+                            <span class="qr-data-key">${field.label}:</span>
+                            <span class="qr-data-value">${displayValue}</span>
+                        </div>
+                    `;
+                }
+            });
+            
+            // Display blockchain hashes
+            if (qrData.blockchain_hashes) {
+                html += `
+                    <div class="qr-data-field">
+                        <span class="qr-data-key">Blockchain Hashes:</span>
+                    </div>
+                `;
+                Object.entries(qrData.blockchain_hashes).forEach(([chain, hash]) => {
+                    html += `
+                        <div class="qr-data-field" style="margin-left: 20px;">
+                            <span class="qr-data-key">${chain}:</span>
+                            <span class="qr-data-value">${hash ? hash.substring(0, 32) + '...' : 'N/A'}</span>
+                        </div>
+                    `;
+                });
+            }
+            
+            // Display time server verification
+            if (qrData.time_server_verification) {
+                html += `
+                    <div class="qr-data-field">
+                        <span class="qr-data-key">Time Server Verification:</span>
+                    </div>
+                `;
+                Object.entries(qrData.time_server_verification).forEach(([server, status]) => {
+                    html += `
+                        <div class="qr-data-field" style="margin-left: 20px;">
+                            <span class="qr-data-key">${server}:</span>
+                            <span class="qr-data-value">${status}</span>
+                        </div>
+                    `;
+                });
+            }
+            
+            qrDataDetails.innerHTML = html || '<div class="qr-data-field"><span class="qr-data-value">No data available</span></div>';
         }
         
         // Fallback: Poll for updates if WebSocket fails
@@ -278,4 +536,4 @@
         }, 1000);
     </script>
 </body>
-</html> 
+</html>
