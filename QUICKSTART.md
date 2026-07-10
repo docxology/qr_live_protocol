@@ -204,4 +204,4 @@ You'll know everything is working when you see:
 4. 🌍 Browser opens automatically showing live QR codes
 5. QR codes visibly changing every second
 
-Enjoy your live, cryptographically verified QR codes! 🔲✨ 
+Enjoy your live, cryptographically verified QR codes! 🔲✨

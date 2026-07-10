@@ -200,5 +200,6 @@ class HMACManager:
         """Get HMAC key by ID (placeholder for future key storage)."""
         # For now, only support the master key
         # In production, this would retrieve from secure key storage
+        if key_id != self.key_id:
+            raise HMACError(f"Unknown HMAC key id: {key_id}")
         return self.master_key
-

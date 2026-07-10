@@ -4,14 +4,14 @@ build-backend = "hatchling.build"
 
 [project]
 name = "qr-live-protocol"
-version = "1.0.0"
+version = "1.0.1"
 description = "Generate live, verifiable QR codes for streaming and official video releases"
 authors = [
     {name = "QRLP Development Team", email = "contact@qrlp.org"},
 ]
 readme = "README.md"
 license = {text = "CC-BY-NC-SA-4.0"}
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -19,9 +19,7 @@ classifiers = [
     "Topic :: Multimedia :: Video",
     "Topic :: Security :: Cryptography",
     "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -65,9 +63,9 @@ full = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/your-org/qr_live_protocol"
-"Bug Reports" = "https://github.com/your-org/qr_live_protocol/issues"
-Source = "https://github.com/your-org/qr_live_protocol"
+Homepage = "https://github.com/docxology/qr_live_protocol"
+"Bug Reports" = "https://github.com/docxology/qr_live_protocol/issues"
+Source = "https://github.com/docxology/qr_live_protocol"
 Documentation = "https://qrlp.readthedocs.io/"
 
 [project.scripts]
@@ -84,16 +82,19 @@ src = [
     "static/**/*"
 ]
 
+[tool.hatch.build.targets.wheel.force-include]
+"templates" = "templates"
+
 [tool.black]
 line-length = 100
-target-version = ['py38', 'py39', 'py310', 'py311', 'py312', 'py313']
+target-version = ['py39', 'py310', 'py311', 'py312', 'py313']
 
 [tool.isort]
 profile = "black"
 line_length = 100
 
 [tool.mypy]
-python_version = "3.8"
+python_version = "3.9"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true

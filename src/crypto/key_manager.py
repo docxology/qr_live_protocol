@@ -65,6 +65,8 @@ class KeyManager:
         self.keys_file = self.key_dir / "key_metadata.json"
         self.keys_info: Dict[str, KeyInfo] = {}
         self._load_key_metadata()
+        if not self.keys_file.exists():
+            self._save_key_metadata()
 
         # Master key for encrypting private keys on disk
         self._master_key = self._get_or_create_master_key()
@@ -170,6 +172,12 @@ class KeyManager:
             # Decrypt private key for use
             encrypted_private = base64.b64decode(data['private_key'])
             decrypted_private = self._decrypt_private_key(encrypted_private, key_id)
+
+            if key_id in self.keys_info:
+                key_info = self.keys_info[key_id]
+                key_info.usage_count += 1
+                key_info.last_used = datetime.now(timezone.utc)
+                self._save_key_metadata()
 
             return KeyPair(
                 public_key=base64.b64decode(data['public_key']),
@@ -406,4 +414,3 @@ class KeyManager:
 
         with open(self.keys_file, 'w') as f:
             json.dump(data, f, indent=2, default=str)
-

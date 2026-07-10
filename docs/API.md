@@ -141,11 +141,11 @@ Comprehensive verification of QR code data with multi-layered security checks.
 
 **Verification Layers:**
 - **JSON Validation**: Structural integrity check
-- **HMAC Verification**: Cryptographic integrity (always present)
-- **Digital Signature**: Optional signature verification (if present)
-- **Identity Verification**: Matches current system identity
-- **Time Verification**: Timestamp within acceptable drift window
-- **Blockchain Verification**: Current block hashes match (if available)
+- **HMAC Verification**: Local/shared-secret integrity check
+- **Digital Signature**: Public-key verification when the verifier trusts the issuer key
+- **Identity Verification**: Local identity match or trusted signed issuer
+- **Time Verification**: Timestamp within acceptable drift and optional expiry window
+- **Blockchain Context**: Current block hash comparison when configured; not an on-chain content commitment
 - **Encryption Check**: Detects if data was encrypted
 
 ```python
@@ -160,6 +160,8 @@ print(f"Blockchain verified: {results['blockchain_verified']}")
 print(f"HMAC verified: {results['hmac_verified']}")
 print(f"Signature verified: {results['signature_verified']}")
 print(f"Encrypted: {results['encrypted']}")
+print(f"Overall valid: {results['valid']}")
+print(f"Trust mode: {results['trust_mode']}")
 
 # Complete verification example
 def verify_qr_completely(qr_json):
@@ -177,7 +179,7 @@ def verify_qr_completely(qr_json):
     if not results['time_verified']:
         return False, "Timestamp outside acceptable window"
 
-    return True, "QR code is authentic and verified"
+    return results['valid'], "QR code accepted" if results['valid'] else "QR code rejected"
 ```
 
 **Verification Results Dictionary:**
@@ -190,6 +192,8 @@ def verify_qr_completely(qr_json):
     "signature_verified": bool,   # Digital signature valid (if present)
     "hmac_verified": bool,        # HMAC integrity check passed
     "encrypted": bool,           # Data was encrypted
+    "valid": bool,               # Overall verifier decision
+    "trust_mode": str,           # none/local_hmac/local_signature/public_signature
     "error": str                 # Error message (if valid_json=False)
 }
 ```
@@ -329,24 +333,29 @@ if not stats['blockchain_stats']['cached_chains']:
 
 ### QRData Class
 
-Immutable data structure representing the complete payload of a QR code, including all verification data and metadata.
+Data structure representing the complete payload of a QR code, including freshness metadata, issuer identity, and optional cryptographic checks.
 
 #### Attributes
 
 ```python
-@dataclass(frozen=True)  # Immutable for security
+@dataclass
 class QRData:
     timestamp: str                    # ISO 8601 timestamp (e.g., "2025-01-11T15:30:45.123456Z")
     identity_hash: str               # SHA-256 hash of system/file identity
     blockchain_hashes: Dict[str, str] # Blockchain network -> latest block hash mapping
     time_server_verification: Dict   # Time server responses and verification status
-    user_data: Optional[Dict] = None  # Custom user data (includes user_text field)
+    user_data: Optional[Dict] = None  # Custom user data
     sequence_number: int = 0         # Incremental sequence number for this QR
+    issuer_id: Optional[str] = None   # Public issuer identifier for signature verification
+    event_id: Optional[str] = None    # Event or stream namespace
+    content_hash: Optional[str] = None # SHA-256 of user_data
+    expires_at: Optional[str] = None  # Optional expiry timestamp
+    nonce: Optional[str] = None       # Random nonce for replay resistance
 
-    # Cryptographic enhancement fields (populated when using enhanced generation)
+    # Cryptographic enhancement fields
     digital_signature: Optional[str] = None      # Digital signature of QR data
     signing_key_id: Optional[str] = None        # ID of key used for signing
-    signature_algorithm: Optional[str] = None   # Signature algorithm (e.g., "rsa-sha256")
+    signature_algorithm: Optional[str] = None   # Signature algorithm ("rsa" or "ecdsa")
     _hmac: Optional[str] = None                 # HMAC for integrity verification
     _hmac_key_id: Optional[str] = None          # HMAC key identifier
     _hmac_algorithm: Optional[str] = None       # HMAC algorithm (e.g., "sha256")
@@ -354,6 +363,7 @@ class QRData:
     _encrypted_fields: Optional[List[str]] = None # List of encrypted field names
     _encryption_key_id: Optional[str] = None    # Encryption key identifier
     _data_key_id: Optional[str] = None          # Data encryption key ID
+    _encrypted_at: Optional[str] = None         # Encryption timestamp
 ```
 
 #### Core Methods
@@ -375,6 +385,7 @@ qr_image = qrlp.qr_generator.generate_qr_image(json_str)
 - Uses compact JSON formatting (no extra whitespace)
 - Only includes non-None values for smaller QR codes
 - Safe for QR encoding (deterministic output)
+- Signed payload verification canonicalizes the JSON before checking signatures
 
 ##### `from_json(json_str)`
 
@@ -394,40 +405,27 @@ print(f"Identity: {qr_data.identity_hash[:16]}...")
 - `TypeError`: If required fields are missing
 - `ValueError`: If field values are invalid
 
-#### Utility Methods
+### QRGenerator Large Payload Handling
 
-##### `get_verification_summary()`
-
-Get a summary of verification data for display purposes.
+`generate_qr_image()` generates one QR code and raises `QRDataTooLargeError` when the payload cannot fit in a single version-40 QR code at the configured error correction level. Use the explicit chunk API for large payloads:
 
 ```python
-summary = qr_data.get_verification_summary()
-print(f"Generated: {summary['timestamp']}")
-print(f"Identity: {summary['identity_hash'][:16]}...")
-print(f"Blockchains: {', '.join(summary['blockchain_networks'])}")
-print(f"Sequence: #{summary['sequence_number']}")
+from src import QRGenerator, QRDataTooLargeError
+from src.config import QRSettings
+
+generator = QRGenerator(QRSettings(error_correction_level="M"))
+payload = "large payload" * 1000
+
+try:
+    image = generator.generate_qr_image(payload)
+except QRDataTooLargeError:
+    chunk_payloads = generator.generate_chunked_payloads(payload)
+    images = generator.generate_chunked_qr_codes(payload)
+    recovered = QRGenerator.reassemble_chunked_payloads(chunk_payloads)
+    assert recovered == payload
 ```
 
-##### `is_enhanced()`
-
-Check if QR data includes cryptographic enhancements.
-
-```python
-if qr_data.is_enhanced():
-    print("Has digital signature and encryption")
-else:
-    print("Basic QR data only")
-```
-
-##### `get_size_estimate()`
-
-Estimate the size of QR data when encoded as JSON.
-
-```python
-size_bytes = qr_data.get_size_estimate()
-print(f"QR payload size: ~{size_bytes} bytes")
-# Helps determine appropriate QR error correction level
-```
+Chunk payloads are JSON records with `protocol`, `chunk_index`, `total_chunks`, `data_size`, `data_sha256`, and base64 chunk data. Reassembly rejects malformed, duplicated, missing, incompatible, or checksum-invalid chunks.
 
 ### Configuration Classes
 
@@ -481,9 +479,12 @@ config.identity_settings.hash_algorithm = "sha256"   # Hash algorithm for identi
 
 # Advanced settings
 config.logging_settings.level = "INFO"         # Logging level
-config.logging_settings.file_path = None       # Log file path
+config.logging_settings.log_file = None        # Log file path
 config.security_settings.encrypt_qr_data = False  # Encrypt QR payloads
-config.security_settings.require_blockchain = False  # Require blockchain verification
+config.security_settings.sign_qr_data = False     # Apply digital signatures by default
+config.security_settings.issuer_id = "issuer-1"   # Public issuer identifier
+config.security_settings.key_dir = "./keys"       # Local signing key directory
+config.verification_settings.require_blockchain = False  # Require blockchain verification
 ```
 
 #### Configuration Loading
@@ -521,8 +522,8 @@ config.qr_settings.box_size = 10                 # Pixels per QR module
 config.qr_settings.border_size = 4               # Border width in modules
 config.qr_settings.fill_color = "#000000"        # Foreground color (hex or name)
 config.qr_settings.back_color = "#ffffff"        # Background color
-config.qr_settings.version = None               # QR version (auto if None)
-config.qr_settings.style = "live"               # QR style: live, professional, minimal
+config.qr_settings.image_format = "PNG"          # Output image format
+config.qr_settings.max_data_size = 2000          # Chunk size for explicit chunk APIs
 ```
 
 ##### WebSettings
@@ -532,9 +533,11 @@ Controls the web server and interface behavior.
 config.web_settings.host = "0.0.0.0"            # Bind address (0.0.0.0 for all interfaces)
 config.web_settings.port = 8080                 # Server port
 config.web_settings.auto_open_browser = True    # Auto-open browser on startup
-config.web_settings.cors_enabled = True         # Enable CORS for API access
+config.web_settings.cors_enabled = False        # Enable CORS for API access
+config.web_settings.cors_allowed_origins = []   # Specific trusted CORS origins
+config.web_settings.admin_token = None          # Optional token for state changes
+config.web_settings.rate_limit_per_minute = 120 # Basic in-memory request cap
 config.web_settings.debug = False               # Enable debug mode
-config.web_settings.viewer_theme = "default"    # Web interface theme
 ```
 
 ##### BlockchainSettings
@@ -562,8 +565,8 @@ config.time_settings.time_servers = [           # NTP servers for synchronizatio
 ]
 config.time_settings.update_interval = 60.0     # Sync frequency in seconds
 config.time_settings.timeout = 5.0             # Server timeout
-config.time_settings.max_drift = 30.0          # Maximum acceptable time drift
-config.time_settings.fallback_to_system = True # Use system time as fallback
+config.time_settings.local_fallback = True      # Use system time as fallback
+config.time_settings.timezone = "UTC"           # Display timezone
 ```
 
 ##### IdentitySettings
@@ -573,8 +576,8 @@ Controls identity generation and file inclusion.
 config.identity_settings.identity_file = "/path/to/identity.pem"  # Custom key file
 config.identity_settings.auto_generate = True   # Generate identity if no file
 config.identity_settings.include_system_info = True  # Include system fingerprint
+config.identity_settings.include_file_hash = True     # Include identity file hash
 config.identity_settings.hash_algorithm = "sha256"    # Hash algorithm: sha256, sha512, md5
-config.identity_settings.custom_data = {}       # Additional custom identity data
 ```
 
 ##### VerificationSettings
@@ -584,8 +587,7 @@ Controls verification requirements and tolerances.
 config.verification_settings.max_time_drift = 300.0     # Max time difference (seconds)
 config.verification_settings.require_blockchain = False # Require blockchain verification
 config.verification_settings.require_time_server = False # Require time server verification
-config.verification_settings.require_identity = True    # Require identity verification
-config.verification_settings.allowed_signature_algorithms = ["rsa-sha256", "ecdsa-sha256"]
+config.verification_settings.min_verifications = 1      # Minimum successful checks
 ```
 
 ##### SecuritySettings
@@ -593,10 +595,14 @@ Controls cryptographic security features.
 
 ```python
 config.security_settings.encrypt_qr_data = False         # Encrypt QR payloads
-config.security_settings.encryption_algorithm = "aes256" # Encryption algorithm
-config.security_settings.sign_qr_data = True            # Apply digital signatures
-config.security_settings.hmac_algorithm = "sha256"      # HMAC algorithm
-config.security_settings.key_rotation_days = 90        # Key rotation interval
+config.security_settings.encryption_key = None          # Optional encryption key
+config.security_settings.sign_qr_data = True            # Apply digital signatures by default
+config.security_settings.key_dir = "./keys"             # Local key storage directory
+config.security_settings.issuer_id = "issuer-1"         # Public issuer identifier
+config.security_settings.event_id = "default"           # Event/session identifier
+config.security_settings.signing_key_id = None          # Optional preferred key
+config.security_settings.signature_algorithm = "rsa"    # rsa or ecdsa
+config.security_settings.qr_ttl_seconds = None          # Defaults to max_time_drift
 ```
 
 ##### LoggingSettings
@@ -604,7 +610,7 @@ Controls logging behavior and output.
 
 ```python
 config.logging_settings.level = "INFO"         # DEBUG, INFO, WARNING, ERROR, CRITICAL
-config.logging_settings.file_path = None       # Log file path (None for console only)
+config.logging_settings.log_file = None        # Log file path (None for console only)
 config.logging_settings.max_file_size = 10485760  # Max log file size (10MB)
 config.logging_settings.backup_count = 5       # Number of backup log files
 config.logging_settings.format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -657,7 +663,7 @@ Get current QR code data and image.
 ```
 
 #### `POST /api/verify`
-Verify QR code data.
+Verify QR code data with the server's configured verifier. The endpoint no longer treats syntactically valid JSON as authentic by itself.
 
 **Request:**
 ```json
@@ -671,12 +677,59 @@ Verify QR code data.
 {
   "valid": true,
   "timestamp": "2025-01-16T19:30:45.789Z",
-  "message": "QR data verification successful",
-  "details": {
-    "valid_json": true,
-    "identity_verified": true,
-    "time_verified": true,
-    "blockchain_verified": true
+  "data_length": 768,
+  "valid_json": true,
+  "identity_verified": true,
+  "time_verified": true,
+  "blockchain_verified": false,
+  "signature_verified": true,
+  "hmac_verified": false,
+  "encrypted": false,
+  "trust_mode": "public_signature"
+}
+```
+
+`valid` is true when the payload parses, time checks pass, required blockchain checks pass if configured, and either a trusted public signature or local HMAC/signature verifies. An unsigned `{}` response returns `valid: false`.
+
+#### `GET /improve`
+Render the improvement dashboard. This page summarizes implementation readiness, key/trust state, current QR state, and local smoke-test results.
+
+#### `GET /api/improve/status`
+Return dashboard-ready status JSON.
+
+**Response:**
+```json
+{
+  "readiness": {
+    "passed": 5,
+    "total": 5,
+    "score": 1.0,
+    "state": "ready"
+  },
+  "features": [
+    {"name": "signed_qr_generation", "ok": true, "severity": "pass"},
+    {"name": "public_key_trust_store", "ok": true, "severity": "pass"}
+  ],
+  "trust": {"trusted_key_count": 0, "trusted_keys": []},
+  "keys": {"signing_key_count": 0, "signing_keys": []}
+}
+```
+
+#### `POST /api/improve/smoke-test`
+Run a deterministic local smoke test without external time or blockchain calls. The test generates a signed QR payload, trusts its public key, verifies it, and validates QR chunk reassembly.
+
+**Response:**
+```json
+{
+  "success": true,
+  "signed_round_trip": {
+    "valid": true,
+    "trust_mode": "public_signature",
+    "signature_verified": true
+  },
+  "chunk_recovery": {
+    "valid": true,
+    "chunk_count": 4
   }
 }
 ```
@@ -819,6 +872,27 @@ qrlp live --identity-file ./my-key.pem
 - `--interval`: Update interval in seconds
 - `--identity-file`: Path to identity file
 
+#### `qrlp dashboard`
+Start QRLP and open the improvement dashboard at `/improve`.
+
+```bash
+# Basic usage
+qrlp dashboard
+
+# Start without opening a browser
+qrlp dashboard --no-browser
+
+# Custom port and interval
+qrlp dashboard --port 8090 --interval 2.0
+```
+
+**Options:**
+- `--port`: Web server port (default: 8080)
+- `--host`: Web server host (default: localhost)
+- `--no-browser`: Don't auto-open browser
+- `--interval`: Update interval in seconds
+- `--identity-file`: Path to identity file
+
 #### `qrlp generate`
 Generate single QR code.
 
@@ -837,6 +911,15 @@ qrlp generate --format json --output data.json
 
 # Both image and JSON
 qrlp generate --format both --output qr_code
+
+# Signed QR with verifier trust material
+qrlp generate \
+  --format both \
+  --output qr_code \
+  --user-data '{"event":"launch"}' \
+  --sign \
+  --public-key-output issuer.pem \
+  --trust-record-output trust.json
 ```
 
 **Options:**
@@ -844,6 +927,12 @@ qrlp generate --format both --output qr_code
 - `--style`: QR style (live, professional, minimal)
 - `--include-text`: Add text overlay
 - `--format`: Output format (image, json, both)
+- `--user-data`: JSON object to include in the QR payload
+- `--sign/--no-sign`: Override signed QR generation
+- `--key-id`: Signing key ID to use
+- `--issuer-id`: Issuer ID embedded in signed payloads
+- `--public-key-output`: Write signing public key PEM
+- `--trust-record-output`: Write JSON trust store for verifier use
 
 #### `qrlp verify`
 Verify QR code data.
@@ -855,13 +944,38 @@ qrlp verify '{"timestamp":"2025-01-16T...","identity_hash":"abc123..."}'
 # Verify from file
 qrlp verify --file qr_data.json
 
-# Detailed output
-qrlp verify --verbose '{"timestamp":"..."}'
+# Verify with public trust material
+qrlp verify --file qr_data.json --trust-store trust.json
+
+# Detailed output as JSON
+qrlp verify --file qr_data.json --trust-store trust.json --json-output
 ```
 
 **Options:**
 - `--file, -f`: Read data from file
-- `--verbose, -v`: Show detailed verification results
+- `--public-key`: Trusted issuer public key PEM
+- `--trust-store`: JSON trust store with issuer public keys
+- `--issuer`: Issuer ID for `--public-key`
+- `--key-id`: Signing key ID for `--public-key`
+- `--json-output`: Print raw verification JSON
+- `--verbose, -v`: Show raw verification JSON after summary
+
+#### `qrlp keys`
+Manage local signing keys.
+
+```bash
+qrlp keys generate --public-key-output issuer.pem
+qrlp keys list
+qrlp keys export-public <key-id> --output issuer.pem
+```
+
+#### `qrlp trust`
+Manage JSON trust stores for external verification.
+
+```bash
+qrlp trust add --issuer issuer-1 --key-id <key-id> --public-key issuer.pem --store trust.json
+qrlp trust list trust.json
+```
 
 #### `qrlp status`
 Show current system status.
@@ -1021,4 +1135,4 @@ except QRLPError as e:
 
 ---
 
-For more examples and advanced usage, see the [examples/](../examples/) directory. 
+For more examples and advanced usage, see the [examples/](../examples/) directory.

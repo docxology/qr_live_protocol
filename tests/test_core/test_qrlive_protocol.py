@@ -191,6 +191,63 @@ class TestQRLiveProtocol:
         # HMAC verification should fail because data was tampered
         assert results['hmac_verified'] is False
 
+    def test_cross_instance_public_key_verification(self, test_config, tmp_path):
+        """Test third-party verification with trusted public key only."""
+        issuer = QRLiveProtocol(test_config, key_manager=KeyManager(str(tmp_path / "issuer_keys")))
+        qr_data, _ = issuer.generate_single_qr({"probe": "public-verification"}, sign_data=True)
+
+        verifier = QRLiveProtocol(test_config, key_manager=KeyManager(str(tmp_path / "verifier_keys")))
+        public_key = issuer.key_manager.export_public_key(qr_data.signing_key_id)
+        verifier.trust_store.add_public_key(
+            qr_data.issuer_id,
+            qr_data.signing_key_id,
+            public_key,
+            qr_data.signature_algorithm,
+        )
+
+        results = verifier.verify_qr_data(qr_data.to_json())
+
+        assert results["signature_verified"] is True
+        assert results["hmac_verified"] is False
+        assert results["identity_verified"] is True
+        assert results["trust_mode"] == "public_signature"
+        assert results["valid"] is True
+
+    def test_cross_instance_without_trust_rejects_public_authenticity(self, test_config, tmp_path):
+        """A fresh verifier must not trust a signed QR without trusted public key material."""
+        issuer = QRLiveProtocol(test_config, key_manager=KeyManager(str(tmp_path / "issuer_keys")))
+        qr_data, _ = issuer.generate_single_qr({"probe": "missing-trust"}, sign_data=True)
+
+        verifier = QRLiveProtocol(test_config, key_manager=KeyManager(str(tmp_path / "verifier_keys")))
+        results = verifier.verify_qr_data(qr_data.to_json())
+
+        assert results["signature_verified"] is False
+        assert results["hmac_verified"] is False
+        assert results["identity_verified"] is False
+        assert results["valid"] is False
+
+    def test_tampered_signed_payload_fails_public_verification(self, test_config, tmp_path):
+        """Tampering signed content must invalidate public signature verification."""
+        issuer = QRLiveProtocol(test_config, key_manager=KeyManager(str(tmp_path / "issuer_keys")))
+        qr_data, _ = issuer.generate_single_qr({"probe": "original"}, sign_data=True)
+
+        verifier = QRLiveProtocol(test_config, key_manager=KeyManager(str(tmp_path / "verifier_keys")))
+        public_key = issuer.key_manager.export_public_key(qr_data.signing_key_id)
+        verifier.trust_store.add_public_key(
+            qr_data.issuer_id,
+            qr_data.signing_key_id,
+            public_key,
+            qr_data.signature_algorithm,
+        )
+
+        tampered = json.loads(qr_data.to_json())
+        tampered["user_data"] = {"probe": "tampered"}
+        results = verifier.verify_qr_data(json.dumps(tampered, separators=(',', ':')))
+
+        assert results["signature_verified"] is False
+        assert results["hmac_verified"] is False
+        assert results["valid"] is False
+
     def test_qr_generation_sequence_numbering(self, qrlp_instance):
         """Test that QR generation increments sequence numbers."""
         # Generate first QR
@@ -369,4 +426,3 @@ class TestQRLiveProtocol:
 
         # Should be marked as encrypted
         assert results['encrypted'] is True
-

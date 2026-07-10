@@ -106,12 +106,13 @@ body { background: transparent !important; }
 
 #### Green Screen Background
 
-Configure QRLP for green screen:
+QRLP does not currently expose a green-screen background flag in `web_settings`. Use OBS browser-source CSS overrides or a custom template/static asset if your production setup needs chroma-key output:
 ```json
 {
   "web_settings": {
-    "viewer_background_color": "#00ff00",
-    "qr_background_transparent": true
+    "host": "localhost",
+    "port": 8080,
+    "cors_enabled": false
   }
 }
 ```
@@ -202,9 +203,9 @@ Optimized settings for YouTube Live:
     "border_size": 4
   },
   "web_settings": {
-    "viewer_show_title": true,
-    "viewer_show_timestamp": true,
-    "viewer_show_verification": true
+    "host": "localhost",
+    "port": 8080,
+    "auto_open_browser": false
   }
 }
 ```
@@ -240,8 +241,9 @@ Facebook Live optimizations:
     "box_size": 14
   },
   "web_settings": {
-    "viewer_theme": "facebook",
-    "viewer_show_logo": false
+    "host": "localhost",
+    "port": 8080,
+    "auto_open_browser": false
   }
 }
 ```
@@ -297,10 +299,10 @@ For professional setups:
 ```bash
 # 1. Pre-stream setup
 qrlp status                    # Verify system health
-qrlp generate --test          # Test QR generation
+qrlp generate --format json    # Test QR generation
 
 # 2. Start live generation
-qrlp live --config production.json
+qrlp --config production.json live
 
 # 3. Monitor during stream
 tail -f ~/.qrlp/logs/qrlp.log  # Watch logs
@@ -519,4 +521,4 @@ Recommended settings by use case:
 
 ---
 
-Need help with streaming integration? Check our [FAQ](FAQ.md) or create an issue on [GitHub](https://github.com/your-org/qr_live_protocol/issues)! 
+Need help with streaming integration? Check our [FAQ](FAQ.md) or create an issue on [GitHub](https://github.com/docxology/qr_live_protocol/issues)!

@@ -28,7 +28,7 @@ QRLP supports multiple configuration methods with the following precedence (high
 QRLP_UPDATE_INTERVAL=10 qrlp live --interval 5  # Uses 5 seconds
 
 # Environment variables override config file
-QRLP_WEB_PORT=9000 qrlp live --config custom.json  # Uses port 9000
+QRLP_WEB_PORT=9000 qrlp --config custom.json live  # Uses port 9000
 ```
 
 ## 🚀 Quick Setup
@@ -52,11 +52,11 @@ qrlp config-init --output ~/.qrlp/config.json
 # Start with common settings
 qrlp live --port 8080 --interval 3 --host 0.0.0.0 --no-browser
 
-# High-security mode
-qrlp live --interval 1 --identity-file ./company.pem --debug
+# Debug mode with a custom identity file
+qrlp --debug live --interval 1 --identity-file ./company.pem
 
-# Performance optimized
-qrlp live --interval 10 --blockchain-settings.cache_duration 600
+# Use config files for blockchain/time/QR/security settings
+qrlp --config production.json live
 ```
 
 ### Environment Variable Setup
@@ -100,8 +100,8 @@ qrlp config-init --with-comments --output prod-config.json
 qrlp config-init --with-comments --output test-config.json
 
 # Use different configs for different environments
-qrlp live --config dev-config.json   # Development
-qrlp live --config prod-config.json  # Production
+qrlp --config dev-config.json live   # Development
+qrlp --config prod-config.json live  # Production
 ```
 
 ### Complete Configuration Reference
@@ -114,26 +114,25 @@ Here's the complete configuration schema with all available options:
 
   "qr_settings": {
     "error_correction_level": "M",
-    "box_size": 10,
     "border_size": 4,
+    "box_size": 10,
     "fill_color": "black",
     "back_color": "white",
-    "version": null,
-    "style": "live"
+    "image_format": "PNG",
+    "max_data_size": 2000
   },
 
   "web_settings": {
     "host": "localhost",
     "port": 8080,
     "auto_open_browser": true,
-    "cors_enabled": false,
+    "template_dir": "templates",
+    "static_dir": "static",
     "debug": false,
-    "viewer_theme": "default",
-    "viewer_show_title": true,
-    "viewer_show_timestamp": true,
-    "viewer_show_verification": true,
-    "viewer_background_color": "#ffffff",
-    "viewer_qr_size": "medium"
+    "cors_enabled": false,
+    "cors_allowed_origins": [],
+    "admin_token": null,
+    "rate_limit_per_minute": 120
   },
 
   "blockchain_settings": {
@@ -153,37 +152,42 @@ Here's the complete configuration schema with all available options:
     ],
     "update_interval": 60.0,
     "timeout": 5.0,
-    "max_drift": 30.0,
-    "fallback_to_system": true
+    "local_fallback": true,
+    "timezone": "UTC"
   },
 
   "identity_settings": {
     "identity_file": null,
     "auto_generate": true,
     "include_system_info": true,
-    "hash_algorithm": "sha256",
-    "custom_data": {}
+    "include_file_hash": true,
+    "hash_algorithm": "sha256"
   },
 
   "verification_settings": {
     "max_time_drift": 300.0,
     "require_blockchain": false,
     "require_time_server": false,
-    "require_identity": true,
-    "allowed_signature_algorithms": ["rsa-sha256", "ecdsa-sha256"]
+    "min_verifications": 1
   },
 
   "security_settings": {
     "encrypt_qr_data": false,
-    "encryption_algorithm": "aes256",
+    "encryption_key": null,
     "sign_qr_data": true,
-    "hmac_algorithm": "sha256",
-    "key_rotation_days": 90
+    "private_key_file": null,
+    "public_key_file": null,
+    "key_dir": "./keys",
+    "issuer_id": "issuer-1",
+    "event_id": "default",
+    "signing_key_id": null,
+    "signature_algorithm": "rsa",
+    "qr_ttl_seconds": null
   },
 
   "logging_settings": {
     "level": "INFO",
-    "file_path": null,
+    "log_file": null,
     "max_file_size": 10485760,
     "backup_count": 5,
     "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -214,9 +218,6 @@ pip install PyYAML  # If not already installed
 ### Configuration File Validation
 
 ```bash
-# Validate configuration file
-qrlp live --config config.json --dry-run
-
 # Check for specific issues
 python3 -c "
 from src.config import QRLPConfig
@@ -454,81 +455,25 @@ Enable debug mode with verbose logging and development features.
 "debug": true
 ```
 
-#### `viewer_theme`
-**Type:** `string` | **Default:** `"default"` | **Options:** `"default"`, `"dark"`, `"light"`, `"blue"`
+#### `template_dir` / `static_dir`
+**Type:** `string` | **Defaults:** `"templates"`, `"static"`
 
-Visual theme for the web viewer interface.
+Directories used by the Flask web interface.
 
-```json
-// Default theme (balanced)
-"viewer_theme": "default"
+#### `cors_allowed_origins`
+**Type:** `list[string]` | **Default:** `[]`
 
-// Dark theme for low-light environments
-"viewer_theme": "dark"
+Allowed CORS origins when `cors_enabled` is true. Leave empty unless a specific trusted origin needs API access.
 
-// Light theme for bright environments
-"viewer_theme": "light"
+#### `admin_token`
+**Type:** `string | null` | **Default:** `null`
 
-// Blue theme for brand consistency
-"viewer_theme": "blue"
-```
+Optional token required for state-changing web controls. Send it as `X-QRLP-Admin-Token` or `Authorization: Bearer <token>`.
 
-#### `viewer_show_title` / `viewer_show_timestamp` / `viewer_show_verification`
-**Type:** `boolean` | **Default:** `true`
+#### `rate_limit_per_minute`
+**Type:** `integer` | **Default:** `120`
 
-Control what information is displayed in the web viewer.
-
-```json
-// Show all information (recommended)
-"viewer_show_title": true,
-"viewer_show_timestamp": true,
-"viewer_show_verification": true
-
-// Minimal display
-"viewer_show_title": false,
-"viewer_show_timestamp": false,
-"viewer_show_verification": true
-
-// Custom display options
-"viewer_show_title": true,
-"viewer_show_timestamp": true,
-"viewer_show_verification": false
-```
-
-#### `viewer_background_color`
-**Type:** `string` | **Default:** `"#ffffff"`
-
-Background color for the web viewer (supports hex colors).
-
-```json
-// White background (default)
-"viewer_background_color": "#ffffff"
-
-// Dark background
-"viewer_background_color": "#1a1a1a"
-
-// Brand color background
-"viewer_background_color": "#f8fafc"
-```
-
-#### `viewer_qr_size`
-**Type:** `string` | **Default:** `"medium"` | **Options:** `"small"`, `"medium"`, `"large"`, `"xlarge"`
-
-Size preset for QR code display in the web viewer.
-
-```json
-// Small QR for sidebars
-"viewer_qr_size": "small"
-
-// Standard size (recommended)
-"viewer_qr_size": "medium"
-
-// Large QR for presentations
-"viewer_qr_size": "large"
-
-// Extra large for maximum visibility
-"viewer_qr_size": "xlarge"
-```
+Basic in-memory per-client request cap for the local web server. Use a reverse proxy for durable internet-facing limits.
 
 ### Blockchain Settings (`blockchain_settings`)
 
@@ -712,7 +657,7 @@ Custom API endpoints for blockchain networks (optional override).
 
 ## Environment Variables
 
-All configuration options can be set via environment variables using the prefix `QRLP_` and uppercase names:
+`QRLPConfig.from_env()` currently supports this explicit environment subset:
 
 ```bash
 # Core settings
@@ -721,30 +666,15 @@ export QRLP_UPDATE_INTERVAL=2.0
 # Web settings
 export QRLP_WEB_HOST=0.0.0.0
 export QRLP_WEB_PORT=8080
-export QRLP_WEB_AUTO_OPEN_BROWSER=false
-
-# QR settings
-export QRLP_QR_ERROR_CORRECTION_LEVEL=H
-export QRLP_QR_BOX_SIZE=12
-export QRLP_QR_BORDER_SIZE=6
-
-# Blockchain settings
-export QRLP_BLOCKCHAIN_ENABLED_CHAINS=bitcoin,ethereum
-export QRLP_BLOCKCHAIN_CACHE_DURATION=600
-export QRLP_BLOCKCHAIN_TIMEOUT=15.0
-
-# Time settings
-export QRLP_TIME_UPDATE_INTERVAL=30.0
-export QRLP_TIME_TIMEOUT=3.0
+export QRLP_WEB_CORS_ENABLED=false
+export QRLP_WEB_ADMIN_TOKEN=change-me
 
 # Identity settings
 export QRLP_IDENTITY_FILE=/path/to/key.pem
-export QRLP_IDENTITY_AUTO_GENERATE=true
-export QRLP_IDENTITY_INCLUDE_SYSTEM_INFO=false
 
-# Verification settings
-export QRLP_VERIFICATION_MAX_TIME_DRIFT=60.0
-export QRLP_VERIFICATION_REQUIRE_BLOCKCHAIN=true
+# Issuer metadata
+export QRLP_ISSUER_ID=issuer-1
+export QRLP_EVENT_ID=live-event
 
 # Logging
 export QRLP_LOG_LEVEL=DEBUG
@@ -765,10 +695,10 @@ qrlp live --no-browser
 qrlp live --identity-file ./my-key.pem
 
 # Debug mode
-qrlp live --debug
+qrlp --debug live
 
 # Custom configuration file
-qrlp live --config ./custom-config.json
+qrlp --config ./custom-config.json live
 ```
 
 ## 📋 Configuration Examples
@@ -785,18 +715,13 @@ Real-world configuration examples for different use cases and deployment scenari
   "qr_settings": {
     "error_correction_level": "M",
     "box_size": 12,
-    "border_size": 6,
-    "style": "live"
+    "border_size": 6
   },
   "web_settings": {
     "host": "0.0.0.0",
     "port": 8080,
     "auto_open_browser": true,
-    "cors_enabled": true,
-    "viewer_show_title": true,
-    "viewer_show_timestamp": true,
-    "viewer_show_verification": true,
-    "viewer_qr_size": "large"
+    "cors_enabled": true
   },
   "blockchain_settings": {
     "enabled_chains": ["bitcoin", "ethereum"],
@@ -857,16 +782,19 @@ qrlp live --interval 2 --host 0.0.0.0 --port 8080 --viewer-qr-size large
     "max_time_drift": 30.0,
     "require_blockchain": true,
     "require_time_server": true,
-    "require_identity": true
+    "min_verifications": 1
   },
   "security_settings": {
     "encrypt_qr_data": true,
     "sign_qr_data": true,
-    "hmac_algorithm": "sha512"
+    "key_dir": "/secure/qrlp-keys",
+    "issuer_id": "company-live",
+    "event_id": "earnings-call",
+    "signature_algorithm": "rsa"
   },
   "logging_settings": {
     "level": "INFO",
-    "file_path": "/var/log/qrlp/qrlp.log"
+    "log_file": "/var/log/qrlp/qrlp.log"
   }
 }
 ```
@@ -881,16 +809,12 @@ qrlp live --interval 2 --host 0.0.0.0 --port 8080 --viewer-qr-size large
   "qr_settings": {
     "error_correction_level": "L",
     "box_size": 8,
-    "border_size": 2,
-    "style": "minimal"
+    "border_size": 2
   },
   "web_settings": {
     "host": "localhost",
     "port": 8080,
-    "auto_open_browser": false,
-    "viewer_show_title": false,
-    "viewer_show_verification": false,
-    "viewer_qr_size": "small"
+    "auto_open_browser": false
   },
   "blockchain_settings": {
     "enabled_chains": ["bitcoin"],
@@ -902,7 +826,7 @@ qrlp live --interval 2 --host 0.0.0.0 --port 8080 --viewer-qr-size large
     "time_servers": ["time.google.com"],
     "update_interval": 300.0,
     "timeout": 3.0,
-    "fallback_to_system": true
+    "local_fallback": true
   },
   "identity_settings": {
     "include_system_info": false,
@@ -924,19 +848,14 @@ qrlp live --interval 2 --host 0.0.0.0 --port 8080 --viewer-qr-size large
   "qr_settings": {
     "error_correction_level": "M",
     "box_size": 10,
-    "border_size": 4,
-    "style": "live"
+    "border_size": 4
   },
   "web_settings": {
     "host": "localhost",
     "port": 8080,
     "auto_open_browser": false,
     "cors_enabled": true,
-    "debug": true,
-    "viewer_theme": "default",
-    "viewer_show_title": true,
-    "viewer_show_timestamp": true,
-    "viewer_show_verification": true
+    "debug": true
   },
   "blockchain_settings": {
     "enabled_chains": ["bitcoin"],
@@ -948,18 +867,17 @@ qrlp live --interval 2 --host 0.0.0.0 --port 8080 --viewer-qr-size large
     "time_servers": ["time.nist.gov", "pool.ntp.org"],
     "update_interval": 30.0,
     "timeout": 3.0,
-    "max_drift": 60.0,
-    "fallback_to_system": true
+    "local_fallback": true
   },
   "verification_settings": {
     "max_time_drift": 600.0,
     "require_blockchain": false,
     "require_time_server": false,
-    "require_identity": false
+    "min_verifications": 1
   },
   "logging_settings": {
     "level": "DEBUG",
-    "file_path": null
+    "log_file": null
   }
 }
 ```
@@ -974,15 +892,13 @@ qrlp live --interval 2 --host 0.0.0.0 --port 8080 --viewer-qr-size large
   "qr_settings": {
     "error_correction_level": "H",
     "box_size": 10,
-    "border_size": 4,
-    "style": "live"
+    "border_size": 4
   },
   "web_settings": {
     "host": "0.0.0.0",
     "port": 8080,
     "auto_open_browser": false,
-    "cors_enabled": true,
-    "viewer_qr_size": "medium"
+    "cors_enabled": true
   },
   "blockchain_settings": {
     "enabled_chains": ["bitcoin"],
@@ -998,7 +914,7 @@ qrlp live --interval 2 --host 0.0.0.0 --port 8080 --viewer-qr-size large
     ],
     "update_interval": 120.0,
     "timeout": 5.0,
-    "fallback_to_system": true
+    "local_fallback": true
   },
   "identity_settings": {
     "include_system_info": false,
@@ -1007,9 +923,9 @@ qrlp live --interval 2 --host 0.0.0.0 --port 8080 --viewer-qr-size large
 }
 ```
 
-### 🏢 Enterprise Production Setup
+### 🏢 Enterprise Controlled-Network Setup
 
-**Production-ready configuration for enterprise deployments.**
+**Configuration for controlled-network deployments. This is not a complete internet-facing hardening profile.**
 
 ```json
 {
@@ -1018,7 +934,6 @@ qrlp live --interval 2 --host 0.0.0.0 --port 8080 --viewer-qr-size large
     "error_correction_level": "M",
     "box_size": 12,
     "border_size": 6,
-    "style": "professional",
     "fill_color": "#1e40af",
     "back_color": "#f8fafc"
   },
@@ -1028,11 +943,8 @@ qrlp live --interval 2 --host 0.0.0.0 --port 8080 --viewer-qr-size large
     "auto_open_browser": false,
     "cors_enabled": false,
     "debug": false,
-    "viewer_theme": "blue",
-    "viewer_show_title": true,
-    "viewer_show_timestamp": true,
-    "viewer_show_verification": true,
-    "viewer_background_color": "#f8fafc"
+    "admin_token": "set-a-secret-token",
+    "rate_limit_per_minute": 120
   },
   "blockchain_settings": {
     "enabled_chains": ["bitcoin", "ethereum"],
@@ -1052,35 +964,31 @@ qrlp live --interval 2 --host 0.0.0.0 --port 8080 --viewer-qr-size large
     ],
     "update_interval": 60.0,
     "timeout": 5.0,
-    "max_drift": 10.0,
-    "fallback_to_system": false
+    "local_fallback": false
   },
   "identity_settings": {
     "identity_file": "/etc/qrlp/enterprise-identity.pem",
     "auto_generate": false,
     "include_system_info": true,
-    "hash_algorithm": "sha512",
-    "custom_data": {
-      "organization": "Enterprise Corp",
-      "department": "Digital Media"
-    }
+    "hash_algorithm": "sha512"
   },
   "verification_settings": {
     "max_time_drift": 60.0,
     "require_blockchain": true,
     "require_time_server": true,
-    "require_identity": true,
-    "allowed_signature_algorithms": ["rsa-sha256", "ecdsa-sha256"]
+    "min_verifications": 1
   },
   "security_settings": {
     "encrypt_qr_data": false,
     "sign_qr_data": true,
-    "hmac_algorithm": "sha256",
-    "key_rotation_days": 90
+    "key_dir": "/etc/qrlp/keys",
+    "issuer_id": "enterprise-live",
+    "event_id": "enterprise-event",
+    "signature_algorithm": "rsa"
   },
   "logging_settings": {
     "level": "INFO",
-    "file_path": "/var/log/qrlp/enterprise.log",
+    "log_file": "/var/log/qrlp/enterprise.log",
     "max_file_size": 10485760,
     "backup_count": 10,
     "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -1092,27 +1000,23 @@ qrlp live --interval 2 --host 0.0.0.0 --port 8080 --viewer-qr-size large
 
 ### Environment Variable Overrides
 
-All configuration options can be overridden using environment variables:
+Only this environment-variable subset is currently loaded by `QRLPConfig.from_env()`:
 
 ```bash
 # Core settings
 export QRLP_UPDATE_INTERVAL=3.0
 export QRLP_LOG_LEVEL=DEBUG
 
-# QR settings
-export QRLP_QR_BOX_SIZE=15
-export QRLP_QR_ERROR_CORRECTION_LEVEL=H
-
 # Web settings
 export QRLP_WEB_HOST=0.0.0.0
 export QRLP_WEB_PORT=8080
+export QRLP_WEB_CORS_ENABLED=false
+export QRLP_WEB_ADMIN_TOKEN=change-me
 
-# Blockchain settings
-export QRLP_BLOCKCHAIN_ENABLED_CHAINS=bitcoin,ethereum,litecoin
-export QRLP_BLOCKCHAIN_CACHE_DURATION=600
-
-# Time settings
-export QRLP_TIME_UPDATE_INTERVAL=30
+# Identity and issuer metadata
+export QRLP_IDENTITY_FILE=/path/to/identity.json
+export QRLP_ISSUER_ID=issuer-1
+export QRLP_EVENT_ID=live-event
 
 # Start with environment overrides
 qrlp live
@@ -1159,17 +1063,13 @@ qrlp = QRLiveProtocol(config)
 QRLP automatically validates configuration values and provides helpful error messages:
 
 ```bash
-# Validate configuration file
-qrlp live --config config.json --dry-run
-
-# Expected output for valid config:
-# ✅ Configuration validation passed
-# ℹ️  Starting QRLP with config: config.json
+# Configuration is validated before live mode starts
+qrlp --config config.json live --no-browser
 
 # Expected output for invalid config:
-# ❌ Configuration validation failed:
-#   - update_interval: must be between 0.1 and 3600.0, got 0.05
-#   - qr_settings.error_correction_level: must be one of L, M, Q, H, got X
+# Configuration issues found:
+#   - update_interval must be positive
+#   - QR error correction level must be L, M, Q, or H
 ```
 
 ### Common Configuration Issues
@@ -1266,4 +1166,4 @@ qrlp live --config config.json --dry-run
 
 ---
 
-**Need help with configuration?** Check the [troubleshooting section](#validation--troubleshooting) or see [real-world examples](https://github.com/your-org/qr_live_protocol/tree/main/examples) in the repository. 
+**Need help with configuration?** Check the [troubleshooting section](#validation--troubleshooting) or see [real-world examples](https://github.com/docxology/qr_live_protocol/tree/main/examples) in the repository.

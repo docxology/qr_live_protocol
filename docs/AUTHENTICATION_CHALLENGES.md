@@ -11,7 +11,7 @@ In an era where AI can generate photorealistic content in real-time, the fundame
 Digital media manipulation has evolved from simple photo editing to sophisticated AI-powered generation of entirely synthetic content. The implications extend far beyond entertainment:
 
 - **Democratic Processes**: Deepfake videos can influence elections by misrepresenting candidate statements
-- **Financial Markets**: Synthetic audio can trigger market volatility through fake CEO announcements  
+- **Financial Markets**: Synthetic audio can trigger market volatility through fake CEO announcements
 - **Legal Proceedings**: Fabricated evidence can undermine judicial processes
 - **Social Cohesion**: Widespread distrust in media threatens social stability
 - **Emergency Response**: False information during crises can cost lives
@@ -31,13 +31,13 @@ Contemporary audiences face an unprecedented challenge: how to distinguish authe
 
 **Challenge**: Modern information cycles require immediate verification, but traditional authentication methods are too slow.
 
-**Reality**: 
+**Reality**:
 - News breaks on social media within minutes
 - Financial markets react to information in milliseconds
 - Emergency situations require instant credible communication
 - Live streaming demands real-time verification
 
-**Traditional Response Time**: Hours to days for fact-checking and verification  
+**Traditional Response Time**: Hours to days for fact-checking and verification
 **Required Response Time**: Seconds to minutes
 
 ### 2. The Scale Problem
@@ -153,20 +153,20 @@ The marriage of QR codes with cryptographic verification addresses the core limi
 **Innovation**: Live generation of cryptographically verifiable data
 
 **Benefits**:
-- Impossible to forge without access to private keys
+- Signed QR payloads are infeasible to forge without access to the issuer private key
 - Temporal verification through synchronized timestamps
-- Multi-layered proof through blockchain integration
+- Freshness context through optional blockchain hash integration
 - Automated verification without human intervention
 
 #### 3. Decentralized Verification Architecture
 
-**Innovation**: Verification doesn't depend on any single authority
+**Innovation target**: Verification should separate issuer trust, freshness context, and local integrity checks.
 
 **Benefits**:
-- Multiple independent verification sources
-- Resistant to censorship and manipulation
-- No single point of failure
-- Trustless verification model
+- Trusted issuer public keys for public authenticity
+- Multiple freshness signals when configured
+- Local HMAC checks for operator-controlled integrity
+- Clear failure modes when trust material is missing
 
 #### 4. Contextual Integrity Preservation
 
@@ -269,7 +269,7 @@ QRLP implements defense in depth through multiple verification layers:
 
 ### Journalism and News Media
 
-**Challenge**: Fake news and manipulated media undermine public trust  
+**Challenge**: Fake news and manipulated media undermine public trust
 **QRLP Solution**: Real-time verification of live news streams
 
 **Implementation**:
@@ -282,7 +282,7 @@ QRLP implements defense in depth through multiple verification layers:
 
 ### Legal and Forensic Applications
 
-**Challenge**: Digital evidence can be manipulated, undermining legal proceedings  
+**Challenge**: Digital evidence can be manipulated, undermining legal proceedings
 **QRLP Solution**: Immutable chain of custody for digital evidence
 
 **Implementation**:
@@ -294,7 +294,7 @@ QRLP implements defense in depth through multiple verification layers:
 
 ### Financial and Corporate Communications
 
-**Challenge**: Market manipulation through fake announcements and deepfake CEO videos  
+**Challenge**: Market manipulation through fake announcements and deepfake CEO videos
 **QRLP Solution**: Verified corporate communication channels
 
 **Implementation**:
@@ -386,4 +386,4 @@ The technology exists. The implementation is proven. The only remaining question
 
 ---
 
-*This document represents an analysis of digital media authentication challenges and the role of cryptographic verification in addressing them. For technical implementation details, refer to the QR Live Protocol documentation and examples.* 
+*This document represents an analysis of digital media authentication challenges and the role of cryptographic verification in addressing them. For technical implementation details, refer to the QR Live Protocol documentation and examples.*

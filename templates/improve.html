@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QRLP Improve Dashboard</title>
+    <style>
+        :root {
+            color-scheme: light;
+            --bg: #f6f7f9;
+            --panel: #ffffff;
+            --ink: #1d2430;
+            --muted: #627084;
+            --line: #d9dee7;
+            --good: #117a45;
+            --warn: #a86500;
+            --bad: #b42318;
+            --accent: #2457a6;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: var(--bg);
+            color: var(--ink);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            letter-spacing: 0;
+        }
+
+        header {
+            background: #ffffff;
+            border-bottom: 1px solid var(--line);
+            padding: 18px 24px;
+        }
+
+        .header-row,
+        main {
+            width: min(1180px, calc(100vw - 32px));
+            margin: 0 auto;
+        }
+
+        .header-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 1.35rem;
+            line-height: 1.2;
+            font-weight: 700;
+        }
+
+        main {
+            padding: 20px 0 32px;
+        }
+
+        .toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .button-row {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        button,
+        .link-button {
+            min-height: 36px;
+            border: 1px solid var(--accent);
+            background: var(--accent);
+            color: #ffffff;
+            border-radius: 6px;
+            padding: 7px 12px;
+            font-weight: 650;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        button.secondary,
+        .link-button.secondary {
+            background: #ffffff;
+            color: var(--accent);
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: progress;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        .panel {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            padding: 16px;
+        }
+
+        .panel.wide {
+            grid-column: span 2;
+        }
+
+        .panel.full {
+            grid-column: 1 / -1;
+        }
+
+        .metric-label {
+            color: var(--muted);
+            font-size: 0.78rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+
+        .metric-value {
+            font-size: 1.7rem;
+            line-height: 1.1;
+            font-weight: 760;
+        }
+
+        .subtle {
+            color: var(--muted);
+            font-size: 0.92rem;
+        }
+
+        .status {
+            display: inline-flex;
+            align-items: center;
+            min-height: 28px;
+            border-radius: 999px;
+            padding: 4px 10px;
+            font-size: 0.82rem;
+            font-weight: 760;
+            border: 1px solid var(--line);
+            background: #f8fafc;
+        }
+
+        .status.pass {
+            color: var(--good);
+            background: #eef8f1;
+            border-color: #b8dfc5;
+        }
+
+        .status.warn {
+            color: var(--warn);
+            background: #fff6e6;
+            border-color: #f4d69b;
+        }
+
+        .status.fail {
+            color: var(--bad);
+            background: #fff0ee;
+            border-color: #f2b8b2;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+        }
+
+        th,
+        td {
+            text-align: left;
+            padding: 10px 8px;
+            border-bottom: 1px solid var(--line);
+            vertical-align: top;
+            word-break: break-word;
+        }
+
+        th {
+            color: var(--muted);
+            font-size: 0.76rem;
+            text-transform: uppercase;
+        }
+
+        pre {
+            margin: 0;
+            max-height: 260px;
+            overflow: auto;
+            background: #111827;
+            color: #e5e7eb;
+            border-radius: 6px;
+            padding: 12px;
+            font-size: 0.82rem;
+        }
+
+        @media (max-width: 900px) {
+            .grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .panel.wide {
+                grid-column: 1 / -1;
+            }
+        }
+
+        @media (max-width: 620px) {
+            .header-row,
+            .toolbar {
+                align-items: flex-start;
+                flex-direction: column;
+            }
+
+            .grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="header-row">
+            <div>
+                <h1>QRLP Improve Dashboard</h1>
+                <div class="subtle" id="lastUpdated">Waiting for status</div>
+            </div>
+            <span id="readinessBadge" class="status warn">Loading</span>
+        </div>
+    </header>
+
+    <main>
+        <div class="toolbar">
+            <div class="button-row">
+                <button id="refreshButton" type="button">Refresh</button>
+                <button id="smokeButton" type="button" class="secondary">Run Smoke Test</button>
+                <a class="link-button secondary" href="/">Live Display</a>
+                <a class="link-button secondary" href="/admin">Admin</a>
+            </div>
+            <div class="subtle" id="serverUrl">{{ server_url }}</div>
+        </div>
+
+        <section class="grid">
+            <div class="panel">
+                <div class="metric-label">Readiness</div>
+                <div class="metric-value" id="readinessScore">--</div>
+                <div class="subtle" id="readinessDetail">Required gates</div>
+            </div>
+            <div class="panel">
+                <div class="metric-label">Signing Keys</div>
+                <div class="metric-value" id="keyCount">--</div>
+                <div class="subtle">Local key manager</div>
+            </div>
+            <div class="panel">
+                <div class="metric-label">Trusted Keys</div>
+                <div class="metric-value" id="trustCount">--</div>
+                <div class="subtle">Verifier trust store</div>
+            </div>
+            <div class="panel">
+                <div class="metric-label">QR Updates</div>
+                <div class="metric-value" id="updateCount">--</div>
+                <div class="subtle">WebSocket broadcasts</div>
+            </div>
+
+            <div class="panel wide">
+                <div class="metric-label">Feature Gates</div>
+                <table>
+                    <thead>
+                        <tr><th>Gate</th><th>Status</th><th>Required</th></tr>
+                    </thead>
+                    <tbody id="featureRows"></tbody>
+                </table>
+            </div>
+
+            <div class="panel wide">
+                <div class="metric-label">Current QR</div>
+                <table>
+                    <tbody id="qrRows"></tbody>
+                </table>
+            </div>
+
+            <div class="panel full">
+                <div class="metric-label">Smoke Test Result</div>
+                <pre id="smokeResult">No smoke test has run in this browser session.</pre>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        const state = {
+            statusUrl: "/api/improve/status",
+            smokeUrl: "/api/improve/smoke-test"
+        };
+
+        const el = (id) => document.getElementById(id);
+
+        function statusClass(feature) {
+            if (feature.ok) return "pass";
+            return feature.severity === "warn" ? "warn" : "fail";
+        }
+
+        function featureRequired(feature) {
+            return !["admin_token_configured", "cors_restricted"].includes(feature.name);
+        }
+
+        function renderStatus(data) {
+            const readiness = data.readiness || { passed: 0, total: 0, score: 0, state: "unknown" };
+            el("readinessScore").textContent = `${readiness.passed}/${readiness.total}`;
+            el("readinessDetail").textContent = `${Math.round((readiness.score || 0) * 100)}% required gates passing`;
+            el("readinessBadge").textContent = readiness.state === "ready" ? "Ready" : "Needs Attention";
+            el("readinessBadge").className = `status ${readiness.state === "ready" ? "pass" : "warn"}`;
+            el("lastUpdated").textContent = `Updated ${data.timestamp || "unknown"}`;
+
+            el("keyCount").textContent = data.keys?.signing_key_count ?? 0;
+            el("trustCount").textContent = data.trust?.trusted_key_count ?? 0;
+            el("updateCount").textContent = data.server?.qr_updates_sent ?? 0;
+
+            el("featureRows").innerHTML = (data.features || []).map((feature) => `
+                <tr>
+                    <td>${feature.name}</td>
+                    <td><span class="status ${statusClass(feature)}">${feature.ok ? "Pass" : feature.severity}</span></td>
+                    <td>${featureRequired(feature) ? "yes" : "no"}</td>
+                </tr>
+            `).join("");
+
+            const currentQr = data.current_qr || {};
+            const qrRows = [
+                ["sequence", currentQr.sequence_number ?? "none"],
+                ["issuer", currentQr.issuer_id ?? "none"],
+                ["signature", currentQr.digital_signature ? "present" : "none"],
+                ["expires", currentQr.expires_at ?? "none"]
+            ];
+            el("qrRows").innerHTML = qrRows.map(([name, value]) => `
+                <tr><th>${name}</th><td>${value}</td></tr>
+            `).join("");
+        }
+
+        async function refreshStatus() {
+            const response = await fetch(state.statusUrl);
+            if (!response.ok) throw new Error(`Status failed: ${response.status}`);
+            renderStatus(await response.json());
+        }
+
+        async function runSmokeTest() {
+            const button = el("smokeButton");
+            button.disabled = true;
+            el("smokeResult").textContent = "Running local signed QR and chunk recovery smoke test...";
+            try {
+                const response = await fetch(state.smokeUrl, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({})
+                });
+                const body = await response.json();
+                el("smokeResult").textContent = JSON.stringify(body, null, 2);
+                await refreshStatus();
+            } catch (error) {
+                el("smokeResult").textContent = String(error);
+            } finally {
+                button.disabled = false;
+            }
+        }
+
+        el("refreshButton").addEventListener("click", refreshStatus);
+        el("smokeButton").addEventListener("click", runSmokeTest);
+        refreshStatus().catch((error) => {
+            el("readinessBadge").textContent = "Offline";
+            el("readinessBadge").className = "status fail";
+            el("smokeResult").textContent = String(error);
+        });
+    </script>
+</body>
+</html>

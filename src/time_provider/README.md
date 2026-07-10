@@ -179,11 +179,17 @@ time_settings.local_fallback = True         # Use local time if servers fail
 time_settings.timezone = "UTC"              # Target timezone
 ```
 
-### Environment Variables
-```bash
-export QRLP_TIME_UPDATE_INTERVAL=30.0
-export QRLP_TIME_TIMEOUT=3.0
-export QRLP_TIME_SERVERS="time.nist.gov,pool.ntp.org,time.google.com"
+### Configuration File
+`QRLPConfig.from_env()` does not currently expose time-provider-specific environment variables. Set time-provider values in JSON/YAML config instead:
+
+```json
+{
+  "time_settings": {
+    "update_interval": 30.0,
+    "timeout": 3.0,
+    "time_servers": ["time.nist.gov", "pool.ntp.org", "time.google.com"]
+  }
+}
 ```
 
 ## Performance Characteristics
@@ -512,4 +518,3 @@ print(f"Servers used: {len(verification)}")
 ```
 
 This TimeProvider module ensures accurate, reliable time synchronization for QR Live Protocol with comprehensive error handling, performance optimization, and security features.
-

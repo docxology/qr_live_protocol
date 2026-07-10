@@ -17,7 +17,7 @@ from src import QRLiveProtocol, QRLPConfig
 from src.crypto import KeyManager, DataEncryptor, HMACManager, QRSignatureManager
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 def test_config():
     """Test configuration with minimal settings for fast testing."""
     config = QRLPConfig()
@@ -36,7 +36,7 @@ def test_config():
     return config
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 def temp_key_dir():
     """Temporary directory for key storage during tests."""
     temp_dir = Path(tempfile.mkdtemp(prefix="qrlp_test_keys_"))
@@ -69,12 +69,7 @@ def qrlp_instance(test_config, temp_key_dir):
     # Override key directory for testing
     test_config.identity_settings.identity_file = None  # Use auto-generated identity
 
-    qrlp = QRLiveProtocol(test_config)
-
-    # Override key manager to use test directory
-    qrlp.key_manager = KeyManager(str(temp_key_dir))
-
-    return qrlp
+    return QRLiveProtocol(test_config, key_manager=KeyManager(str(temp_key_dir)))
 
 
 @pytest.fixture
@@ -197,4 +192,3 @@ class TestUtils:
 def test_utils():
     """Test utilities instance."""
     return TestUtils()
-

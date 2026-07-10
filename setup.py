@@ -54,18 +54,18 @@ else:
 
 setup(
     name="qr-live-protocol",
-    version="1.0.0",
+    version="1.0.1",
     author="QRLP Development Team", 
     author_email="contact@qrlp.org",
     description="Generate live, verifiable QR codes for streaming and official video releases",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/your-org/qr_live_protocol",
-    
+    url="https://github.com/docxology/qr_live_protocol",
+
     # Package configuration
     packages=find_packages(),
     package_dir={"": "."},
-    python_requires=">=3.8",
+    python_requires=">=3.9",
     
     # Dependencies
     install_requires=requirements,
@@ -113,10 +113,8 @@ setup(
         "Topic :: Multimedia :: Video",
         "Topic :: Security :: Cryptography",
         "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
-        "License :: OSI Approved :: MIT License",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.8",
-        "Programming Language :: Python :: 3.9", 
+        "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: 3.12",
@@ -129,8 +127,8 @@ setup(
     ],
     
     project_urls={
-        "Bug Reports": "https://github.com/your-org/qr_live_protocol/issues",
-        "Source": "https://github.com/your-org/qr_live_protocol",
+        "Bug Reports": "https://github.com/docxology/qr_live_protocol/issues",
+        "Source": "https://github.com/docxology/qr_live_protocol",
         "Documentation": "https://qrlp.readthedocs.io/",
     }
-) 
+)

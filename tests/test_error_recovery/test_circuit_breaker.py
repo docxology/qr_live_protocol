@@ -4,13 +4,16 @@ Unit tests for Circuit Breaker error recovery functionality.
 Tests circuit breaker state management, failure detection, and recovery patterns.
 """
 
-import pytest
+import asyncio
+import threading
 import time
-from unittest.mock import patch
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+import pytest
 
 from src.error_recovery import (
     CircuitBreaker, CircuitBreakerConfig, CircuitBreakerState,
-    CircuitBreakerStats, CircuitBreakerOpenError
+    CircuitBreakerOpenError
 )
 
 
@@ -48,9 +51,20 @@ class TestCircuitBreaker:
             return "success"
 
         # Should allow execution in closed state
-        result = cb(successful_operation)
+        result = cb.execute(successful_operation)
         assert result == "success"
         assert cb.stats.successful_requests == 1
+
+    def test_circuit_breaker_rejects_invalid_config(self):
+        """Test invalid circuit breaker configuration fails loudly."""
+        with pytest.raises(ValueError, match="failure_threshold"):
+            CircuitBreakerConfig(failure_threshold=0)
+
+        with pytest.raises(ValueError, match="recovery_timeout"):
+            CircuitBreakerConfig(recovery_timeout=-0.1)
+
+        with pytest.raises(ValueError, match="success_threshold"):
+            CircuitBreakerConfig(success_threshold=0)
 
     def test_circuit_breaker_failure_detection(self):
         """Test circuit breaker detects failures and opens circuit."""
@@ -62,7 +76,7 @@ class TestCircuitBreaker:
 
         # First failure - should still be closed
         with pytest.raises(ConnectionError):
-            cb(failing_operation)
+            cb.execute(failing_operation)
 
         assert cb.state == CircuitBreakerState.CLOSED
         assert cb._consecutive_failures == 1
@@ -70,7 +84,7 @@ class TestCircuitBreaker:
 
         # Second failure - should open circuit
         with pytest.raises(ConnectionError):
-            cb(failing_operation)
+            cb.execute(failing_operation)
 
         assert cb.state == CircuitBreakerState.OPEN
         assert cb._consecutive_failures == 2
@@ -87,13 +101,13 @@ class TestCircuitBreaker:
 
         # Trigger failure to open circuit
         with pytest.raises(ConnectionError):
-            cb(failing_operation)
+            cb.execute(failing_operation)
 
         assert cb.state == CircuitBreakerState.OPEN
 
         # Should now block execution
         with pytest.raises(CircuitBreakerOpenError):
-            cb(lambda: "should_not_execute")
+            cb.execute(lambda: "should_not_execute")
 
     def test_circuit_breaker_recovery_attempt(self):
         """Test circuit breaker recovery mechanism."""
@@ -112,7 +126,7 @@ class TestCircuitBreaker:
 
         # Trigger failure to open circuit
         with pytest.raises(ConnectionError):
-            cb(failing_operation)
+            cb.execute(failing_operation)
 
         assert cb.state == CircuitBreakerState.OPEN
 
@@ -120,7 +134,7 @@ class TestCircuitBreaker:
         time.sleep(0.2)
 
         # Should transition to half-open and succeed
-        result = cb(successful_operation)
+        result = cb.execute(successful_operation)
         assert result == "recovered"
         assert cb.state == CircuitBreakerState.CLOSED
         assert cb.stats.state_changes == 2  # Open -> Half-open -> Closed
@@ -139,7 +153,7 @@ class TestCircuitBreaker:
 
         # Trigger failure to open circuit
         with pytest.raises(ConnectionError):
-            cb(failing_operation)
+            cb.execute(failing_operation)
 
         assert cb.state == CircuitBreakerState.OPEN
 
@@ -148,7 +162,7 @@ class TestCircuitBreaker:
 
         # Should be in half-open state, fail again
         with pytest.raises(ConnectionError):
-            cb(failing_operation)
+            cb.execute(failing_operation)
 
         assert cb.state == CircuitBreakerState.OPEN
         assert cb.stats.state_changes == 2  # Open -> Half-open -> Open
@@ -170,7 +184,7 @@ class TestCircuitBreaker:
 
         # Trigger failure to open circuit
         with pytest.raises(ConnectionError):
-            cb(failing_operation)
+            cb.execute(failing_operation)
 
         assert cb.state == CircuitBreakerState.OPEN
 
@@ -181,19 +195,19 @@ class TestCircuitBreaker:
         assert cb.state == CircuitBreakerState.HALF_OPEN
 
         # First success - still half-open
-        result = cb(successful_operation)
+        result = cb.execute(successful_operation)
         assert result == "success"
         assert cb.state == CircuitBreakerState.HALF_OPEN
         assert cb._consecutive_successes == 1
 
         # Second success - still half-open
-        result = cb(successful_operation)
+        result = cb.execute(successful_operation)
         assert result == "success"
         assert cb.state == CircuitBreakerState.HALF_OPEN
         assert cb._consecutive_successes == 2
 
         # Third success - should close circuit
-        result = cb(successful_operation)
+        result = cb.execute(successful_operation)
         assert result == "success"
         assert cb.state == CircuitBreakerState.CLOSED
         assert cb._consecutive_successes == 0
@@ -216,7 +230,7 @@ class TestCircuitBreaker:
         assert stats.state_changes == 0
 
         # Successful operation
-        result = cb(successful_operation)
+        result = cb.execute(successful_operation)
         stats = cb.get_stats()
         assert stats.total_requests == 1
         assert stats.successful_requests == 1
@@ -224,7 +238,7 @@ class TestCircuitBreaker:
 
         # Failed operation
         with pytest.raises(ConnectionError):
-            cb(failing_operation)
+            cb.execute(failing_operation)
 
         stats = cb.get_stats()
         assert stats.total_requests == 2
@@ -241,7 +255,7 @@ class TestCircuitBreaker:
 
         # Trigger failure to open circuit
         with pytest.raises(ConnectionError):
-            cb(failing_operation)
+            cb.execute(failing_operation)
 
         assert cb.state == CircuitBreakerState.OPEN
 
@@ -253,7 +267,7 @@ class TestCircuitBreaker:
         assert cb._consecutive_successes == 0
 
         # Should now allow execution
-        result = cb(lambda: "after_reset")
+        result = cb.execute(lambda: "after_reset")
         assert result == "after_reset"
 
     def test_circuit_breaker_timeout_handling(self):
@@ -271,8 +285,8 @@ class TestCircuitBreaker:
             return "should_not_reach"
 
         # This should fail due to timeout and open circuit
-        with pytest.raises(Exception):  # Timeout or circuit breaker error
-            cb(timeout_operation)
+        with pytest.raises(TimeoutError):
+            cb.execute(timeout_operation)
 
         # Wait for recovery timeout
         time.sleep(0.6)
@@ -299,7 +313,8 @@ class TestCircuitBreaker:
 
     def test_circuit_breaker_exception_handling(self):
         """Test circuit breaker handles various exception types."""
-        cb = CircuitBreaker("exception_test")
+        config = CircuitBreakerConfig(failure_threshold=2)
+        cb = CircuitBreaker("exception_test", config)
 
         def operation_that_raises_value_error():
             raise ValueError("Value error")
@@ -309,63 +324,163 @@ class TestCircuitBreaker:
 
         # Both types of exceptions should be handled the same way
         with pytest.raises(ValueError):
-            cb(operation_that_raises_value_error)
+            cb.execute(operation_that_raises_value_error)
 
         assert cb._consecutive_failures == 1
 
         with pytest.raises(RuntimeError):
-            cb(operation_that_raises_runtime_error)
+            cb.execute(operation_that_raises_runtime_error)
 
         assert cb._consecutive_failures == 2
         assert cb.state == CircuitBreakerState.OPEN
 
     def test_circuit_breaker_concurrent_access(self):
         """Test circuit breaker thread safety."""
-        import threading
-        import queue
-
         cb = CircuitBreaker("concurrent_test")
 
-        results = queue.Queue()
-
-        def concurrent_operation():
-            try:
-                # Mix of successful and failing operations
-                if threading.current_thread().name.endswith('0'):  # Every 10th thread fails
-                    raise ConnectionError("Concurrent failure")
-                else:
-                    return "concurrent_success"
-            except Exception as e:
-                results.put(f"error: {e}")
-                raise
+        def concurrent_operation(index):
+            if index == 0:
+                raise ConnectionError("Concurrent failure")
+            return "concurrent_success"
 
         # Run multiple concurrent operations
-        threads = []
-        for i in range(10):
-            thread = threading.Thread(target=lambda: results.put(cb(concurrent_operation)()))
-            threads.append(thread)
-
-        for thread in threads:
-            thread.start()
-
-        for thread in threads:
-            thread.join()
+        results = []
+        errors = []
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            futures = [
+                executor.submit(cb.execute, concurrent_operation, index)
+                for index in range(10)
+            ]
+            for future in as_completed(futures):
+                try:
+                    results.append(future.result())
+                except ConnectionError as exc:
+                    errors.append(exc)
 
         # Check results
-        success_count = 0
-        while not results.empty():
-            result = results.get()
-            if result == "concurrent_success":
-                success_count += 1
-            elif result.startswith("error:"):
-                # Expected some failures
-                pass
+        success_count = results.count("concurrent_success")
 
-        # Should have mostly successes (9 out of 10)
-        assert success_count >= 8
+        # Should have 9 successes and one controlled failure without unhandled thread errors
+        assert success_count == 9
+        assert len(errors) == 1
 
         # Circuit breaker should have handled the failure
         stats = cb.get_stats()
         assert stats.total_requests == 10
-        assert stats.successful_requests >= 8
+        assert stats.successful_requests == 9
+        assert stats.failed_requests == 1
 
+    def test_circuit_breaker_concurrent_failures_open_once(self):
+        """Test concurrent threshold failures only record one open transition."""
+        config = CircuitBreakerConfig(failure_threshold=1)
+        cb = CircuitBreaker("concurrent_open_test", config)
+        barrier = threading.Barrier(2)
+
+        def failing_operation():
+            barrier.wait(timeout=1.0)
+            raise ConnectionError("Concurrent failure")
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [
+                executor.submit(cb.execute, failing_operation)
+                for _ in range(2)
+            ]
+            for future in futures:
+                with pytest.raises(ConnectionError):
+                    future.result(timeout=2.0)
+
+        assert cb.state == CircuitBreakerState.OPEN
+        stats = cb.get_stats()
+        assert stats.failed_requests == 2
+        assert stats.state_changes == 1
+
+    def test_circuit_breaker_half_open_allows_single_recovery_probe(self):
+        """Test half-open state permits only one in-flight recovery probe."""
+        config = CircuitBreakerConfig(
+            failure_threshold=1,
+            recovery_timeout=0.1,
+            success_threshold=1,
+        )
+        cb = CircuitBreaker("single_probe_test", config)
+        started = threading.Event()
+        release = threading.Event()
+
+        def failing_operation():
+            raise ConnectionError("Service down")
+
+        def slow_successful_operation():
+            started.set()
+            assert release.wait(timeout=1.0)
+            return "recovered"
+
+        with pytest.raises(ConnectionError):
+            cb.execute(failing_operation)
+
+        time.sleep(0.2)
+
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            probe = executor.submit(cb.execute, slow_successful_operation)
+            assert started.wait(timeout=1.0)
+
+            with pytest.raises(CircuitBreakerOpenError):
+                cb.execute(lambda: "second_probe")
+
+            release.set()
+            assert probe.result(timeout=1.0) == "recovered"
+
+        assert cb.state == CircuitBreakerState.CLOSED
+        stats = cb.get_stats()
+        assert stats.successful_requests == 1
+        assert stats.failed_requests == 2
+
+    def test_circuit_breaker_execute_async_tracks_success(self):
+        """Test async execution awaits the operation and tracks success."""
+        cb = CircuitBreaker("async_success_test")
+
+        async def successful_operation():
+            await asyncio.sleep(0)
+            return "async_success"
+
+        result = asyncio.run(cb.execute_async(successful_operation))
+
+        assert result == "async_success"
+        stats = cb.get_stats()
+        assert stats.total_requests == 1
+        assert stats.successful_requests == 1
+
+    def test_circuit_breaker_execute_async_timeout_opens_circuit(self):
+        """Test async timeout failures are counted and open the circuit."""
+        config = CircuitBreakerConfig(
+            failure_threshold=1,
+            recovery_timeout=1.0,
+            timeout=0.01,
+        )
+        cb = CircuitBreaker("async_timeout_test", config)
+
+        async def slow_operation():
+            await asyncio.sleep(0.1)
+            return "too_slow"
+
+        with pytest.raises(TimeoutError):
+            asyncio.run(cb.execute_async(slow_operation))
+
+        assert cb.state == CircuitBreakerState.OPEN
+        stats = cb.get_stats()
+        assert stats.total_requests == 1
+        assert stats.failed_requests == 1
+
+    def test_circuit_breaker_async_decorator_awaits_operation(self):
+        """Test async decorator support awaits the wrapped coroutine."""
+        cb = CircuitBreaker("async_decorator_test")
+
+        @cb
+        async def decorated_function(x, y):
+            await asyncio.sleep(0)
+            return x + y
+
+        result = asyncio.run(decorated_function(2, 3))
+
+        assert result == 5
+        stats = cb.get_stats()
+        assert stats.total_requests == 1
+        assert stats.successful_requests == 1

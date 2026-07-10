@@ -4,7 +4,7 @@
 
 ### What is QR Live Protocol (QRLP)?
 
-QRLP is a comprehensive system for generating and displaying live, cryptographically verifiable QR codes. It's designed for livestreaming and official video releases where authenticity verification is crucial. Each QR code contains time-stamped information with blockchain verification and identity confirmation.
+QRLP is a system for generating and displaying live QR codes with local integrity checks and optional public-key authenticity verification. It's designed for livestreaming and official video releases where viewers need timing context and a verifier can be configured with the issuer's trusted public key.
 
 ### Who should use QRLP?
 
@@ -79,7 +79,7 @@ Typical sizes: 25x25 to 40x40 modules (250x250 to 400x400 pixels at default sett
 
 The easiest method:
 ```bash
-git clone https://github.com/your-org/qr_live_protocol.git
+git clone https://github.com/docxology/qr_live_protocol.git
 cd qr_live_protocol
 python main.py
 ```
@@ -126,10 +126,12 @@ See [Configuration Guide](CONFIGURATION.md) for details.
 ### How do I verify QR codes from viewers?
 
 Viewers can:
-1. **Scan with phone** - See the JSON data directly
-2. **Manual verification** - Check timestamp and blockchain hashes against public APIs
-3. **API verification** - Use QRLP's `/api/verify` endpoint
+1. **Scan with phone** - See the JSON payload directly
+2. **API verification** - Use QRLP's `/api/verify` endpoint backed by a configured verifier
+3. **Public-key verification** - Verify signed QR data with the issuer's trusted public key
 4. **Third-party tools** - Import verification logic into other applications
+
+A normal QR scanner can read the payload, but it does not prove authenticity by itself.
 
 ### Can I add custom data to QR codes?
 
@@ -147,7 +149,7 @@ custom_data = {
     "video_id": "abc123",
     "topic": "QRLP Demo"
 }
-qr_data, qr_image = qrlp.generate_single_qr(custom_data)
+qr_data, qr_image = qrlp.generate_single_qr(user_data=custom_data)
 ```
 
 ## Streaming & Production
@@ -186,10 +188,12 @@ Yes! QRLP can:
 
 ### Is my personal data transmitted anywhere?
 
-No personal data is transmitted. QRLP only:
-- Queries public blockchain APIs (anonymous)
-- Contacts public time servers (anonymous)
-- Uses local system info for identity (hashed, not transmitted)
+QRLP does not intentionally upload identity files or raw system fingerprints, but it can contact configured external services:
+- Public blockchain APIs for latest block data
+- Public time servers for clock checks
+- Local system info for identity hashing, stored only in the generated hash
+
+External services can still observe ordinary request metadata such as source IP address and timing. Disable blockchain/time-server integrations in config if you need a fully local mode.
 
 ### Can the identity hash be reverse-engineered?
 
@@ -202,18 +206,15 @@ While technically secure, avoid including sensitive files in identity generation
 
 ### How secure is the verification system?
 
-Very secure because:
-- **Decentralized verification** - Uses public blockchain data
-- **Multiple time sources** - Prevents single point of failure
-- **Cryptographic hashing** - Industry-standard algorithms
-- **Open source** - Transparent and auditable code
+QRLP separates trust layers:
+- **HMAC** detects tampering only for verifiers with the same private HMAC secret.
+- **Digital signatures** provide public authenticity when the verifier trusts the issuer public key.
+- **Timestamps and optional blockchain hashes** provide freshness context, not independent proof of issuer identity.
+- **Open source** code makes the verification logic auditable.
 
 ### Can QR codes be forged?
 
-Extremely difficult because it would require:
-- Forging blockchain data (computationally infeasible)
-- Predicting future block hashes (impossible)
-- Matching identity hash (requires access to original system)
+Tampering with a signed or HMAC-protected QR payload is detected. A forged QR is still possible if a verifier trusts the wrong public key, accepts unsigned data, or treats blockchain freshness context as issuer identity. Use trusted public keys for public verification.
 - Coordinating time server responses (practically impossible)
 
 ## Performance & Troubleshooting
@@ -294,22 +295,23 @@ Not yet, but it's planned for version 2.0. Current extension options:
 
 ### What license is QRLP released under?
 
-QRLP is released under the MIT License, which allows:
-- ✅ Commercial use
-- ✅ Modification
-- ✅ Distribution
+QRLP is released under CC BY-NC-SA 4.0, which allows:
+- ✅ Non-commercial sharing
+- ✅ Non-commercial modification
+- ✅ Distribution under the same license
 - ✅ Private use
+- ❌ Commercial use without separate permission
 - ❌ Warranty/liability
 
 ### Can I use QRLP commercially?
 
-Yes! The MIT license permits commercial use without restrictions or royalties.
+Not under the default license. CC BY-NC-SA 4.0 is non-commercial, so commercial or business use requires separate permission or a separate commercial license.
 
 ### Are there any usage restrictions?
 
-None beyond standard MIT license terms. However:
-- We recommend attribution in commercial products
-- Consider contributing improvements back to the community
+Yes. The default license requires attribution, non-commercial use, and ShareAlike distribution for adaptations. Also:
+- Do not use QRLP commercially without separate permission
+- Consider contributing improvements back to the public repository
 - Respect blockchain network terms of service
 
 ### What about patent concerns?
@@ -337,7 +339,7 @@ We're not aware of any relevant patents, but we can't provide legal advice. Cons
 
 ### Is there a community forum?
 
-Yes! Use [GitHub Discussions](https://github.com/your-org/qr_live_protocol/discussions) for:
+Yes! Use [GitHub Discussions](https://github.com/docxology/qr_live_protocol/discussions) for:
 - General questions
 - Usage tips
 - Feature discussions
@@ -352,4 +354,4 @@ Yes! Use [GitHub Discussions](https://github.com/your-org/qr_live_protocol/discu
 
 ---
 
-**Still have questions?** Create an issue on [GitHub](https://github.com/your-org/qr_live_protocol/issues) or contact us at contact@qrlp.org! 
+**Still have questions?** Create an issue on [GitHub](https://github.com/docxology/qr_live_protocol/issues) or contact us at contact@qrlp.org!

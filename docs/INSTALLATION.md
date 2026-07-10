@@ -103,7 +103,7 @@ Choose the installation method that best fits your needs and environment.
 
 ```bash
 # Clone repository
-git clone https://github.com/your-org/qr_live_protocol.git
+git clone https://github.com/docxology/qr_live_protocol.git
 cd qr_live_protocol
 
 # Modern setup with uv (fast, modern package manager)
@@ -162,7 +162,7 @@ $ qrlp live
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/your-org/qr_live_protocol.git
+git clone https://github.com/docxology/qr_live_protocol.git
 cd qr_live_protocol
 
 # 2. Create virtual environment (recommended)
@@ -199,72 +199,14 @@ pip install -r requirements.txt
 pip install -e .[dev]
 
 # Use custom configuration
-qrlp live --config /path/to/config.json --port 8080
+qrlp --config /path/to/config.json live --port 8080
 ```
 
-### Method 3: Docker Installation
+### Method 3: Container Installation
 
-**Best for:** Containerized environments, easy deployment, isolation
+This repository currently does not include a tested Dockerfile, Compose file, or official container image. Use the uv or pip installation methods above for reproducible local setup.
 
-#### Using Pre-built Image (Recommended)
-
-```bash
-# Pull the official QRLP Docker image
-docker pull qrliveprotocol/qrlp:latest
-
-# Run with default settings
-docker run -d --name qrlp -p 8080:8080 qrliveprotocol/qrlp
-
-# Run with custom configuration
-docker run -d --name qrlp \
-  -p 8080:8080 \
-  -v /host/config.json:/app/config.json \
-  qrliveprotocol/qrlp --config /app/config.json
-```
-
-#### Building from Source
-
-```bash
-# Clone repository
-git clone https://github.com/your-org/qr_live_protocol.git
-cd qr_live_protocol
-
-# Build Docker image
-docker build -t qrlp:latest .
-
-# Run container
-docker run -d --name qrlp -p 8080:8080 qrlp:latest
-
-# View logs
-docker logs -f qrlp
-
-# Access shell (for debugging)
-docker exec -it qrlp /bin/bash
-```
-
-#### Docker Compose (Production)
-
-```yaml
-# docker-compose.yml
-version: '3.8'
-services:
-  qrlp:
-    image: qrliveprotocol/qrlp:latest
-    ports:
-      - "8080:8080"
-    volumes:
-      - ./config.json:/app/config.json
-      - ./identity.pem:/app/identity.pem
-    environment:
-      - QRLP_WEB_HOST=0.0.0.0
-      - QRLP_LOG_LEVEL=INFO
-    restart: unless-stopped
-```
-
-```bash
-# Deploy with Docker Compose
-docker-compose up -d
-```
+If you need a container, create and validate a project-local Dockerfile in your deployment environment, then run the normal `qrlp live` command inside it. Do not assume `qrliveprotocol/qrlp:latest` exists or matches this source tree.
 
 ### Method 4: Package Manager Installation
 
@@ -297,7 +239,7 @@ mamba install qr-live-protocol
 
 ```bash
 # Clone for development
-git clone https://github.com/your-org/qr_live_protocol.git
+git clone https://github.com/docxology/qr_live_protocol.git
 cd qr_live_protocol
 
 # Install in development mode with test dependencies
@@ -580,35 +522,9 @@ sudo apt install python3-dev build-essential
 sudo apt install libssl-dev libffi-dev  # For cryptography
 ```
 
-### Docker Issues
+### Container Issues
 
-**Problem:** Docker daemon not running
-```bash
-# Start Docker service
-sudo systemctl start docker  # Linux
-# or manually start Docker Desktop
-
-# Check status
-sudo systemctl status docker
-```
-
-**Problem:** Port already in use
-```bash
-# Check what's using port 8080
-lsof -i :8080
-
-# Use different port
-docker run -p 8081:8080 qrliveprotocol/qrlp
-```
-
-**Problem:** Container cannot access network
-```bash
-# Check Docker network
-docker network ls
-
-# Run with network access
-docker run --network host qrliveprotocol/qrlp
-```
+This repository does not ship a tested container image. Troubleshoot project-local containers in the deployment repository that defines the Dockerfile or Compose file.
 
 ### Performance Issues
 
@@ -646,7 +562,7 @@ docker run --network host qrliveprotocol/qrlp
 ### Getting Help
 
 1. **Check Logs**: Enable debug mode with `--debug` flag
-2. **GitHub Issues**: Report bugs at [github.com/your-org/qr_live_protocol/issues](https://github.com/your-org/qr_live_protocol/issues)
+2. **GitHub Issues**: Report bugs at [github.com/docxology/qr_live_protocol/issues](https://github.com/docxology/qr_live_protocol/issues)
 3. **Documentation**: Full docs at [docs/README.md](README.md)
 4. **Community**: Join discussions in GitHub Discussions
 
@@ -695,7 +611,7 @@ Edit the generated configuration file to match your requirements:
 #### 3. Test Configuration
 ```bash
 # Test with your configuration
-qrlp live --config ~/.qrlp/config.json --no-browser
+qrlp --config ~/.qrlp/config.json live --no-browser
 
 # Verify all components are working
 qrlp status
@@ -710,25 +626,20 @@ Override configuration at runtime using environment variables:
 export QRLP_UPDATE_INTERVAL=5      # QR update interval in seconds
 export QRLP_WEB_PORT=8080          # Web server port
 export QRLP_WEB_HOST=localhost     # Web server host
+export QRLP_WEB_CORS_ENABLED=false # Enable CORS when explicitly needed
+export QRLP_WEB_ADMIN_TOKEN=secret # Optional token for state-changing endpoints
 export QRLP_LOG_LEVEL=INFO         # Logging level
-
-# QR settings
-export QRLP_QR_BOX_SIZE=12         # QR code pixel size
-export QRLP_QR_ERROR_CORRECTION_LEVEL=M  # L, M, Q, H
-
-# Blockchain settings
-export QRLP_BLOCKCHAIN_ENABLED_CHAINS=bitcoin,ethereum
-export QRLP_BLOCKCHAIN_CACHE_DURATION=300
-
-# Time settings
-export QRLP_TIME_UPDATE_INTERVAL=60
 
 # Identity settings
 export QRLP_IDENTITY_FILE=/path/to/key.pem
+export QRLP_ISSUER_ID=issuer-1
+export QRLP_EVENT_ID=main-stage
 
 # Start with environment overrides
 qrlp live
 ```
+
+For QR appearance, time, blockchain, and signing-key settings, use a JSON/YAML config file. `QRLPConfig.from_env()` intentionally supports only a small operational subset.
 
 ## 🗑️ Uninstallation
 
@@ -752,18 +663,9 @@ rm -rf ~/.qrlp/
 pip uninstall qr-live-protocol
 ```
 
-#### Docker Removal
-```bash
-# Stop and remove containers
-docker stop qrlp
-docker rm qrlp
+#### Container Removal
 
-# Remove images
-docker rmi qrliveprotocol/qrlp
-
-# Remove volumes (if any)
-docker volume prune
-```
+Remove containers and images according to the project-local container setup you created. This repository does not define canonical container names, image tags, or volumes.
 
 #### Package Manager Removal
 ```bash
@@ -793,9 +695,9 @@ rm -rf venv/ qr_live_protocol/
 
 ### Production Deployment
 
-#### Systemd Service (Linux)
+#### Systemd Service Template (Linux)
 
-Create `/etc/systemd/system/qrlp.service`:
+This repository does not ship or test a systemd unit. If you operate QRLP as a long-running local service, create and validate your own unit. A minimal starting point is:
 
 ```ini
 [Unit]
@@ -806,7 +708,7 @@ After=network.target
 Type=simple
 User=qrlp
 WorkingDirectory=/opt/qrlp
-ExecStart=/opt/qrlp/venv/bin/python /opt/qrlp/main.py --config /opt/qrlp/production.json
+ExecStart=/opt/qrlp/venv/bin/qrlp --config /opt/qrlp/production.json live --no-browser
 Restart=always
 RestartSec=5
 
@@ -815,7 +717,7 @@ WantedBy=multi-user.target
 ```
 
 ```bash
-# Enable and start service
+# Validate, then enable and start service
 sudo systemctl enable qrlp
 sudo systemctl start qrlp
 
@@ -824,63 +726,9 @@ sudo systemctl status qrlp
 sudo journalctl -u qrlp -f
 ```
 
-#### Docker Production Setup
+#### Container and Proxy Production Setup
 
-```yaml
-# docker-compose.prod.yml
-version: '3.8'
-services:
-  qrlp:
-    image: qrliveprotocol/qrlp:latest
-    ports:
-      - "8080:8080"
-    volumes:
-      - ./config:/app/config:ro
-      - ./identity:/app/identity:ro
-      - ./logs:/app/logs
-    environment:
-      - QRLP_WEB_HOST=0.0.0.0
-      - QRLP_LOG_LEVEL=INFO
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-        reservations:
-          memory: 256M
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/api/status"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-```
-
-#### Load Balancer Configuration (nginx)
-
-```nginx
-# /etc/nginx/sites-available/qrlp
-upstream qrlp_backend {
-    server 127.0.0.1:8080;
-}
-
-server {
-    listen 80;
-    server_name qrlp.yourdomain.com;
-
-    location / {
-        proxy_pass http://qrlp_backend;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-
-        # WebSocket support for real-time updates
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-    }
-}
-```
+No production container profile, load-balancer profile, or internet-facing hardening profile is shipped in this repository. Before exposing QRLP beyond localhost, provide your own TLS termination, access control, durable rate limiting, request size limits, logs, and monitored process supervision.
 
 ### Development Environment
 
@@ -950,7 +798,7 @@ echo "✅ Python $PYTHON_VERSION detected"
 # Clone repository
 if [ ! -d "qr_live_protocol" ]; then
     echo "📥 Cloning repository..."
-    git clone https://github.com/your-org/qr_live_protocol.git
+    git clone https://github.com/docxology/qr_live_protocol.git
 fi
 
 cd qr_live_protocol
@@ -1011,7 +859,7 @@ echo ✅ Python detected
 REM Clone repository
 if not exist "qr_live_protocol" (
     echo 📥 Cloning repository...
-    git clone https://github.com/your-org/qr_live_protocol.git
+    git clone https://github.com/docxology/qr_live_protocol.git
 )
 
 cd qr_live_protocol
@@ -1081,14 +929,15 @@ sudo chown -R qrlp:qrlp /opt/qrlp
 ```bash
 # Store sensitive config in environment variables
 export QRLP_IDENTITY_FILE=/secure/path/identity.pem
-export QRLP_ENCRYPTION_KEY=$(cat /secure/encryption.key)
+export QRLP_WEB_ADMIN_TOKEN=$(cat /secure/qrlp-admin-token)
+export QRLP_ISSUER_ID=issuer-1
 ```
 
 ### Network Security
 
-- **API Rate Limiting:** Implement rate limiting for web endpoints
+- **API Rate Limiting:** Configure the built-in in-memory limit for local use; deploy durable rate limiting at a reverse proxy for internet-facing deployments
 - **Input Validation:** Validate all user inputs and file uploads
-- **CORS Configuration:** Configure CORS appropriately for your use case
+- **CORS Configuration:** Keep CORS disabled unless a specific trusted origin needs API access
 - **HTTPS Enforcement:** Redirect all HTTP traffic to HTTPS
 
 ### Data Protection
@@ -1100,7 +949,7 @@ export QRLP_ENCRYPTION_KEY=$(cat /secure/encryption.key)
 
 ---
 
-**Need help with installation?** Check our [troubleshooting section](#troubleshooting) or [open an issue](https://github.com/your-org/qr_live_protocol/issues) on GitHub!
+**Need help with installation?** Check our [troubleshooting section](#troubleshooting) or [open an issue](https://github.com/docxology/qr_live_protocol/issues) on GitHub!
 
 ## Troubleshooting
 
@@ -1154,7 +1003,7 @@ python main.py
 ### Getting Help
 
 1. **Check Logs**: Enable debug mode with `--debug` flag
-2. **GitHub Issues**: Report bugs at [github.com/your-org/qr_live_protocol/issues](https://github.com/your-org/qr_live_protocol/issues)
+2. **GitHub Issues**: Report bugs at [github.com/docxology/qr_live_protocol/issues](https://github.com/docxology/qr_live_protocol/issues)
 3. **Documentation**: Full docs at [docs/README.md](README.md)
 4. **Community**: Join discussions in GitHub Discussions
 
@@ -1184,20 +1033,20 @@ rm -rf venv/
 ### Network Security
 - QRLP runs a web server on localhost by default
 - For production use, consider HTTPS and firewall rules
-- Blockchain API calls are read-only and safe
+- Blockchain API calls are read-only, but they are still external network requests
 
 ### Data Privacy
-- Identity hashes are cryptographic and don't expose personal data
-- No personal information is transmitted to external services
-- All blockchain queries are anonymous
+- Identity hashes are cryptographic summaries, but avoid using sensitive identity files
+- QRLP contacts configured blockchain APIs and time servers when those features are enabled
+- External services can observe ordinary request metadata such as source IP address and timing
 
 ### Production Deployment
 For production use:
-1. Use a WSGI server (gunicorn, uwsgi)
-2. Configure HTTPS with SSL certificates
-3. Set up proper firewall rules
-4. Monitor logs and performance
-5. Consider using environment variables for sensitive configuration
+1. Keep QRLP behind a trusted network boundary or reverse proxy
+2. Configure HTTPS and access control outside QRLP
+3. Set up firewall rules and durable rate limiting
+4. Monitor logs and process health
+5. Use environment variables or protected config files for sensitive settings
 
 ## Next Steps
 
@@ -1210,4 +1059,4 @@ After successful installation:
 
 ---
 
-**Need help?** Open an issue on [GitHub](https://github.com/your-org/qr_live_protocol/issues) or check our [FAQ](FAQ.md). 
+**Need help?** Open an issue on [GitHub](https://github.com/docxology/qr_live_protocol/issues) or check our [FAQ](FAQ.md).

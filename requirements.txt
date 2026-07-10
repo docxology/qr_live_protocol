@@ -27,6 +27,9 @@ cryptography>=41.0.0
 # Async support for performance
 aiohttp>=3.8.0
 
+# Input sanitization for web controls
+bleach>=6.0.0
+
 # Development and testing
 pytest>=7.4.0
 pytest-cov>=4.1.0
@@ -50,4 +53,4 @@ mypy>=1.5.0
 # MQTT support
 # asyncio-mqtt>=0.16.0
 
-# Note: uv (fast Python package manager) will be auto-installed if not available 
+# Note: uv (fast Python package manager) will be auto-installed if not available

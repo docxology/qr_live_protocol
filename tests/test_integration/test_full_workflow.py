@@ -11,6 +11,7 @@ import time
 from unittest.mock import patch
 
 from src import QRLiveProtocol, QRLPConfig
+from src.crypto import KeyManager
 
 
 class TestFullWorkflow:
@@ -124,10 +125,10 @@ class TestFullWorkflow:
             assert results['valid_json'] is True
             assert results['hmac_verified'] is True
 
-    def test_qr_verification_with_external_verifier(self, qrlp_instance):
-        """Test QR verification using external verifier instance."""
+    def test_qr_verification_with_external_verifier(self, qrlp_instance, tmp_path):
+        """Test QR verification using external verifier instance and trusted public key."""
         # Generate QR with first instance
-        qr_data, qr_image = qrlp_instance.generate_single_qr({"test": "data"})
+        qr_data, qr_image = qrlp_instance.generate_single_qr({"test": "data"}, sign_data=True)
 
         # Create second instance for verification (simulates external verifier)
         test_config = QRLPConfig()
@@ -135,10 +136,17 @@ class TestFullWorkflow:
         test_config.blockchain_settings.enabled_chains = set()
         test_config.time_settings.time_servers = []
 
-        external_verifier = QRLiveProtocol(test_config)
-
-        # Copy key manager from first instance to simulate shared keys
-        external_verifier.key_manager = qrlp_instance.key_manager
+        external_verifier = QRLiveProtocol(
+            test_config,
+            key_manager=KeyManager(str(tmp_path / "external_keys")),
+        )
+        public_key = qrlp_instance.key_manager.export_public_key(qr_data.signing_key_id)
+        external_verifier.trust_store.add_public_key(
+            qr_data.issuer_id,
+            qr_data.signing_key_id,
+            public_key,
+            qr_data.signature_algorithm,
+        )
 
         # Verify QR data with external verifier
         qr_json = qr_data.to_json()
@@ -146,7 +154,9 @@ class TestFullWorkflow:
 
         # Should verify successfully
         assert results['valid_json'] is True
-        assert results['hmac_verified'] is True
+        assert results['signature_verified'] is True
+        assert results['hmac_verified'] is False
+        assert results['valid'] is True
 
     def test_cryptographic_features_integration(self, qrlp_instance):
         """Test all cryptographic features working together."""
@@ -209,8 +219,10 @@ class TestFullWorkflow:
         """Test QR generation performance under moderate load."""
         start_time = time.time()
 
-        # Generate 100 QR codes
-        for i in range(100):
+        # Generate enough real QR images to catch regressions without turning
+        # coverage-instrumented test runs into a QR rendering benchmark.
+        qr_count = 20
+        for i in range(qr_count):
             qr_data, qr_image = qrlp_instance.generate_single_qr({"load_test": i})
 
             # Verify each QR is valid
@@ -223,12 +235,12 @@ class TestFullWorkflow:
         end_time = time.time()
         duration = end_time - start_time
 
-        # Should generate 100 QR codes in reasonable time (< 10 seconds)
+        # Should generate QR codes in reasonable time under coverage.
         assert duration < 10.0
 
         # Check statistics
         stats = qrlp_instance.get_statistics()
-        assert stats['total_updates'] >= 100
+        assert stats['total_updates'] >= qr_count
 
     def test_concurrent_qr_generation(self, qrlp_instance):
         """Test QR generation under concurrent access."""
@@ -281,7 +293,7 @@ class TestFullWorkflow:
         """Test that QR data can be verified across different instances."""
         # Generate QR with first instance
         user_data = {"persistence": "test"}
-        qr_data1, qr_image1 = qrlp_instance.generate_single_qr(user_data)
+        qr_data1, qr_image1 = qrlp_instance.generate_single_qr(user_data, sign_data=True)
 
         # Create second instance with same configuration
         test_config = QRLPConfig()
@@ -289,10 +301,17 @@ class TestFullWorkflow:
         test_config.blockchain_settings.enabled_chains = set()
         test_config.time_settings.time_servers = []
 
-        qrlp2 = QRLiveProtocol(test_config)
-
-        # Copy key manager for shared keys
-        qrlp2.key_manager = qrlp_instance.key_manager
+        qrlp2 = QRLiveProtocol(
+            test_config,
+            key_manager=KeyManager(str(temp_key_dir / "external_keys")),
+        )
+        public_key = qrlp_instance.key_manager.export_public_key(qr_data1.signing_key_id)
+        qrlp2.trust_store.add_public_key(
+            qr_data1.issuer_id,
+            qr_data1.signing_key_id,
+            public_key,
+            qr_data1.signature_algorithm,
+        )
 
         # Verify QR data with second instance
         qr_json = qr_data1.to_json()
@@ -300,7 +319,9 @@ class TestFullWorkflow:
 
         # Should verify successfully
         assert results['valid_json'] is True
-        assert results['hmac_verified'] is True
+        assert results['signature_verified'] is True
+        assert results['hmac_verified'] is False
+        assert results['valid'] is True
 
         # Should maintain same identity verification
         if results['identity_verified']:
@@ -345,4 +366,3 @@ class TestFullWorkflow:
         # Should use different keys
         assert qr_data1.__dict__['signing_key_id'] == key_id1
         assert qr_data2.__dict__['signing_key_id'] == key_id2
-

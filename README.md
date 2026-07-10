@@ -1,20 +1,20 @@
 # QR Live Protocol (QRLP)
 
 [![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
-[![Python Version](https://img.shields.io/badge/python-3.8+-blue.svg)](https://pypi.org/project/qr-live-protocol/)
+[![Python Version](https://img.shields.io/badge/python-3.9+-blue.svg)](https://pypi.org/project/qr-live-protocol/)
 
-A comprehensive, open-source system for generating live, cryptographically verifiable QR codes with real-time authentication for livestreaming, official video releases, and content verification.
+A comprehensive, source-available system for generating live QR codes with local integrity checks and optional public-key authenticity verification for livestreaming, official video releases, and content verification.
 
 ## 🌟 What is QRLP?
 
-QRLP (QR Live Protocol) creates **live, verifiable QR codes** that prove content authenticity in real-time. Each QR code contains cryptographically signed data including:
+QRLP (QR Live Protocol) creates **live, verifiable QR codes** for stream overlays and official releases. Each QR code can contain:
 
 - ⏰ **Live timestamps** from multiple synchronized time servers
-- 🔗 **Current blockchain hashes** from Bitcoin, Ethereum, and other networks
-- 🆔 **Unique identity verification** based on system and file signatures
+- 🔗 **Current blockchain hashes** from Bitcoin, Ethereum, and other networks as freshness context
+- 🆔 **Issuer identity metadata** plus optional trusted public-key signatures
 - 📊 **Real-time statistics** and verification status
 
-Perfect for **livestreamers**, **content creators**, **news organizations**, and **institutions** who need to prove their content is authentic and timestamped.
+HMAC fields are local integrity checks for a QRLP operator or verifier with the same secret. Public authenticity requires a signed QR payload and a verifier configured with the issuer's trusted public key.
 
 ## 🚀 Quick Start
 
@@ -22,7 +22,7 @@ Perfect for **livestreamers**, **content creators**, **news organizations**, and
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/qr_live_protocol.git
+git clone https://github.com/docxology/qr_live_protocol.git
 cd qr_live_protocol
 
 # Create virtual environment with uv (fast, modern package manager)
@@ -34,6 +34,9 @@ uv pip install -e .[dev]
 
 # Start live QR generation
 qrlp live
+
+# Start the improvement dashboard
+qrlp dashboard
 
 # Or run the comprehensive demo
 python main.py
@@ -71,25 +74,26 @@ python main.py
 | Feature | Description | Use Case |
 |---------|-------------|----------|
 | 🔲 **Live QR Generation** | Real-time QR codes that update automatically | Livestream overlays, live events |
+| 🧩 **Explicit Chunking** | Oversized payloads fail clearly and can be split into recoverable QR chunks | Large signed payloads, offline transfer |
 | ⏰ **Multi-Source Time Sync** | Synchronized timestamps from NTP servers + HTTP APIs | Precise timing verification |
 | 🔗 **Blockchain Verification** | Live block hashes from Bitcoin, Ethereum, Litecoin, Dogecoin | Cryptographic proof of timing |
 | 🆔 **Identity Management** | Unique fingerprints based on system + file signatures | Authenticate content creators |
 | 🌐 **Web Interface** | Beautiful, responsive live display with WebSocket updates | Easy integration with streaming software |
 | 📱 **OBS Integration** | Optimized browser source for OBS Studio | Professional livestreaming |
-| 🔐 **Cryptographic Security** | HMAC integrity + optional digital signatures | Tamper-proof verification |
+| 🔐 **Cryptographic Security** | HMAC integrity + optional trusted digital signatures | Tamper detection and issuer verification |
 | 📊 **Real-time Monitoring** | Live statistics and performance metrics | Production monitoring |
 
 ### Why QRLP?
 
-**🔒 Unbreakable Verification**: Multi-layered cryptographic verification makes forgery practically impossible
+**🔒 Explicit Trust Model**: Local HMAC checks detect tampering for shared-secret deployments; trusted public keys enable third-party signature verification
 
 **⏱️ Real-Time Authenticity**: Live updates prove content is happening *right now*, not pre-recorded
 
-**🌐 Universal Compatibility**: Works with any QR scanner - no special apps required
+**🌐 Scanner Compatibility**: Standard QR scanners can read the payload; authenticity checks require QRLP verification tooling
 
 **📺 Streamer-Friendly**: One-click OBS integration, no complex setup needed
 
-**🏢 Enterprise-Ready**: Production features for professional broadcasting
+**🏢 Operator-Friendly**: Local web display, CLI workflows, and configurable verification settings for professional broadcasting experiments
 
 ## 🏗️ System Architecture
 
@@ -191,15 +195,15 @@ qrlp live --port 8080 --interval 2
 
 **For Professional Streaming:**
 ```bash
-# High-security configuration for enterprise use
-qrlp live --config production.json --identity-file ./company-key.pem
+# Controlled-network configuration for professional use
+qrlp --config production.json live --identity-file ./company-key.pem
 ```
 
 ### 🔧 Custom Integration Examples
 
 #### Python API Integration
 ```python
-from src import QRLiveProtocol, QRLPConfig
+from src import QRDataTooLargeError, QRGenerator, QRLiveProtocol, QRLPConfig
 
 # Initialize with custom settings
 config = QRLPConfig()
@@ -216,6 +220,15 @@ event_data = {
 }
 
 qr_data, qr_image = qrlp.generate_single_qr(user_data=event_data)
+
+# Large payloads must use explicit QR chunking
+large_payload = "large payload" * 1000
+try:
+    large_qr = qrlp.qr_generator.generate_qr_image(large_payload)
+except QRDataTooLargeError:
+    chunks = qrlp.qr_generator.generate_chunked_payloads(large_payload)
+    recovered = QRGenerator.reassemble_chunked_payloads(chunks)
+    assert recovered == large_payload
 
 # Add callback for real-time updates
 def on_qr_update(qr_data, qr_image):
@@ -248,14 +261,23 @@ qrlp.add_update_callback(stream_callback)
 
 #### Manual QR Verification
 ```bash
-# Verify QR code from stream
-qrlp verify "$(cat qr_data.json)"
+# Generate a signed QR and verifier trust material
+qrlp generate \
+  --format both \
+  --output qr_data \
+  --user-data '{"event":"launch"}' \
+  --sign \
+  --public-key-output issuer.pem \
+  --trust-record-output trust.json
+
+# Verify on another machine/process with only trusted public-key material
+qrlp verify --file qr_data.json --trust-store trust.json
 
 # Output shows:
 # ✓ Valid JSON: True
-# ✓ Identity verified: True
+# ✓ Signature verified: True
 # ✓ Time verified: True (within 30s tolerance)
-# ✓ Blockchain verified: True
+# ✓ Trust mode: public_signature
 # ✓ Overall: VALID
 ```
 
@@ -373,7 +395,7 @@ Core dependencies:
 | Use Case | Description | QRLP Solution |
 |----------|-------------|---------------|
 | **🎥 Livestreaming** | Prove streams are live, not pre-recorded | Real-time QR updates with live timestamps |
-| **📰 News Broadcasting** | Authenticate live news reports | Multi-source verification with blockchain anchoring |
+| **📰 News Broadcasting** | Add verifiable context to live reports | Signed issuer payloads with freshness context |
 | **🏢 Corporate Communications** | Verify official announcements | Custom identity with file-based signatures |
 | **⚖️ Legal Proceedings** | Timestamp evidence collection | Cryptographic proof with audit trails |
 | **🎓 Educational Content** | Verify lecture authenticity | Institution-branded QR codes |
@@ -385,12 +407,12 @@ Core dependencies:
 #### News Organization Example
 ```bash
 # BBC News using QRLP for live broadcast verification
-qrlp live --identity-file ./bbc-news.key --interval 5 --style professional
+qrlp live --identity-file ./bbc-news.key --interval 5
 
 # Viewers scan QR to verify:
 # - Broadcast is live (current timestamp)
-# - From BBC (identity verification)
-# - Anchored to blockchain (immutable proof)
+# - From BBC when the payload is signed and the verifier trusts BBC's public key
+# - Includes current blockchain hashes as freshness context
 ```
 
 #### Corporate Earnings Call
@@ -407,36 +429,37 @@ call_data = {
 }
 
 qr_data, qr_image = qrlp.generate_single_qr(call_data)
-# QR proves call authenticity and exact timing
+# QR carries signed/local integrity metadata and timing context
 ```
 
 ## 🔒 Security & Trust
 
-### Why QRLP is Secure
+### Security and Trust Model
 
 **Multi-Layered Verification:**
-- **Time Verification**: Multiple NTP servers + HTTP time APIs
-- **Blockchain Anchoring**: Current block hashes from multiple chains
-- **Identity Verification**: Cryptographic fingerprints of creator/system
-- **HMAC Integrity**: Cryptographic proof data hasn't been tampered with
+- **Time Verification**: Timestamp drift checks with optional time-server evidence
+- **Blockchain Context**: Current block hashes from configured chains; this is not an on-chain content commitment
+- **Issuer Metadata**: Stable issuer/key fields embedded in signed QR payloads
+- **Digital Signatures**: Public authenticity when the verifier trusts the issuer public key
+- **HMAC Integrity**: Local/shared-secret tamper detection, not public authenticity
 
 **Attack Resistance:**
-- **Forgery Impossible**: Requires controlling multiple independent systems
-- **Replay Attack Protection**: Live timestamps prevent pre-recorded content
-- **Tamper Detection**: HMAC integrity checking catches any modifications
-- **Decentralized Trust**: No single point of failure or authority
+- **Tamper Detection**: HMAC and signatures fail when covered payload fields change
+- **Replay Bounds**: Timestamps and optional expiry limit stale QR acceptance windows
+- **Trust Separation**: Public verifiers use public keys; private HMAC secrets are not distributed
+- **Fail-Closed Verification**: Malformed, expired, unsigned, or untrusted payloads are reported invalid
 
 ### Comparison with Alternatives
 
 | Solution | QRLP | Watermarking | Blockchain-Only | Metadata-Based |
 |----------|------|--------------|-----------------|----------------|
 | **Real-time verification** | ✅ Live | ❌ Static | ❌ Manual | ❌ Offline |
-| **Universal compatibility** | ✅ Any QR scanner | ❌ Special software | ❌ Crypto wallet | ❌ File reader |
+| **QR readability** | ✅ Any QR scanner | ❌ Special software | ❌ Crypto wallet | ❌ File reader |
 | **Tamper resistance** | ✅ Cryptographic | ⚠️ AI-removable | ✅ Immutable | ❌ Easily stripped |
-| **No infrastructure** | ✅ Self-contained | ❌ External service | ❌ Blockchain deps | ❌ Metadata parsing |
+| **No private verifier state for public signatures** | ✅ Trusted public key | ❌ External service | ❌ Blockchain deps | ❌ Metadata parsing |
 | **Live streaming** | ✅ Real-time updates | ❌ Static marks | ❌ Post-processing | ❌ No live support |
 
-**QRLP Advantage**: Works everywhere, proves liveness, cryptographically secure, no external dependencies.
+**QRLP Advantage**: Standard QR payloads, explicit issuer-key trust, local integrity checks, and streaming-friendly updates.
 
 ## 📊 Performance & Scalability
 
@@ -454,14 +477,14 @@ qr_data, qr_image = qrlp.generate_single_qr(call_data)
 # Faster updates for live events
 qrlp live --interval 1.0
 
-# Optimize blockchain caching
-qrlp live --config '{"blockchain_settings": {"cache_duration": 300}}'
+# Optimize blockchain caching through a config file
+qrlp --config streaming.json live
 ```
 
 **For Battery-Powered Devices:**
 ```bash
-# Reduce resource usage for mobile/laptop streaming
-qrlp live --interval 10.0 --blockchain-settings.enabled_chains '["bitcoin"]'
+# Reduce update frequency; use a config file to limit enabled chains
+qrlp --config battery.json live --interval 10.0
 ```
 
 **For Enterprise Deployments:**
@@ -490,13 +513,17 @@ qrlp status
 
 # Monitor in real-time via web interface
 # Visit http://localhost:8080/admin for detailed stats
+
+# Run readiness checks and local signed-QR smoke tests
+qrlp dashboard
+# Visit http://localhost:8080/improve
 ```
 
 ## 🚀 Getting Started (3 Steps)
 
 ### Step 1: Setup with uv (Recommended)
 ```bash
-git clone https://github.com/your-org/qr_live_protocol.git
+git clone https://github.com/docxology/qr_live_protocol.git
 cd qr_live_protocol
 
 # Modern setup with uv
@@ -515,7 +542,7 @@ qrlp config-init --output my-config.json
 ### Step 3: Use
 ```bash
 # Start live QR generation
-qrlp live --config my-config.json
+qrlp --config my-config.json live
 
 # Or use the simple demo launcher
 python main.py
@@ -534,8 +561,8 @@ python main.py
 
 ### Ways to Contribute
 
-**🐛 Bug Reports**: [GitHub Issues](https://github.com/your-org/qr_live_protocol/issues)
-**💡 Feature Requests**: [GitHub Discussions](https://github.com/your-org/qr_live_protocol/discussions)
+**🐛 Bug Reports**: [GitHub Issues](https://github.com/docxology/qr_live_protocol/issues)
+**💡 Feature Requests**: [GitHub Discussions](https://github.com/docxology/qr_live_protocol/discussions)
 **📝 Documentation**: Improve this README or other docs
 **🔧 Code Contributions**: See [Contributing Guide](CONTRIBUTING.md)
 
@@ -580,7 +607,7 @@ Contact us at **enterprise@qrlp.org** for:
 
 ## 🌟 Project Status
 
-**Current Version**: 1.0.0 (Stable)
+**Current Version**: 1.0.1 (Stable)
 **Active Development**: ✅ Yes
 **Community Support**: ✅ GitHub Issues & Discussions
 **Professional Support**: ✅ Available for enterprise users
@@ -610,11 +637,11 @@ QRLP builds on the work of:
 ## 📞 Contact & Support
 
 **📧 General Inquiries**: contact@qrlp.org
-**🐛 Bug Reports**: [GitHub Issues](https://github.com/your-org/qr_live_protocol/issues)
-**💬 Community**: [GitHub Discussions](https://github.com/your-org/qr_live_protocol/discussions)
+**🐛 Bug Reports**: [GitHub Issues](https://github.com/docxology/qr_live_protocol/issues)
+**💬 Community**: [GitHub Discussions](https://github.com/docxology/qr_live_protocol/discussions)
 **🏢 Enterprise**: enterprise@qrlp.org
 **🐦 Social**: [@QRLiveProtocol](https://twitter.com/qrliveprotocol)
 
 ---
 
-**QRLP**: Proving authenticity in a world of deepfakes and misinformation. 🛡️✨ 
+**QRLP**: Proving authenticity in a world of deepfakes and misinformation. 🛡️✨

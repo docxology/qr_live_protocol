@@ -7,15 +7,39 @@ Provides cryptographic proof of QR code origin and integrity.
 
 import hashlib
 import json
-from datetime import datetime
-from typing import Dict, Optional, Tuple, Any
-from dataclasses import asdict
+from typing import Dict, Tuple, Any, Optional
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa, ec, padding, utils
 from cryptography.exceptions import InvalidSignature
 
 from .key_manager import KeyManager
 from .exceptions import SignatureError
+
+
+SUPPORTED_SIGNATURE_ALGORITHMS = {"rsa", "ecdsa"}
+SIGNATURE_FIELDS = {"digital_signature", "signing_key_id", "signature_algorithm"}
+HMAC_FIELDS = {"_hmac", "_hmac_key_id", "_hmac_algorithm", "_integrity_checked_at"}
+ENCRYPTION_FIELDS = {"_encrypted_fields", "_encryption_key_id", "_data_key_id", "_encrypted_at"}
+
+
+def _validate_signature_algorithm(algorithm: str) -> str:
+    normalized = algorithm.lower()
+    if normalized not in SUPPORTED_SIGNATURE_ALGORITHMS:
+        raise SignatureError(f"Unsupported algorithm: {algorithm}")
+    return normalized
+
+
+def canonicalize_qr_payload_for_signature(qr_data: Any) -> Dict[str, Any]:
+    """Return the stable payload that signatures cover."""
+    if hasattr(qr_data, "__dict__"):
+        data = qr_data.__dict__.copy()
+    else:
+        data = dict(qr_data)
+
+    for field in SIGNATURE_FIELDS | HMAC_FIELDS | ENCRYPTION_FIELDS:
+        data.pop(field, None)
+
+    return {key: value for key, value in data.items() if value is not None}
 
 
 class DigitalSigner:
@@ -34,7 +58,7 @@ class DigitalSigner:
             private_key_pem: Private key in PEM format
             algorithm: Signature algorithm ('rsa' or 'ecdsa')
         """
-        self.algorithm = algorithm.lower()
+        self.algorithm = _validate_signature_algorithm(algorithm)
         self.private_key = self._load_private_key(private_key_pem)
 
     def sign_qr_data(self, qr_data: Any) -> bytes:
@@ -48,10 +72,11 @@ class DigitalSigner:
             Digital signature bytes
         """
         # Convert QR data to canonical JSON for consistent signing
-        if hasattr(qr_data, 'to_json'):
-            data_json = qr_data.to_json()
-        else:
-            data_json = json.dumps(qr_data, sort_keys=True, separators=(',', ':'))
+        data_json = json.dumps(
+            canonicalize_qr_payload_for_signature(qr_data),
+            sort_keys=True,
+            separators=(',', ':')
+        )
 
         # Create hash of the data
         data_hash = hashlib.sha256(data_json.encode('utf-8')).digest()
@@ -71,9 +96,6 @@ class DigitalSigner:
                 data_hash,
                 ec.ECDSA(hashes.SHA256())
             )
-        else:
-            raise SignatureError(f"Unsupported algorithm: {self.algorithm}")
-
         return signature
 
     def sign_message(self, message: str) -> bytes:
@@ -132,7 +154,7 @@ class SignatureVerifier:
             public_key_pem: Public key in PEM format
             algorithm: Signature algorithm ('rsa' or 'ecdsa')
         """
-        self.algorithm = algorithm.lower()
+        self.algorithm = _validate_signature_algorithm(algorithm)
         self.public_key = self._load_public_key(public_key_pem)
 
     def verify_qr_data(self, qr_data: Any, signature: bytes) -> bool:
@@ -148,10 +170,11 @@ class SignatureVerifier:
         """
         try:
             # Convert QR data to canonical JSON for consistent verification
-            if hasattr(qr_data, 'to_json'):
-                data_json = qr_data.to_json()
-            else:
-                data_json = json.dumps(qr_data, sort_keys=True, separators=(',', ':'))
+            data_json = json.dumps(
+                canonicalize_qr_payload_for_signature(qr_data),
+                sort_keys=True,
+                separators=(',', ':')
+            )
 
             # Create hash of the data
             data_hash = hashlib.sha256(data_json.encode('utf-8')).digest()
@@ -173,9 +196,6 @@ class SignatureVerifier:
                     data_hash,
                     ec.ECDSA(hashes.SHA256())
                 )
-            else:
-                raise SignatureError(f"Unsupported algorithm: {self.algorithm}")
-
             return True
 
         except InvalidSignature:
@@ -261,19 +281,19 @@ class QRSignatureManager:
         if not keypair:
             raise SignatureError(f"Key not found: {key_id}")
 
-        # Update usage statistics
-        if key_id in self.key_manager.keys_info:
-            key_info = self.key_manager.keys_info[key_id]
-            key_info.usage_count += 1
-            key_info.last_used = datetime.now()
-            self.key_manager._save_key_metadata()
-
         signer = DigitalSigner(keypair.private_key, keypair.algorithm)
         signature = signer.sign_qr_data(qr_data)
 
         return signature, key_id
 
-    def verify_qr_signature(self, qr_data: Any, signature: bytes, key_id: str) -> bool:
+    def verify_qr_signature(
+        self,
+        qr_data: Any,
+        signature: bytes,
+        key_id: str,
+        public_key_pem: Optional[bytes] = None,
+        algorithm: Optional[str] = None,
+    ) -> bool:
         """
         Verify QR data signature using specified key.
 
@@ -281,16 +301,25 @@ class QRSignatureManager:
             qr_data: QRData object or dictionary that was signed
             signature: Digital signature to verify
             key_id: Key identifier used for verification
+            public_key_pem: Optional trusted public key for external verification
+            algorithm: Signature algorithm for public_key_pem
 
         Returns:
             True if signature is valid
         """
-        keypair = self.key_manager.get_keypair(key_id)
-        if not keypair:
-            return False
+        try:
+            if public_key_pem:
+                verifier = SignatureVerifier(public_key_pem, algorithm or "rsa")
+                return verifier.verify_qr_data(qr_data, signature)
 
-        verifier = SignatureVerifier(keypair.public_key, keypair.algorithm)
-        return verifier.verify_qr_data(qr_data, signature)
+            keypair = self.key_manager.get_keypair(key_id)
+            if not keypair:
+                return False
+
+            verifier = SignatureVerifier(keypair.public_key, keypair.algorithm)
+            return verifier.verify_qr_data(qr_data, signature)
+        except SignatureError:
+            return False
 
     def create_signed_qr_data(self, qr_data: Any, signing_key_id: str) -> Dict[str, Any]:
         """
@@ -303,7 +332,8 @@ class QRSignatureManager:
         Returns:
             QR data dictionary with signature field
         """
-        signature, used_key_id = self.sign_qr_with_key(qr_data, signing_key_id)
+        signature_payload = canonicalize_qr_payload_for_signature(qr_data)
+        signature, used_key_id = self.sign_qr_with_key(signature_payload, signing_key_id)
 
         # Create signed QR data
         if hasattr(qr_data, '__dict__'):
@@ -313,11 +343,16 @@ class QRSignatureManager:
 
         signed_data['digital_signature'] = signature.hex()
         signed_data['signing_key_id'] = used_key_id
-        signed_data['signature_algorithm'] = self.key_manager.get_keypair(used_key_id).algorithm
+        signed_data['signature_algorithm'] = self.key_manager.keys_info[used_key_id].algorithm
 
         return signed_data
 
-    def verify_signed_qr_data(self, signed_qr_data: Dict[str, Any]) -> bool:
+    def verify_signed_qr_data(
+        self,
+        signed_qr_data: Dict[str, Any],
+        public_key_pem: Optional[bytes] = None,
+        algorithm: Optional[str] = None,
+    ) -> bool:
         """
         Verify QR data with embedded signature.
 
@@ -327,19 +362,21 @@ class QRSignatureManager:
         Returns:
             True if signature is valid
         """
-        if 'digital_signature' not in signed_qr_data:
+        if not signed_qr_data.get('digital_signature'):
             return False
 
-        signature_hex = signed_qr_data['digital_signature']
-        key_id = signed_qr_data['signing_key_id']
+        try:
+            signature_hex = signed_qr_data['digital_signature']
+            key_id = signed_qr_data['signing_key_id']
+            signature = bytes.fromhex(signature_hex)
+        except (KeyError, TypeError, ValueError):
+            return False
 
-        signature = bytes.fromhex(signature_hex)
-
-        # Remove signature fields for verification
-        verification_data = signed_qr_data.copy()
-        verification_data.pop('digital_signature', None)
-        verification_data.pop('signing_key_id', None)
-        verification_data.pop('signature_algorithm', None)
-
-        return self.verify_qr_signature(verification_data, signature, key_id)
-
+        verification_data = canonicalize_qr_payload_for_signature(signed_qr_data)
+        return self.verify_qr_signature(
+            verification_data,
+            signature,
+            key_id,
+            public_key_pem=public_key_pem,
+            algorithm=algorithm or signed_qr_data.get('signature_algorithm'),
+        )

@@ -97,7 +97,7 @@ Welcome to the QR Live Protocol (QRLP) documentation! This index will help you f
 - **[Data Privacy](SECURITY.md#data-protection)** - What data is collected
 
 ### Compliance
-- **[Open Source License](../LICENSE)** - MIT License terms
+- **[Source-Available License](../LICENSE)** - CC BY-NC-SA 4.0 terms
 - **[Dependencies](../requirements.txt)** - Third-party licenses
 - **[Export Control](SECURITY.md#contact)** - International usage
 
@@ -145,8 +145,8 @@ Welcome to the QR Live Protocol (QRLP) documentation! This index will help you f
 ## 🌟 Community
 
 ### Getting Help
-- **[GitHub Issues](https://github.com/your-org/qr_live_protocol/issues)** - Bug reports and support
-- **[GitHub Discussions](https://github.com/your-org/qr_live_protocol/discussions)** - Community Q&A
+- **[GitHub Issues](https://github.com/docxology/qr_live_protocol/issues)** - Bug reports and support
+- **[GitHub Discussions](https://github.com/docxology/qr_live_protocol/discussions)** - Community Q&A
 - **[Feature Requests](FEATURE_REQUESTS.md)** - Suggest improvements
 - **[Contact Information](SECURITY.md#contact)** - Direct contact
 
@@ -173,7 +173,7 @@ qrlp status                        # Check system status
 
 # Configuration
 qrlp config-init                   # Create default config
-qrlp live --config custom.json     # Use custom configuration
+qrlp --config custom.json live     # Use custom configuration
 qrlp live --port 8081              # Use different port
 
 # Development
@@ -219,7 +219,7 @@ setup.py                       # Legacy setup (deprecated, use pyproject.toml)
 2. Review [Contributing Guide](CONTRIBUTING.md)
 3. Study [examples/](../examples/)
 4. Check [Security Policy](SECURITY.md)
-5. Join [GitHub Discussions](https://github.com/your-org/qr_live_protocol/discussions)
+5. Join [GitHub Discussions](https://github.com/docxology/qr_live_protocol/discussions)
 
 ### For System Administrators
 1. Review [Security Policy](SECURITY.md)
@@ -230,8 +230,8 @@ setup.py                       # Legacy setup (deprecated, use pyproject.toml)
 
 ---
 
-**Documentation Version**: 1.0.0  
-**Last Updated**: January 2025  
+**Documentation Version**: 1.0.1
+**Last Updated**: January 2025
 **Maintained by**: QRLP Team
 
-For documentation issues or suggestions, please [open an issue](https://github.com/your-org/qr_live_protocol/issues) or [start a discussion](https://github.com/your-org/qr_live_protocol/discussions). 
+For documentation issues or suggestions, please [open an issue](https://github.com/docxology/qr_live_protocol/issues) or [start a discussion](https://github.com/docxology/qr_live_protocol/discussions).

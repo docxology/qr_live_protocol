@@ -5,16 +5,16 @@ Provides circuit breaker patterns, retry logic, and graceful degradation
 for robust QRLP operations in production environments.
 """
 
-import time
 import asyncio
-import random
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any, Callable, TypeVar, Union
-from dataclasses import dataclass, field
-from enum import Enum
+import inspect
 import logging
-
-from .crypto.exceptions import CryptoError
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
+from dataclasses import dataclass
+from enum import Enum
+from functools import wraps
+from typing import Any, Awaitable, Callable, Dict, Optional, TypeVar, cast
 
 
 class CircuitBreakerState(Enum):
@@ -32,6 +32,15 @@ class CircuitBreakerConfig:
     success_threshold: int = 3          # Successes needed to close
     timeout: float = 30.0               # Request timeout
 
+    def __post_init__(self) -> None:
+        """Validate circuit breaker thresholds at construction time."""
+        if self.failure_threshold < 1:
+            raise ValueError("failure_threshold must be at least 1")
+        if self.recovery_timeout < 0:
+            raise ValueError("recovery_timeout must be non-negative")
+        if self.success_threshold < 1:
+            raise ValueError("success_threshold must be at least 1")
+
 
 @dataclass
 class CircuitBreakerStats:
@@ -44,6 +53,9 @@ class CircuitBreakerStats:
     last_success_time: Optional[float] = None
 
 
+ResultT = TypeVar("ResultT")
+
+
 class CircuitBreaker:
     """
     Circuit breaker implementation for resilient operations.
@@ -52,7 +64,7 @@ class CircuitBreaker:
     requests to failing services and allowing recovery testing.
     """
 
-    def __init__(self, name: str, config: CircuitBreakerConfig = None):
+    def __init__(self, name: str, config: Optional[CircuitBreakerConfig] = None):
         """
         Initialize circuit breaker.
 
@@ -62,104 +74,237 @@ class CircuitBreaker:
         """
         self.name = name
         self.config = config or CircuitBreakerConfig()
-        self.state = CircuitBreakerState.CLOSED
+        self._state = CircuitBreakerState.CLOSED
         self.stats = CircuitBreakerStats()
         self._consecutive_failures = 0
         self._consecutive_successes = 0
         self._last_failure_time = 0.0
+        self._half_open_in_flight = False
+        self._lock = threading.RLock()
         self._logger = logging.getLogger(f"circuit_breaker.{name}")
 
-    def __call__(self, func: Callable) -> Callable:
+    @property
+    def state(self) -> CircuitBreakerState:
+        """Return the current state, promoting OPEN to HALF_OPEN when recovery is due."""
+        with self._lock:
+            self._transition_to_half_open_if_ready()
+            return self._state
+
+    @state.setter
+    def state(self, value: CircuitBreakerState) -> None:
+        """Set the current state."""
+        with self._lock:
+            self._state = value
+
+    def __call__(self, func: Callable[..., Any]) -> Callable[..., Any]:
         """Decorator to wrap function with circuit breaker."""
-        def wrapper(*args, **kwargs):
-            if not self._can_execute():
-                self._logger.warning(f"Circuit breaker {self.name} is OPEN, rejecting request")
-                raise CircuitBreakerOpenError(f"Circuit breaker {self.name} is open")
+        if inspect.iscoroutinefunction(func):
+            @wraps(func)
+            async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
+                return await self.execute_async(func, *args, **kwargs)
 
-            try:
-                result = func(*args, **kwargs)
-                self._on_success()
-                return result
-            except Exception as e:
-                self._on_failure()
-                raise
+            return async_wrapper
+
+        @wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            return self.execute(func, *args, **kwargs)
 
         return wrapper
 
-    async def __call_async(self, func: Callable) -> Callable:
-        """Async decorator for async functions."""
-        async def wrapper(*args, **kwargs):
-            if not self._can_execute():
-                self._logger.warning(f"Circuit breaker {self.name} is OPEN, rejecting request")
+    def execute(self, func: Callable[..., ResultT], *args: Any, **kwargs: Any) -> ResultT:
+        """Execute a synchronous function under circuit-breaker protection."""
+        self._before_execution()
+        try:
+            result = self._run_with_timeout(func, *args, **kwargs)
+        except Exception as exc:
+            self._on_failure(exc)
+            raise
+        self._on_success()
+        return result
+
+    async def execute_async(
+        self,
+        func: Callable[..., Awaitable[ResultT]],
+        *args: Any,
+        **kwargs: Any,
+    ) -> ResultT:
+        """Execute an async function under circuit-breaker protection."""
+        self._before_execution()
+        try:
+            result = await self._run_async_with_timeout(func, *args, **kwargs)
+        except Exception as exc:
+            self._on_failure(exc)
+            raise
+        self._on_success()
+        return result
+
+    def _before_execution(self) -> None:
+        """Validate state and reserve a half-open recovery slot when needed."""
+        with self._lock:
+            self.stats.total_requests += 1
+            self._transition_to_half_open_if_ready()
+
+            if self._state == CircuitBreakerState.CLOSED:
+                return
+
+            if self._state == CircuitBreakerState.OPEN:
+                self.stats.failed_requests += 1
+                self._logger.warning(
+                    "Circuit breaker %s is OPEN, rejecting request",
+                    self.name,
+                )
                 raise CircuitBreakerOpenError(f"Circuit breaker {self.name} is open")
 
-            try:
-                result = await func(*args, **kwargs)
-                self._on_success()
-                return result
-            except Exception as e:
-                self._on_failure()
-                raise
+            if self._half_open_in_flight:
+                self.stats.failed_requests += 1
+                self._logger.warning(
+                    "Circuit breaker %s is HALF_OPEN and already testing recovery",
+                    self.name,
+                )
+                raise CircuitBreakerOpenError(
+                    f"Circuit breaker {self.name} is already testing recovery"
+                )
 
-        return wrapper
+            self._half_open_in_flight = True
 
-    def _can_execute(self) -> bool:
-        """Check if circuit breaker allows execution."""
-        if self.state == CircuitBreakerState.CLOSED:
-            return True
-        elif self.state == CircuitBreakerState.OPEN:
-            # Check if recovery timeout has passed
-            if time.time() - self._last_failure_time >= self.config.recovery_timeout:
-                self._logger.info(f"Circuit breaker {self.name} transitioning to HALF_OPEN")
-                self.state = CircuitBreakerState.HALF_OPEN
-                return True
-            return False
-        elif self.state == CircuitBreakerState.HALF_OPEN:
-            return True
-        return False
+    def _transition_to_half_open_if_ready(self) -> None:
+        """Promote an OPEN circuit to HALF_OPEN after the recovery timeout expires."""
+        if self._state != CircuitBreakerState.OPEN:
+            return
 
-    def _on_success(self):
+        if time.monotonic() - self._last_failure_time < self.config.recovery_timeout:
+            return
+
+        self._logger.info("Circuit breaker %s transitioning to HALF_OPEN", self.name)
+        self._state = CircuitBreakerState.HALF_OPEN
+        self._consecutive_successes = 0
+        self._half_open_in_flight = False
+
+    def _run_with_timeout(
+        self,
+        func: Callable[..., ResultT],
+        *args: Any,
+        **kwargs: Any,
+    ) -> ResultT:
+        """Run a synchronous function with the configured timeout."""
+        if self.config.timeout <= 0:
+            # Non-positive timeout intentionally disables sync operation timeouts.
+            return func(*args, **kwargs)
+
+        executor = ThreadPoolExecutor(
+            max_workers=1,
+            thread_name_prefix=f"cb-{self.name}",
+        )
+        future = executor.submit(func, *args, **kwargs)
+        try:
+            return future.result(timeout=self.config.timeout)
+        except FutureTimeoutError as exc:
+            future.cancel()
+            raise TimeoutError(
+                f"Operation {self.name} timed out after {self.config.timeout:.3f}s"
+            ) from exc
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
+
+    async def _run_async_with_timeout(
+        self,
+        func: Callable[..., Awaitable[ResultT]],
+        *args: Any,
+        **kwargs: Any,
+    ) -> ResultT:
+        """Run an async function with the configured timeout."""
+        awaitable = func(*args, **kwargs)
+        if not inspect.isawaitable(awaitable):
+            raise TypeError(f"Operation {self.name} did not return an awaitable")
+
+        typed_awaitable = cast(Awaitable[ResultT], awaitable)
+        if self.config.timeout <= 0:
+            # Non-positive timeout intentionally disables async operation timeouts.
+            return await typed_awaitable
+
+        try:
+            return await asyncio.wait_for(typed_awaitable, timeout=self.config.timeout)
+        except asyncio.TimeoutError as exc:
+            raise TimeoutError(
+                f"Operation {self.name} timed out after {self.config.timeout:.3f}s"
+            ) from exc
+
+    def _on_success(self) -> None:
         """Handle successful operation."""
-        self.stats.successful_requests += 1
-        self.stats.last_success_time = time.time()
+        with self._lock:
+            self.stats.successful_requests += 1
+            self.stats.last_success_time = time.time()
 
-        if self.state == CircuitBreakerState.HALF_OPEN:
-            self._consecutive_successes += 1
-            if self._consecutive_successes >= self.config.success_threshold:
-                self._logger.info(f"Circuit breaker {self.name} transitioning to CLOSED")
-                self.state = CircuitBreakerState.CLOSED
-                self._consecutive_failures = 0
-                self._consecutive_successes = 0
-                self.stats.state_changes += 1
+            if self._state == CircuitBreakerState.HALF_OPEN:
+                self._half_open_in_flight = False
+                self._consecutive_successes += 1
+                if self._consecutive_successes >= self.config.success_threshold:
+                    self._logger.info("Circuit breaker %s transitioning to CLOSED", self.name)
+                    self._state = CircuitBreakerState.CLOSED
+                    self._consecutive_failures = 0
+                    self._consecutive_successes = 0
+                    self.stats.state_changes += 1
+                return
 
-    def _on_failure(self):
+            self._consecutive_failures = 0
+
+    def _on_failure(self, exc: Exception) -> None:
         """Handle failed operation."""
-        self.stats.failed_requests += 1
-        self.stats.last_failure_time = time.time()
-        self._consecutive_failures += 1
+        failure_time = time.time()
+        with self._lock:
+            self.stats.failed_requests += 1
+            self.stats.last_failure_time = failure_time
+            self._last_failure_time = time.monotonic()
 
-        if self.state == CircuitBreakerState.HALF_OPEN:
-            # Failed in half-open state, go back to open
-            self._logger.warning(f"Circuit breaker {self.name} failed in HALF_OPEN, returning to OPEN")
-            self.state = CircuitBreakerState.OPEN
-            self._consecutive_successes = 0
-            self.stats.state_changes += 1
-        elif self._consecutive_failures >= self.config.failure_threshold:
-            # Too many failures, open circuit
-            self._logger.warning(f"Circuit breaker {self.name} opening after {self._consecutive_failures} failures")
-            self.state = CircuitBreakerState.OPEN
-            self.stats.state_changes += 1
+            if self._state == CircuitBreakerState.HALF_OPEN:
+                self._logger.warning(
+                    "Circuit breaker %s failed in HALF_OPEN, returning to OPEN: %s",
+                    self.name,
+                    exc,
+                )
+                self._state = CircuitBreakerState.OPEN
+                self._consecutive_failures = self.config.failure_threshold
+                self._consecutive_successes = 0
+                self._half_open_in_flight = False
+                self.stats.state_changes += 1
+                return
+
+            if self._state == CircuitBreakerState.OPEN:
+                self._consecutive_failures += 1
+                return
+
+            self._consecutive_failures += 1
+            if self._consecutive_failures >= self.config.failure_threshold:
+                self._logger.warning(
+                    "Circuit breaker %s opening after %s failures: %s",
+                    self.name,
+                    self._consecutive_failures,
+                    exc,
+                )
+                self._state = CircuitBreakerState.OPEN
+                self.stats.state_changes += 1
 
     def get_stats(self) -> CircuitBreakerStats:
         """Get circuit breaker statistics."""
-        return self.stats
+        with self._lock:
+            return CircuitBreakerStats(
+                total_requests=self.stats.total_requests,
+                successful_requests=self.stats.successful_requests,
+                failed_requests=self.stats.failed_requests,
+                state_changes=self.stats.state_changes,
+                last_failure_time=self.stats.last_failure_time,
+                last_success_time=self.stats.last_success_time,
+            )
 
-    def reset(self):
+    def reset(self) -> None:
         """Reset circuit breaker to initial state."""
-        self.state = CircuitBreakerState.CLOSED
-        self._consecutive_failures = 0
-        self._consecutive_successes = 0
-        self.stats = CircuitBreakerStats()
+        with self._lock:
+            self._state = CircuitBreakerState.CLOSED
+            self._consecutive_failures = 0
+            self._consecutive_successes = 0
+            self._last_failure_time = 0.0
+            self._half_open_in_flight = False
+            self.stats = CircuitBreakerStats()
 
 
 class RetryStrategy:
@@ -207,8 +352,12 @@ class ResilientOperation:
     reliability in distributed systems.
     """
 
-    def __init__(self, name: str, retry_strategy: RetryStrategy = None,
-                 circuit_breaker: CircuitBreaker = None):
+    def __init__(
+        self,
+        name: str,
+        retry_strategy: Optional[RetryStrategy] = None,
+        circuit_breaker: Optional[CircuitBreaker] = None,
+    ):
         """
         Initialize resilient operation.
 
@@ -241,7 +390,7 @@ class ResilientOperation:
         for attempt in range(1, self.retry_strategy.max_attempts + 1):
             try:
                 # Apply circuit breaker protection
-                result = self.circuit_breaker(func)(*args, **kwargs)
+                result = self.circuit_breaker.execute(func, *args, **kwargs)
                 self._logger.debug(f"Operation {self.name} succeeded on attempt {attempt}")
                 return result
 
@@ -257,7 +406,12 @@ class ResilientOperation:
 
                 # Calculate delay and wait
                 delay = self.retry_strategy.calculate_delay(attempt)
-                self._logger.info(f"Retrying operation {self.name} in {delay:.1f}s (attempt {attempt + 1})")
+                self._logger.info(
+                    "Retrying operation %s in %.1fs (attempt %s)",
+                    self.name,
+                    delay,
+                    attempt + 1,
+                )
                 time.sleep(delay)
 
         # Should never reach here due to should_retry check
@@ -278,24 +432,45 @@ class ResilientOperation:
         for attempt in range(1, self.retry_strategy.max_attempts + 1):
             try:
                 # Apply circuit breaker protection to async function
-                protected_func = self.circuit_breaker.__call_async(func)
-                result = await protected_func(*args, **kwargs)
-                self._logger.debug(f"Async operation {self.name} succeeded on attempt {attempt}")
+                result = await self.circuit_breaker.execute_async(
+                    func,
+                    *args,
+                    **kwargs,
+                )
+                self._logger.debug(
+                    "Async operation %s succeeded on attempt %s",
+                    self.name,
+                    attempt,
+                )
                 return result
 
             except CircuitBreakerOpenError:
                 raise  # Don't retry circuit breaker opens
 
             except Exception as e:
-                self._logger.warning(f"Async operation {self.name} failed on attempt {attempt}: {e}")
+                self._logger.warning(
+                    "Async operation %s failed on attempt %s: %s",
+                    self.name,
+                    attempt,
+                    e,
+                )
 
                 if not self.retry_strategy.should_retry(attempt, e):
-                    self._logger.error(f"Async operation {self.name} failed after {attempt} attempts")
+                    self._logger.error(
+                        "Async operation %s failed after %s attempts",
+                        self.name,
+                        attempt,
+                    )
                     raise
 
                 # Calculate delay and wait
                 delay = self.retry_strategy.calculate_delay(attempt)
-                self._logger.info(f"Retrying async operation {self.name} in {delay:.1f}s (attempt {attempt + 1})")
+                self._logger.info(
+                    "Retrying async operation %s in %.1fs (attempt %s)",
+                    self.name,
+                    delay,
+                    attempt + 1,
+                )
                 await asyncio.sleep(delay)
 
         # Should never reach here
@@ -315,7 +490,11 @@ class CircuitBreakerManager:
         self.circuit_breakers: Dict[str, CircuitBreaker] = {}
         self._logger = logging.getLogger("circuit_breaker_manager")
 
-    def get_circuit_breaker(self, name: str, config: CircuitBreakerConfig = None) -> CircuitBreaker:
+    def get_circuit_breaker(
+        self,
+        name: str,
+        config: Optional[CircuitBreakerConfig] = None,
+    ) -> CircuitBreaker:
         """
         Get or create circuit breaker for operation.
 
@@ -418,7 +597,7 @@ class ResilienceManager:
 
     def create_resilient_operation(self, name: str,
                                   retry_strategy: str = "network",
-                                  circuit_breaker: str = None) -> ResilientOperation:
+                                  circuit_breaker: Optional[str] = None) -> ResilientOperation:
         """
         Create resilient operation with specified strategies.
 
@@ -468,7 +647,10 @@ class ResilienceManager:
             message = f"{len(open_circuits)} circuit(s) open: {', '.join(open_circuits)}"
         elif degraded_circuits:
             health = "degraded"
-            message = f"{len(degraded_circuits)} circuit(s) in recovery: {', '.join(degraded_circuits)}"
+            message = (
+                f"{len(degraded_circuits)} circuit(s) in recovery: "
+                f"{', '.join(degraded_circuits)}"
+            )
         else:
             health = "healthy"
             message = "All circuits operational"
@@ -574,4 +756,3 @@ async def resilient_verification_async(qrlp_instance, qr_json: str) -> Dict[str,
         operation = resilience_manager.create_resilient_operation("qr_verification_async")
 
     return await operation.execute_async(qrlp_instance.verify_qr_data_async, qr_json)
-

@@ -121,6 +121,10 @@ app.run(port=8080)
 - Admin dashboard with system statistics
 - Monitoring and control interface
 
+**`GET /improve`**
+- Improvement dashboard with readiness gates, key/trust state, and smoke-test controls
+- Designed for local operator verification before a stream or release
+
 ### API Endpoints
 
 **`GET /api/status`**
@@ -160,7 +164,49 @@ Response:
 {
   "valid": true,
   "timestamp": "2025-01-11T15:30:45.789Z",
-  "message": "QR data verification successful"
+  "data_length": 768,
+  "valid_json": true,
+  "identity_verified": true,
+  "time_verified": true,
+  "blockchain_verified": false,
+  "signature_verified": true,
+  "hmac_verified": false,
+  "encrypted": false,
+  "trust_mode": "public_signature"
+}
+```
+
+**`GET /api/improve/status`**
+```json
+{
+  "readiness": {
+    "passed": 5,
+    "total": 5,
+    "score": 1.0,
+    "state": "ready"
+  },
+  "features": [
+    {"name": "signed_qr_generation", "ok": true, "severity": "pass"},
+    {"name": "web_verify_endpoint", "ok": true, "severity": "pass"}
+  ],
+  "trust": {"trusted_key_count": 0, "trusted_keys": []},
+  "keys": {"signing_key_count": 0, "signing_keys": []}
+}
+```
+
+**`POST /api/improve/smoke-test`**
+```json
+{
+  "success": true,
+  "signed_round_trip": {
+    "valid": true,
+    "trust_mode": "public_signature",
+    "signature_verified": true
+  },
+  "chunk_recovery": {
+    "valid": true,
+    "chunk_count": 4
+  }
 }
 ```
 
@@ -355,22 +401,14 @@ def update_user_data():
 ```
 
 ### Rate Limiting
+`WebSettings.rate_limit_per_minute` applies a basic in-memory per-client request cap. This is suitable for local and single-process deployments; place a reverse proxy or gateway in front of QRLP before exposing it beyond localhost.
+
 ```python
-# Rate limiting implementation
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
+from src.config import WebSettings
+from src.web_server import QRLiveWebServer
 
-limiter = Limiter(
-    app,
-    key_func=get_remote_address,
-    default_limits=["100 per minute"]
-)
-
-@app.route('/api/qr/current')
-@limiter.limit("10 per minute")
-def get_current_qr():
-    # Rate limited endpoint
-    pass
+settings = WebSettings(rate_limit_per_minute=120, admin_token="change-me")
+server = QRLiveWebServer(settings)
 ```
 
 ### HTTPS Configuration
@@ -528,60 +566,17 @@ memory_mb = process.memory_info().rss / 1024 / 1024
 print(f"Memory usage: {memory_mb:.1f}MB")
 ```
 
-## Production Deployment
+## Deployment Notes
 
-### Docker Deployment
-```dockerfile
-FROM python:3.11-slim
+This repository currently does not ship a tested Dockerfile, compose stack, Prometheus exporter, or internet-facing hardening profile. The web server is intended for local stream overlays and controlled networks by default.
 
-WORKDIR /app
-COPY . .
+Before exposing QRLP beyond localhost:
 
-RUN pip install -r requirements.txt
-RUN pip install -e .
+- Configure `WebSettings.admin_token` for state-changing controls.
+- Keep CORS disabled unless a specific trusted origin is required.
+- Put QRLP behind a reverse proxy that handles TLS, durable rate limiting, request size limits, and access logs.
+- Use a configured `QRLiveProtocol` verifier for `/api/verify` when public-key trust is required.
 
-EXPOSE 8080
+Reverse proxy, load balancer, and metrics-exporter examples are intentionally omitted until this repository ships tested deployment artifacts for them.
 
-# Production settings
-ENV QRLP_WEB_HOST=0.0.0.0
-ENV QRLP_WEB_PORT=8080
-ENV QRLP_WEB_CORS_ENABLED=false
-ENV QRLP_WEB_DEBUG=false
-
-CMD ["python", "-m", "src.web_server"]
-```
-
-### Load Balancer Configuration
-```nginx
-# Nginx load balancer configuration
-upstream qrlp_backend {
-    server 192.168.1.10:8080;
-    server 192.168.1.11:8080;
-    server 192.168.1.12:8080;
-}
-
-server {
-    listen 80;
-    server_name qrlp.yourdomain.com;
-
-    location / {
-        proxy_pass http://qrlp_backend;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-}
-```
-
-### Monitoring Setup
-```yaml
-# Prometheus configuration for QRLP monitoring
-scrape_configs:
-  - job_name: 'qrlp'
-    static_configs:
-      - targets: ['qrlp-server:8080']
-    scrape_interval: 15s
-    metrics_path: '/metrics'
-```
-
-This web server module provides a complete, production-ready web interface for QRLP with comprehensive security, monitoring, and integration capabilities.
-
+This web server module provides a local-first live QR interface for QRLP with input validation, optional admin-token controls, basic rate limiting, Socket.IO updates, and a real `/api/verify` integration point.
