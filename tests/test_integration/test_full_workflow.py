@@ -8,7 +8,6 @@ and cryptographic operations working together.
 import pytest
 import json
 import time
-from unittest.mock import patch
 
 from src import QRLiveProtocol, QRLPConfig
 from src.crypto import KeyManager

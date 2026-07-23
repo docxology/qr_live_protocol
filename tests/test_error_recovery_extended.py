@@ -7,7 +7,6 @@ Covers all state transitions, async paths, decorators, and managers.
 import asyncio
 import time
 import pytest
-from unittest.mock import MagicMock, patch
 
 from src.error_recovery import (
     CircuitBreaker, CircuitBreakerConfig, CircuitBreakerState,
@@ -15,6 +14,7 @@ from src.error_recovery import (
     CircuitBreakerManager, ResilienceManager, CircuitBreakerOpenError,
     resilience_manager, resilient_qr_generation, resilient_verification,
 )
+from src.core import QRLiveProtocol, QRData
 
 
 class TestCircuitBreakerConfig:
@@ -350,17 +350,28 @@ class TestResilienceManager:
 
 
 class TestResilientFunctions:
-    """Test module-level resilient functions."""
+    """Test module-level resilient functions with real QRLP instances."""
 
-    def test_resilient_qr_generation(self):
-        mock_qrlp = MagicMock()
-        mock_qrlp.generate_single_qr.return_value = ("qr_data", b"qr_image")
-        result = resilient_qr_generation(mock_qrlp, {"key": "val"}, True, False)
-        assert result == ("qr_data", b"qr_image")
-        mock_qrlp.generate_single_qr.assert_called_once()
+    @pytest.fixture
+    def qrlp(self, tmp_path):
+        """Real QRLiveProtocol instance with blockchain/time disabled."""
+        from src.config import QRLPConfig
+        config = QRLPConfig()
+        config.blockchain_settings.enabled_chains = set()
+        config.time_settings.time_servers = []
+        config.security_settings.key_dir = str(tmp_path / "keys")
+        return QRLiveProtocol(config)
 
-    def test_resilient_verification(self):
-        mock_qrlp = MagicMock()
-        mock_qrlp.verify_qr_data.return_value = {"valid": True}
-        result = resilient_verification(mock_qrlp, '{"test": true}')
-        assert result == {"valid": True}
+    def test_resilient_qr_generation(self, qrlp):
+        """resilient_qr_generation should generate a real QR via the circuit breaker."""
+        result = resilient_qr_generation(qrlp, {"key": "val"}, True, False)
+        assert len(result) == 2
+        assert isinstance(result[0], QRData)
+        assert isinstance(result[1], bytes)
+        assert result[1][:4] == b'\x89PNG'
+
+    def test_resilient_verification(self, qrlp):
+        """resilient_verification should verify a real QR via the circuit breaker."""
+        qr_data, _ = qrlp.generate_single_qr(sign_data=True)
+        result = resilient_verification(qrlp, qr_data.to_json())
+        assert result["valid_json"] is True

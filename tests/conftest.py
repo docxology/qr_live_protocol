@@ -115,52 +115,6 @@ def sample_encrypted_qr_data(sample_qr_data):
     return encrypted_data
 
 
-@pytest.fixture
-def mock_time_provider():
-    """Mock time provider for testing."""
-    class MockTimeProvider:
-        def get_current_time(self):
-            from datetime import datetime, timezone
-            return datetime.now(timezone.utc)
-
-        def get_time_server_verification(self):
-            return {"mock_server": {"timestamp": "2025-01-11T15:30:45Z", "offset": 0}}
-
-        def get_statistics(self):
-            return {"total_syncs": 1, "successful_syncs": 1}
-
-    return MockTimeProvider()
-
-
-@pytest.fixture
-def mock_blockchain_verifier():
-    """Mock blockchain verifier for testing."""
-    class MockBlockchainVerifier:
-        def get_blockchain_hashes(self):
-            return {
-                "bitcoin": "00000000000000000008a15c6c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4",
-                "ethereum": "0x1234567890abcdef1234567890abcdef12345678"
-            }
-
-        def get_statistics(self):
-            return {"total_requests": 1, "successful_requests": 1}
-
-    return MockBlockchainVerifier()
-
-
-@pytest.fixture
-def mock_identity_manager():
-    """Mock identity manager for testing."""
-    class MockIdentityManager:
-        def get_identity_hash(self):
-            return "mock_identity_hash_123456789"
-
-        def get_statistics(self):
-            return {"hash_generations": 1, "file_count": 0}
-
-    return MockIdentityManager()
-
-
 # Test utilities
 class TestUtils:
     """Utility functions for testing."""

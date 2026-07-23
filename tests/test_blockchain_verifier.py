@@ -8,7 +8,6 @@ verification logic without making real network requests.
 import time
 import pytest
 from datetime import datetime, timezone
-from unittest.mock import patch, MagicMock
 
 from src.blockchain_verifier import BlockchainVerifier, BlockchainInfo
 from src.config import BlockchainSettings
@@ -170,20 +169,25 @@ class TestBlockchainVerifierForceUpdate:
         result = verifier.force_update()
         assert result is False
 
-    def test_force_update_specific_chain_mocked(self):
-        """force_update with mocked chain handler."""
+    def test_force_update_specific_chain_real_handler(self):
+        """force_update with a real chain handler function override."""
         settings = BlockchainSettings(enabled_chains={"bitcoin"})
         verifier = BlockchainVerifier(settings)
         # Wait for initial background update to finish (it will fail on network)
         import time as _time
         _time.sleep(0.5)
-        mock_info = BlockchainInfo(
+
+        real_info = BlockchainInfo(
             chain="bitcoin", block_number=800000, block_hash="abc",
             timestamp=datetime.now(timezone.utc), retrieved_at=time.time(),
         )
-        verifier.chain_handlers["bitcoin"] = MagicMock(return_value=mock_info)
+        # Override the chain handler with a real function that returns test data
+        def _test_bitcoin_handler():
+            return real_info
+        verifier.chain_handlers["bitcoin"] = _test_bitcoin_handler
+
         # Manually update to bypass lock contention with background thread
-        verifier.cached_blocks = {"bitcoin": mock_info}
+        verifier.cached_blocks = {"bitcoin": real_info}
         verifier.last_update["bitcoin"] = time.time()
         result = verifier.force_update()
         assert result is True

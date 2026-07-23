@@ -293,9 +293,11 @@ class DataEncryptor:
         return datetime.now(timezone.utc).isoformat()
 
     def _get_key_by_id(self, key_id: str) -> Optional[EncryptionKey]:
-        """Get encryption key by ID (placeholder for future key storage)."""
-        # For now, only support the master key
-        # In production, this would retrieve from secure key storage
+        """Get encryption key by ID.
+
+        Currently returns the master key for any key_id. Multi-key
+        rotation is tracked in TODO.md for a future release.
+        """
         return EncryptionKey(
             key_id=key_id,
             key_data=self.master_key,

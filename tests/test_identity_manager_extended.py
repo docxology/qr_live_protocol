@@ -14,7 +14,6 @@ import tempfile
 import hashlib
 import json
 from datetime import datetime, timezone
-from unittest.mock import patch, MagicMock
 from pathlib import Path
 
 from src.identity_manager import IdentityManager, IdentityInfo

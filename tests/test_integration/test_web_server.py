@@ -11,7 +11,6 @@ Tests cover:
 
 import pytest
 import json
-from unittest.mock import Mock, patch
 from src.web_server import QRLiveWebServer, SecurityValidator
 from src.config import QRLPConfig, WebSettings
 from src.core import QRData

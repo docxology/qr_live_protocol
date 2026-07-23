@@ -6,7 +6,6 @@ config-validate, status --json, CSP headers, connection pooling.
 import json
 import pytest
 from click.testing import CliRunner
-from unittest.mock import MagicMock
 
 from src.cli import cli
 from src.config import QRLPConfig, WebSettings

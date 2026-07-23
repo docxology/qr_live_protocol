@@ -7,7 +7,6 @@ Tests QR generation, verification, and integration with cryptographic components
 import pytest
 import json
 import time
-from unittest.mock import patch, MagicMock
 
 from src import QRLiveProtocol, QRLPConfig, QRData
 from src.crypto import KeyManager, DataEncryptor, HMACManager

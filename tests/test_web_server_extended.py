@@ -7,7 +7,6 @@ Uses Flask test_client() -- no actual server thread is started.
 import json
 import pytest
 import tempfile
-from unittest.mock import patch, MagicMock
 
 from src.web_server import QRLiveWebServer, SecurityValidator, security_middleware
 from src.config import WebSettings, QRLPConfig

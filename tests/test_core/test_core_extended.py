@@ -11,7 +11,6 @@ import pytest
 import tempfile
 import threading
 from datetime import datetime, timezone, timedelta
-from unittest.mock import patch, MagicMock
 
 from src.core import QRLiveProtocol, QRData
 from src.config import QRLPConfig

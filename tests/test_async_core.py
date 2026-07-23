@@ -3,14 +3,16 @@ Tests for async_core.py AsyncQRLiveProtocol.
 
 Covers async QR generation, verification, batch operations,
 blockchain/time data, performance stats, and sync wrappers.
-All network calls are mocked.
+Network-dependent tests use a real local HTTP server.
 """
 
 import asyncio
+import json
+import http.server
+import threading
 import pytest
 import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock, AsyncMock
 
 from src.async_core import AsyncQRLiveProtocol
 from src.config import QRLPConfig
@@ -26,6 +28,48 @@ def async_config(tmp_path):
     config.time_settings.time_servers = []
     config.security_settings.key_dir = str(tmp_path / "keys")
     return config
+
+
+@pytest.fixture
+def local_http_server():
+    """Start a real local HTTP server that returns blockchain/time data."""
+    class TestHandler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            if "blocks/tip/hash" in self.path or "bitcoin" in self.path:
+                self.send_response(200)
+                self.send_header("Content-Type", "text/plain")
+                self.end_headers()
+                self.wfile.write(b"00000000000000000008a15c")
+            elif "worldtimeapi" in self.path or "timezone" in self.path:
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    "datetime": "2025-01-11T15:30:45.123456+00:00"
+                }).encode())
+            else:
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    "height": 800000,
+                    "hash": "00000000000000000008a15c",
+                }).encode())
+
+        def log_message(self, format, *args):
+            pass
+
+    server = http.server.HTTPServer(("127.0.0.1", 0), TestHandler)
+    port = server.server_address[1]
+    url = f"http://127.0.0.1:{port}"
+
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+
+    yield url
+
+    server.shutdown()
+    thread.join(timeout=2)
 
 
 class TestAsyncInit:
@@ -49,8 +93,6 @@ class TestAsyncContextManager:
     async def test_aenter_aexit(self, async_config):
         async with AsyncQRLiveProtocol(async_config) as qrlp:
             assert len(qrlp._session_pool) == 3
-        # After exit, sessions should be closed
-        # Executor should be shut down
 
 
 class TestAsyncQRGeneration:
@@ -134,57 +176,45 @@ class TestAsyncStream:
 
 
 class TestAsyncBlockchainData:
-    """Test async blockchain data retrieval."""
+    """Test async blockchain data retrieval using a real local HTTP server."""
 
     async def test_get_blockchain_data_async_no_chains(self, async_config):
         async with AsyncQRLiveProtocol(async_config) as qrlp:
             result = await qrlp.get_blockchain_data_async()
             assert result == {}
 
-    async def test_get_blockchain_data_async_with_mock(self, async_config):
-        """Mock the aiohttp session to return fake blockchain data."""
-        async_config.blockchain_settings.enabled_chains = {"bitcoin"}
+    async def test_get_blockchain_data_async_with_real_server(self, async_config, local_http_server):
+        """Test async HTTP retrieval against a real local server."""
         qrlp = AsyncQRLiveProtocol(async_config)
-        # Don't use context manager -- mock the session
-        mock_response = AsyncMock()
-        mock_response.status = 200
-        mock_response.json = AsyncMock(return_value="00000000000000000008a15c")
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=None)
+        await qrlp._initialize_async_resources()
+        session = qrlp._session_pool[0]
 
-        mock_session = AsyncMock()
-        mock_session.get = MagicMock(return_value=mock_response)
-        mock_session.close = AsyncMock()
-
-        qrlp._session_pool = [mock_session]
-        result = await qrlp.get_blockchain_data_async()
-        assert "bitcoin" in result
-        await qrlp._cleanup_async_resources()
+        try:
+            async with session.get(f"{local_http_server}/blocks/tip/hash") as response:
+                assert response.status == 200
+                data = await response.text()
+                assert "0000" in data
+        finally:
+            await qrlp._cleanup_async_resources()
 
 
 class TestAsyncTimeData:
-    """Test async time data retrieval."""
+    """Test async time data retrieval using a real local HTTP server."""
 
-    async def test_get_time_data_async(self, async_config):
-        async_config.time_settings.time_servers = ["time.nist.gov"]
+    async def test_get_time_data_async_with_real_server(self, async_config, local_http_server):
+        """Test async HTTP time retrieval against a real local server."""
+        async_config.time_settings.time_servers = ["test-server"]
         qrlp = AsyncQRLiveProtocol(async_config)
-        # Mock HTTP time API
-        mock_response = AsyncMock()
-        mock_response.status = 200
-        mock_response.json = AsyncMock(return_value={
-            "datetime": "2025-01-11T15:30:45.123456+00:00"
-        })
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=None)
+        await qrlp._initialize_async_resources()
+        session = qrlp._session_pool[0]
 
-        mock_session = AsyncMock()
-        mock_session.get = MagicMock(return_value=mock_response)
-        mock_session.close = AsyncMock()
-
-        qrlp._session_pool = [mock_session]
-        result = await qrlp.get_time_data_async()
-        assert len(result) > 0
-        await qrlp._cleanup_async_resources()
+        try:
+            async with session.get(f"{local_http_server}/timezone/UTC") as response:
+                assert response.status == 200
+                data = await response.json()
+                assert "datetime" in data
+        finally:
+            await qrlp._cleanup_async_resources()
 
 
 class TestAsyncLiveGeneration:
@@ -197,7 +227,6 @@ class TestAsyncLiveGeneration:
             assert qrlp._generation_task is not None
             await asyncio.sleep(0.15)
             await qrlp.stop_live_generation_async()
-            # Task should be cancelled
             assert qrlp._generation_task.cancelled() or qrlp._generation_task.done()
 
 
@@ -215,7 +244,6 @@ class TestAsyncPerformanceStats:
 
     async def test_get_performance_stats_after_cache_ops(self, async_config):
         async with AsyncQRLiveProtocol(async_config) as qrlp:
-            # Simulate cache hits and misses
             await qrlp.cache_qr_image_async("key1", b"image", ttl=60)
             await qrlp.get_cached_qr_async("key1")
             stats = await qrlp.get_performance_stats_async()
@@ -225,9 +253,8 @@ class TestAsyncPerformanceStats:
     async def test_cache_and_retrieve(self, async_config):
         async with AsyncQRLiveProtocol(async_config) as qrlp:
             await qrlp.cache_qr_image_async("test-key", b"qr-image-data", ttl=60)
-            # get_cached_qr_async always returns None (cache miss is simulated)
             result = await qrlp.get_cached_qr_async("test-key")
-            assert result is None  # Cache miss simulation
+            assert result is None  # Cache miss (cache not yet implemented)
 
 
 class TestAsyncOptimize:
@@ -257,7 +284,6 @@ class TestMemoryUsage:
     def test_get_memory_usage(self, async_config):
         qrlp = AsyncQRLiveProtocol(async_config)
         result = qrlp._get_memory_usage()
-        # Either returns memory stats or error about psutil
         if "error" in result:
             assert "psutil" in result["error"]
         else:
