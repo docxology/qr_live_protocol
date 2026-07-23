@@ -99,7 +99,7 @@ What you expected to happen.
 **System Information**
 - OS: [e.g. macOS 12.0, Ubuntu 20.04]
 - Python: [e.g. 3.9.7]
-- QRLP Version: [e.g. 1.2.0]
+- QRLP Version: [e.g. 1.3.0]
 
 **Additional Context**
 Any other context about the problem.

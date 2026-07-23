@@ -60,7 +60,7 @@ Implement a defensible public-verification path for QRLP: generated signed QR pa
 - [x] ISC-27: `/api/improve/status` returns structured readiness, feature, key, trust, configuration, current QR, and verifier status.
 - [x] ISC-28: `/api/improve/smoke-test` performs a local signed-QR trust round trip and chunk-recovery test without external services.
 - [x] ISC-29: CLI `qrlp dashboard --no-browser` starts and stops the dashboard lifecycle without opening a browser.
-- [x] ISC-30: Package version metadata is synchronized at `1.2.0` across pyproject, setup.py, and `src.__version__`.
+- [x] ISC-30: Package version metadata is synchronized at `1.3.0` across pyproject, setup.py, and `src.__version__`.
 - [x] ISC-31: Package metadata points to the public `docxology/qr_live_protocol` repository and does not publish stale MIT/Python 3.8 classifiers.
 - [x] ISC-32: Wheel builds include top-level Flask templates required by the dashboard and live web UI.
 - [x] Anti-20: A syntactically valid but unsigned JSON payload is not reported as authentic.
@@ -95,7 +95,7 @@ Implement a defensible public-verification path for QRLP: generated signed QR pa
 | CLI trust workflow | Expose key export, trust-store creation/listing, and file-based verification. | ISC-11, ISC-23 | web/CLI verifier integration | false |
 | QR chunk recovery | Make oversized single-QR payloads fail clearly and provide recoverable chunk payload APIs. | ISC-24, ISC-25 | packaging floor | true |
 | Improve dashboard | Add `/improve`, readiness JSON, local smoke test API, and `qrlp dashboard`. | ISC-26, ISC-27, ISC-28, ISC-29 | web/CLI verifier integration, QR chunk recovery | false |
-| Versioned package polish | Bump to 1.2.0, fix public metadata, and package dashboard templates. | ISC-30, ISC-31, ISC-32 | improve dashboard | false |
+| Versioned package polish | Bump to 1.3.0, fix public metadata, and package dashboard templates. | ISC-30, ISC-31, ISC-32 | improve dashboard | false |
 
 ## Decisions
 

@@ -42,6 +42,7 @@ class HMACManager:
         """
         self.master_key = master_key or secrets.token_bytes(32)
         self.key_id = self._generate_key_id()
+        self.key_store: Dict[str, bytes] = {}
 
     def generate_hmac(self, data: Any, key_id: Optional[str] = None) -> Tuple[bytes, str]:
         """
@@ -199,9 +200,36 @@ class HMACManager:
     def _get_key_by_id(self, key_id: str) -> bytes:
         """Get HMAC key by ID.
 
-        Currently only the master key is supported. Multi-key rotation
-        is tracked in TODO.md for a future release.
+        Looks up the key in key_store first, falls back to master key.
         """
-        if key_id != self.key_id:
-            raise HMACError(f"Unknown HMAC key id: {key_id}")
-        return self.master_key
+        if key_id in self.key_store:
+            return self.key_store[key_id]
+        if key_id == self.key_id:
+            return self.master_key
+        raise HMACError(f"Unknown HMAC key id: {key_id}")
+
+    def add_key(self, key_id: str, key_data: bytes) -> None:
+        """Register an additional key in the key store.
+
+        Args:
+            key_id: Unique identifier for the key
+            key_data: The key bytes to store
+        """
+        self.key_store[key_id] = key_data
+
+    def rotate_key(self) -> str:
+        """Rotate the master key.
+
+        Generates a new master key and archives the old one in key_store.
+
+        Returns:
+            The key_id of the new master key
+        """
+        # Archive the old master key with its key_id
+        self.key_store[self.key_id] = self.master_key
+
+        # Generate new master key
+        self.master_key = secrets.token_bytes(32)
+        self.key_id = self._generate_key_id()
+
+        return self.key_id

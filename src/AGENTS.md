@@ -534,3 +534,31 @@ def _cleanup_expired_caches(self):
 
 This document provides concrete, implementable patterns for developing the QRLiveProtocol core module with cryptographic security, comprehensive testing, and production-ready features.
 
+
+
+## Actual Implemented Crypto Pipeline (v1.2.0)
+
+The cryptographic enhancement pipeline in `QRLiveProtocol._apply_cryptographic_enhancements` follows this order:
+
+1. **Sign** — `QRSignatureManager.create_signed_qr_data()` adds `digital_signature`, `signing_key_id`, `signature_algorithm`
+2. **HMAC** — `HMACManager.create_integrity_checked_qr()` adds `_hmac`, `_hmac_key_id`, `_hmac_algorithm`, `_integrity_checked_at`
+3. **Encrypt** (optional) — `DataEncryptor.encrypt_qr_payload()` encrypts sensitive fields and adds `_encrypted_fields`, `_encryption_key_id`, `_encrypted_at`
+
+The HMAC covers the signature (applied after signing). Encryption covers the HMAC (applied after HMAC).
+
+### New Types (v1.2.0)
+- `VerificationResult` dataclass — typed replacement for the verification dict
+- `QRData.to_dict()` — returns clean dict without None entries
+- `QRData.__repr__` / `__QRData.__str__` — debugging output
+- `QRData.from_json()` — ignores unknown fields for forward compatibility
+
+### Exception Renaming (v1.1.0)
+- `KeyError` was renamed to `KeyManagementError` in `crypto/exceptions.py` to avoid shadowing Python's builtin
+- `HMACError` is now exported from `crypto/__init__.py` and `src/__init__.py`
+
+### Security Headers (v1.2.0)
+- Content-Security-Policy, X-Content-Type-Options, X-Frame-Options, Referrer-Policy
+  added to all web responses via Flask `after_request` hook
+
+### Connection Pooling (v1.2.0)
+- `BlockchainVerifier` uses `requests.Session` for keep-alive HTTP connections

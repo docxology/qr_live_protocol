@@ -93,6 +93,17 @@ class QRData:
         filtered = {k: v for k, v in data.items() if k in known_fields}
         return cls(**filtered)
 
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'QRData':
+        """Create QRData from a dictionary.
+
+        Inverse of ``to_dict()``. Unknown fields are silently ignored
+        for forward compatibility, same as ``from_json()``.
+        """
+        known_fields = {f.name for f in fields(cls)}  # type: ignore[name-defined]
+        filtered = {k: v for k, v in data.items() if k in known_fields}
+        return cls(**filtered)
+
 
 @dataclass
 class VerificationResult:

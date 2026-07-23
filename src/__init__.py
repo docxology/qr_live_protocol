@@ -8,7 +8,7 @@ and official video releases.
 Built on the qrkey protocol for QR code generation and recovery.
 """
 
-__version__ = "1.2.0"
+__version__ = "1.3.0"
 __author__ = "QRLP Development Team (@docxology)"
 __email__ = "danielarifriedman@gmail.com"
 

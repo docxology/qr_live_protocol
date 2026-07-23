@@ -1,7 +1,7 @@
 # QRLP TODO — Upcoming Improvements
 
 Last updated: 2026-07-22  
-Current version: 1.2.0  
+Current version: 1.3.0  
 Test suite: 567 tests, 87% coverage, 0 failures
 
 ---

@@ -74,3 +74,4 @@ qr_*.png
 *.key
 key_metadata.json
 .master_key
+.master_salt

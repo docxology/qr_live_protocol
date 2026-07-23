@@ -427,6 +427,37 @@ except QRDataTooLargeError:
 
 Chunk payloads are JSON records with `protocol`, `chunk_index`, `total_chunks`, `data_size`, `data_sha256`, and base64 chunk data. Reassembly rejects malformed, duplicated, missing, incompatible, or checksum-invalid chunks.
 
+
+### VerificationResult Class
+
+The `VerificationResult` dataclass (added in v1.2.0) provides a typed result
+for QR data verification, replacing the previously untyped dictionary.
+
+```python
+from src import VerificationResult
+
+# Returned by QRLiveProtocol.verify_qr_data()
+result = qrlp.verify_qr_data(qr_json)
+# result is a dict with keys: valid_json, identity_verified, time_verified,
+# blockchain_verified, signature_verified, hmac_verified, encrypted, valid,
+# trust_mode, error
+
+# VerificationResult dataclass can be used directly:
+from src.core import VerificationResult
+vr = VerificationResult(valid_json=True, valid=True, trust_mode="public_signature")
+print(vr.to_dict())
+```
+
+### Crypto Exception Classes
+
+QRLP exports the following exception classes from `src.crypto`:
+
+- `CryptoError` — base exception for all crypto operations
+- `KeyManagementError` — key management errors (renamed from `KeyError` in v1.1.0)
+- `SignatureError` — digital signature errors
+- `EncryptionError` — encryption/decryption errors
+- `HMACError` — HMAC operation errors (exported since v1.1.0)
+
 ### Configuration Classes
 
 Comprehensive configuration system for customizing QRLP behavior across all components.

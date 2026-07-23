@@ -44,6 +44,7 @@ class DataEncryptor:
         """
         self.master_key = master_key or secrets.token_bytes(32)
         self.key_id = self._generate_key_id()
+        self.key_store: Dict[str, bytes] = {}
 
     def encrypt_sensitive_data(self, data: Any, additional_data: Optional[str] = None) -> bytes:
         """
@@ -291,14 +292,47 @@ class DataEncryptor:
     def _get_key_by_id(self, key_id: str) -> Optional[EncryptionKey]:
         """Get encryption key by ID.
 
-        Currently returns the master key for any key_id. Multi-key
-        rotation is tracked in TODO.md for a future release.
+        Looks up the key in key_store first, falls back to master key
+        for backward compatibility.
         """
+        key_data = None
+        if key_id in self.key_store:
+            key_data = self.key_store[key_id]
+        else:
+            # Fall back to master key for backward compatibility
+            key_data = self.master_key
+
         return EncryptionKey(
             key_id=key_id,
-            key_data=self.master_key,
+            key_data=key_data,
             algorithm="aes-256-gcm",
             created_at=self._get_timestamp(),
-            purpose="master"
+            purpose="stored"
         )
+
+    def add_key(self, key_id: str, key_data: bytes) -> None:
+        """Register an additional key in the key store.
+
+        Args:
+            key_id: Unique identifier for the key
+            key_data: The key bytes to store
+        """
+        self.key_store[key_id] = key_data
+
+    def rotate_key(self) -> str:
+        """Rotate the master key.
+
+        Generates a new master key and archives the old one in key_store.
+
+        Returns:
+            The key_id of the new master key
+        """
+        # Archive the old master key with its key_id
+        self.key_store[self.key_id] = self.master_key
+
+        # Generate new master key
+        self.master_key = secrets.token_bytes(32)
+        self.key_id = self._generate_key_id()
+
+        return self.key_id
 

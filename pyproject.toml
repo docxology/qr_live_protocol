@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "qr-live-protocol"
-version = "1.2.0"
+version = "1.3.0"
 description = "Generate live, verifiable QR codes for streaming and official video releases"
 authors = [
     {name = "QRLP Development Team", email = "contact@qrlp.org"},

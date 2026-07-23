@@ -5,6 +5,36 @@ All notable changes to QR Live Protocol (QRLP) will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-07-22
+
+### Security
+- Added HMAC key rotation — `HMACManager` now has `key_store`, `add_key()`, and `rotate_key()`
+- Added encryption key rotation — `DataEncryptor` now has `key_store`, `add_key()`, and `rotate_key()`
+- Added PBKDF2-HMAC-SHA256 key derivation for `KeyManager` — optional `password` parameter derives
+  the master key using 600,000 iterations with a stored salt (backward compatible with random key)
+- Added WebSocket input validation — `handle_user_data_update` now uses `SecurityValidator.validate_user_text`
+
+### Architecture
+- Added `QRData.from_dict()` classmethod — inverse of `to_dict()`, accepts a dict and filters to known fields
+
+### Tests
+- **602 tests** (up from 567), **0 failures**.
+- Added `tests/test_coverage_gaps.py` — 35 tests for CLI live/dashboard (subprocess), web_server
+  broadcast/stop, config YAML, signer message methods, error_recovery async functions, async_core
+  optimization, core _update_loop error path, QR generator style fallbacks, HMAC type handling.
+
+### Documentation
+- Updated `docs/API.md` with `VerificationResult` class, crypto exception classes (`KeyManagementError`, `HMACError`)
+- Updated `src/AGENTS.md` with actual crypto pipeline (Sign -> HMAC -> Encrypt), new types, exception renames
+- Updated `docs/AUTHENTICATION_CHALLENGES.md` with forward-compatible QR payload documentation
+- Updated `docs/INSTALLATION.md` with `pytest-asyncio` and optional dependencies
+
+### Code Quality
+- Removed 5 remaining unused imports (asdict, QRSignatureManager, DataEncryptor from async_core.py,
+  Tuple from blockchain_verifier.py, hmac from encryptor.py)
+- Added PyYAML to test dependencies for YAML config test coverage
+- Updated `.gitignore` for `.master_salt` file
+
 ## [1.2.0] - 2026-07-22
 
 ### Architecture

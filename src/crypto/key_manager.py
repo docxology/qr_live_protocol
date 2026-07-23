@@ -16,6 +16,8 @@ from dataclasses import dataclass, asdict
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa, ec
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.backends import default_backend
 import secrets
 
@@ -55,15 +57,21 @@ class KeyManager:
     for both RSA and ECDSA key pairs used in digital signatures and encryption.
     """
 
-    def __init__(self, key_dir: Optional[str] = None):
+    def __init__(self, key_dir: Optional[str] = None, password: Optional[str] = None):
         """
         Initialize key manager.
 
         Args:
             key_dir: Directory to store keys (default: ~/.qrlp/keys)
+            password: Optional password for PBKDF2 key derivation of the master key.
+                If None, a random master key is generated (stored in .master_key file).
+                If provided, the master key is derived from the password using
+                PBKDF2-HMAC-SHA256 with a stored salt.
         """
         self.key_dir = Path(key_dir) if key_dir else Path.home() / ".qrlp" / "keys"
         self.key_dir.mkdir(parents=True, exist_ok=True)
+
+        self._password = password
 
         self.keys_file = self.key_dir / "key_metadata.json"
         self.keys_info: Dict[str, KeyInfo] = {}
@@ -308,9 +316,34 @@ class KeyManager:
         return secrets.token_hex(16)
 
     def _get_or_create_master_key(self) -> bytes:
-        """Get or create master key for encrypting private keys."""
+        """Get or create master key for encrypting private keys.
+
+        If a password was provided to __init__, derives the key using
+        PBKDF2-HMAC-SHA256 with a stored salt. Otherwise, generates a
+        random key and stores it in .master_key (backward compatible).
+        """
         master_key_file = self.key_dir / ".master_key"
 
+        if self._password is not None:
+            # PBKDF2 key derivation from password
+            salt_file = self.key_dir / ".master_salt"
+            if salt_file.exists():
+                salt = salt_file.read_bytes()
+            else:
+                salt = secrets.token_bytes(16)
+                salt_file.write_bytes(salt)
+                salt_file.chmod(0o600)
+
+            kdf = PBKDF2HMAC(
+                algorithm=hashes.SHA256(),
+                length=32,
+                salt=salt,
+                iterations=600000,
+                backend=default_backend(),
+            )
+            return kdf.derive(self._password.encode("utf-8"))
+
+        # No password -- use random key (original behavior)
         if master_key_file.exists():
             with open(master_key_file, 'rb') as f:
                 return f.read()

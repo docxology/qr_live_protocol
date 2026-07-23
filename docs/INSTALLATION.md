@@ -246,7 +246,7 @@ cd qr_live_protocol
 pip install -e ".[dev,test]"
 
 # Install additional development tools
-pip install black flake8 mypy pytest-cov bandit
+pip install black flake8 mypy pytest + pytest-asyncio + pytest-cov-cov bandit
 
 # Run tests to verify setup
 pytest tests/ -v
@@ -1060,3 +1060,10 @@ After successful installation:
 ---
 
 **Need help?** Open an issue on [GitHub](https://github.com/docxology/qr_live_protocol/issues) or check our [FAQ](FAQ.md).
+
+
+## Optional Dependencies
+
+- `PyYAML` — required for YAML config files (`qrlp --config config.yaml live`)
+- `aiofiles` — required for async file operations in `async_core.py`
+- `psutil` — required for memory usage reporting in `AsyncQRLiveProtocol`
