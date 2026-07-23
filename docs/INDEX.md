@@ -230,7 +230,7 @@ setup.py                       # Legacy setup (deprecated, use pyproject.toml)
 
 ---
 
-**Documentation Version**: 1.0.1
+**Documentation Version**: 1.1.0
 **Last Updated**: January 2025
 **Maintained by**: QRLP Team
 

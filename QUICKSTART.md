@@ -79,7 +79,7 @@ Each QR code contains JSON data with:
     {"server": "pool.ntp.org", "offset": 0.002},
     {"server": "time.google.com", "offset": 0.001}
   ],
-  "format_version": "1.0.0"
+  "format_version": "1.1.0"
 }
 ```
 

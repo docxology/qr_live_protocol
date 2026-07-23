@@ -633,7 +633,7 @@ Contact us at **enterprise@qrlp.org** for:
 
 ## 🌟 Project Status
 
-**Current Version**: 1.0.1 (Stable)
+**Current Version**: 1.1.0 (Stable)
 **Active Development**: ✅ Yes
 **Community Support**: ✅ GitHub Issues & Discussions
 **Professional Support**: ✅ Available for enterprise users
