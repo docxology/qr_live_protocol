@@ -5,6 +5,31 @@ All notable changes to QR Live Protocol (QRLP) will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-07-23
+
+### Architecture
+- Added `QRSerializer` class (`src/serializer.py`) — centralizes all JSON serialization
+  logic with `serialize()`, `serialize_for_signature()`, `deserialize()`, and
+  `serialize_to_dict()` methods. Eliminates duplicated `json.dumps` calls across
+  core.py, signer.py, hmac.py, encryptor.py, and qr_generator.py.
+
+### Features
+- Added `qrlp keys rotate <key_id>` — generate a new key pair, archive the old one,
+  and optionally export the new public key
+- Added `qrlp verify --batch --file batch.json` — verify multiple QR payloads in
+  a single command, reports valid/total count
+- Added QR expiry notification callback — `set_expiry_callback()` on QRLiveProtocol
+  invokes a callback when a QR payload's `expires_at` is reached during the update loop
+- Added WebSocket authentication via `SecurityValidator.validate_user_text` —
+  replaces the ad-hoc 500-char check in `handle_user_data_update`
+
+### Tests
+- **624 tests** (up from 602), **0 failures**
+- Added `tests/test_v14_features.py` — 22 tests for QRSerializer, keys rotate,
+  batch verify, expiry callback, QRData.from_dict, and fuzz tests
+- Fuzz tests: 150 random JSON payloads and random strings fed to `QRData.from_json`
+  without crashes
+
 ## [1.3.0] - 2026-07-22
 
 ### Security

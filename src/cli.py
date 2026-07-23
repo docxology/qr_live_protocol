@@ -18,7 +18,7 @@ from .web_server import QRLiveWebServer
 
 
 @click.group()
-@click.version_option(version="1.3.0")
+@click.version_option(version="1.4.0")
 @click.option('--config', '-c', type=click.Path(exists=True),
               help='Configuration file path (JSON or YAML)')
 @click.option('--debug', '-d', is_flag=True, help='Enable debug mode')
@@ -277,7 +277,9 @@ def generate(
 @cli.command()
 @click.argument('qr_data', required=False, type=str)
 @click.option('--file', '-f', 'input_file', type=click.Path(exists=True),
-              help='Read QR JSON from a file')
+              help='Read QR JSON from a file (single) or batch JSON array')
+@click.option('--batch', is_flag=True,
+              help='Treat --file as a batch JSON array of QR payloads to verify')
 @click.option('--tolerance', '-t', type=float, default=30.0,
               help='Time tolerance in seconds')
 @click.option('--public-key', type=click.Path(exists=True),
@@ -297,6 +299,7 @@ def verify(
     ctx,
     qr_data,
     input_file,
+    batch,
     tolerance,
     public_key,
     trust_store,
@@ -311,6 +314,32 @@ def verify(
     config.verification_settings.max_time_drift = tolerance
 
     try:
+        # Batch verification mode
+        if batch and input_file:
+            with open(input_file, 'r') as f:
+                payloads = json.load(f)
+            if not isinstance(payloads, list):
+                raise click.ClickException("--batch file must contain a JSON array")
+
+            qrlp = QRLiveProtocol(config)
+            if trust_store:
+                qrlp.trust_store = TrustStore.from_file(trust_store)
+
+            results_list = []
+            valid_count = 0
+            for i, payload in enumerate(payloads):
+                payload_str = payload if isinstance(payload, str) else json.dumps(payload)
+                result = qrlp.verify_qr_data(payload_str)
+                results_list.append(result)
+                if result.get('valid'):
+                    valid_count += 1
+                click.echo(f"QR #{i+1}: {'✓ VALID' if result.get('valid') else '✗ INVALID'}")
+
+            click.echo(f"\nBatch: {valid_count}/{len(payloads)} valid")
+            if json_output:
+                click.echo(json.dumps(results_list, indent=2, default=str))
+            return
+
         qr_data = _load_qr_data_argument(qr_data, input_file)
 
         # Initialize QRLP
@@ -416,6 +445,38 @@ def keys_export_public(ctx, key_id, output):
         raise click.ClickException(f"Key not found: {key_id}")
     _write_bytes(output, public_key)
     click.echo(f"✓ Public key saved to: {output}")
+
+
+@keys.command("rotate")
+@click.argument('key_id', type=str)
+@click.option('--algorithm', type=click.Choice(['rsa', 'ecdsa']), default='rsa')
+@click.option('--key-size', type=int, default=2048)
+@click.option('--public-key-output', type=click.Path(), help='Write new public key PEM')
+@click.pass_context
+def keys_rotate(ctx, key_id, algorithm, key_size, public_key_output):
+    """Rotate a signing key: generate a new key pair and archive the old one."""
+    qrlp = QRLiveProtocol(ctx.obj['config'])
+    keypair = qrlp.key_manager.get_keypair(key_id)
+    if not keypair:
+        raise click.ClickException(f"Key not found: {key_id}")
+
+    # Generate new key pair
+    new_public, _ = qrlp.key_manager.generate_keypair(
+        algorithm=algorithm,
+        key_size=key_size,
+        purpose=keypair.purpose if hasattr(keypair, 'purpose') else 'qr_signing',
+    )
+    new_key_id = next(reversed(qrlp.key_manager.list_keys()))
+    click.echo(f"✓ New key generated: {new_key_id}")
+    click.echo(f"  Old key archived: {key_id}")
+
+    if public_key_output:
+        _write_bytes(public_key_output, new_public)
+        click.echo(f"✓ New public key saved to: {public_key_output}")
+
+    # Optionally delete old key
+    qrlp.key_manager.delete_key(key_id)
+    click.echo(f"✓ Old key deleted: {key_id}")
 
 
 @cli.group()

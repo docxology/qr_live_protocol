@@ -69,7 +69,7 @@ python -m pytest tests/ -q
 ## CLI Commands
 
 ```bash
-qrlp --version              # Show version (1.3.0)
+qrlp --version              # Show version (1.4.0)
 qrlp live                   # Start live QR generation server
 qrlp dashboard              # Start improvement dashboard
 qrlp generate --output qr --format both --sign

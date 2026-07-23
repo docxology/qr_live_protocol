@@ -1,9 +1,9 @@
 # QR Live Protocol (QRLP)
 
-[![Version](https://img.shields.io/badge/version-1.3.0-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.4.0-blue.svg)](CHANGELOG.md)
 [![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
 [![Python Version](https://img.shields.io/badge/python-3.9+-blue.svg)](https://pypi.org/project/qr-live-protocol/)
-[![Tests](https://img.shields.io/badge/tests-602%20passing-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-624%20passing-brightgreen.svg)](#testing)
 [![Coverage](https://img.shields.io/badge/coverage-88%25-green.svg)](#testing)
 
 A comprehensive, source-available system for generating live QR codes with local integrity checks and optional public-key authenticity verification for livestreaming, official video releases, and content verification.
@@ -633,7 +633,7 @@ Contact us at **enterprise@qrlp.org** for:
 
 ## 🌟 Project Status
 
-**Current Version**: 1.3.0 (Stable)
+**Current Version**: 1.4.0 (Stable)
 **Active Development**: ✅ Yes
 **Community Support**: ✅ GitHub Issues & Discussions
 **Professional Support**: ✅ Available for enterprise users

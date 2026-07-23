@@ -591,13 +591,13 @@ class QRLiveWebServer:
 
                 user_text = data.get('user_text', '').strip()
 
-                # Validate user input
-                if len(user_text) > 500:
-                    emit('user_data_error', {"error": "User data too long (max 500 characters)"})
+                # Validate user input using SecurityValidator
+                try:
+                    validated = SecurityValidator.validate_user_text(user_text)
+                    self.user_input_data = validated if validated else None
+                except BadRequest as e:
+                    emit('user_data_error', {"error": str(e)})
                     return
-
-                # Update stored user data
-                self.user_input_data = user_text if user_text else None
 
                 # Broadcast update to all clients
                 self.socketio.emit('user_data_updated', {

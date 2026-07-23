@@ -22,9 +22,9 @@ def test_version_is_consistent_across_package_metadata() -> None:
     setup_version = re.search(r'version="([^"]+)"', setup_py)
 
     assert setup_version is not None
-    assert pyproject["project"]["version"] == "1.3.0"
-    assert __version__ == "1.3.0"
-    assert setup_version.group(1) == "1.3.0"
+    assert pyproject["project"]["version"] == "1.4.0"
+    assert __version__ == "1.4.0"
+    assert setup_version.group(1) == "1.4.0"
 
 
 def test_metadata_repository_and_license_are_current() -> None:

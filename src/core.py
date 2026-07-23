@@ -182,6 +182,9 @@ class QRLiveProtocol:
         # User data callback for external input
         self._user_data_callback: Optional[Callable[[], Optional[str]]] = None
 
+        # Expiry notification callback
+        self._expiry_callback: Optional[Callable[[QRData], None]] = None
+
         # Performance tracking
         self._last_update_time = 0
         self._update_count = 0
@@ -210,6 +213,14 @@ class QRLiveProtocol:
         """Remove previously added callback."""
         if callback in self._callbacks:
             self._callbacks.remove(callback)
+
+    def set_expiry_callback(self, callback: Callable[[QRData], None]) -> None:
+        """Set callback invoked when a QR payload expires.
+
+        Args:
+            callback: Function that receives the expired QRData
+        """
+        self._expiry_callback = callback
 
     def set_user_data_callback(self, callback: Callable[[], Optional[str]]) -> None:
         """
@@ -566,10 +577,23 @@ class QRLiveProtocol:
             try:
                 start_time = time.time()
 
+                # Check if previous QR expired
+                if self._expiry_callback and self._current_qr_data:
+                    if self._current_qr_data.expires_at:
+                        try:
+                            expires = datetime.fromisoformat(
+                                self._current_qr_data.expires_at.replace('Z', '+00:00')
+                            )
+                            if expires.tzinfo is None:
+                                expires = expires.replace(tzinfo=timezone.utc)
+                            if datetime.now(timezone.utc) >= expires:
+                                self._expiry_callback(self._current_qr_data)
+                        except Exception:
+                            pass  # Don't crash loop on expiry check errors
+
                 # Generate new QR code with user data
                 qr_data, qr_image = self.generate_single_qr()
 
-                # Update statistics
                 # Sleep for remaining interval time
                 elapsed = time.time() - start_time
                 sleep_time = max(0, self.config.update_interval - elapsed)
