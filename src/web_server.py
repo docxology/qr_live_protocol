@@ -53,6 +53,7 @@ try:
 except ImportError:
     pass
 
+import logging
 import os
 import base64
 import json
@@ -61,7 +62,7 @@ import webbrowser
 import re
 import time
 import tempfile
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Optional, Any, Callable
 from dataclasses import asdict
 
@@ -75,6 +76,8 @@ import bleach
 
 from .config import WebSettings
 from .core import QRData
+
+_logger = logging.getLogger("qrlp.web_server")
 
 
 class SecurityValidator:
@@ -221,7 +224,9 @@ class SecurityValidator:
 # Security middleware
 def security_middleware(app, settings: WebSettings):
     """Add security middleware to Flask app."""
+    import threading as _threading
     request_log: Dict[str, list] = {}
+    request_log_lock = _threading.Lock()
 
     @app.before_request
     def validate_request():
@@ -230,11 +235,12 @@ def security_middleware(app, settings: WebSettings):
             client_id = request.headers.get("X-Forwarded-For", request.remote_addr or "unknown")
             now = time.time()
             window_start = now - 60
-            timestamps = [ts for ts in request_log.get(client_id, []) if ts >= window_start]
-            if len(timestamps) >= settings.rate_limit_per_minute:
-                abort(429, "Rate limit exceeded")
-            timestamps.append(now)
-            request_log[client_id] = timestamps
+            with request_log_lock:
+                timestamps = [ts for ts in request_log.get(client_id, []) if ts >= window_start]
+                if len(timestamps) >= settings.rate_limit_per_minute:
+                    abort(429, "Rate limit exceeded")
+                timestamps.append(now)
+                request_log[client_id] = timestamps
 
         # Check Content-Type for POST requests
         if request.method in ['POST', 'PUT', 'PATCH']:
@@ -248,7 +254,7 @@ def security_middleware(app, settings: WebSettings):
         return jsonify({
             "error": "Bad Request",
             "message": str(e),
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }), 400
 
     @app.errorhandler(500)
@@ -257,7 +263,7 @@ def security_middleware(app, settings: WebSettings):
         return jsonify({
             "error": "Internal Server Error",
             "message": "An unexpected error occurred",
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }), 500
 
     @app.errorhandler(429)
@@ -266,7 +272,7 @@ def security_middleware(app, settings: WebSettings):
         return jsonify({
             "error": "Too Many Requests",
             "message": str(e),
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }), 429
 
 
@@ -361,9 +367,9 @@ class QRLiveWebServer:
         if hasattr(self, 'gevent_server'):
             try:
                 self.gevent_server.stop()
-                print("🛑 Gevent server stopped")
+                _logger.info("🛑 Gevent server stopped")
             except Exception as e:
-                print(f"Error stopping gevent server: {e}")
+                _logger.error(f"Error stopping gevent server: {e}")
         # For Flask-SocketIO, server will stop when main thread exits
 
     def update_qr_display(self, qr_data: QRData, qr_image: bytes) -> None:
@@ -423,7 +429,7 @@ class QRLiveWebServer:
             return jsonify({
                 "qr_data": asdict(self.current_qr_data),
                 "qr_image": f"data:image/png;base64,{image_b64}",
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             })
 
         @self.app.route('/api/status')
@@ -452,7 +458,7 @@ class QRLiveWebServer:
 
                 verifier = self._get_verifier()
                 verification_result = verifier.verify_qr_data(validated_qr_data)
-                verification_result["timestamp"] = datetime.utcnow().isoformat()
+                verification_result["timestamp"] = datetime.now(timezone.utc).isoformat()
                 verification_result["data_length"] = len(validated_qr_data)
 
                 return jsonify(verification_result)
@@ -499,7 +505,7 @@ class QRLiveWebServer:
                 return jsonify({
                     "success": False,
                     "error": str(e),
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                 }), 500
 
         @self.app.route('/api/user-data', methods=['POST'])
@@ -523,7 +529,7 @@ class QRLiveWebServer:
                     "success": True,
                     "message": "User data updated successfully",
                     "user_data": self.user_input_data,
-                    "timestamp": datetime.utcnow().isoformat()
+                    "timestamp": datetime.now(timezone.utc).isoformat()
                 })
 
             except BadRequest as e:
@@ -545,8 +551,7 @@ class QRLiveWebServer:
         def handle_connect():
             """Handle client connection."""
             self.websocket_connections += 1
-            print(f"Client connected. Total connections: {self.websocket_connections}")
-
+            _logger.info(f"Client connected. Total connections: {self.websocket_connections}")
             # Send current QR data if available
             if self.current_qr_data and self.current_qr_image:
                 self._send_qr_update_to_client()
@@ -555,8 +560,7 @@ class QRLiveWebServer:
         def handle_disconnect():
             """Handle client disconnection."""
             self.websocket_connections -= 1
-            print(f"Client disconnected. Total connections: {self.websocket_connections}")
-
+            _logger.info(f"Client disconnected. Total connections: {self.websocket_connections}")
         @self.socketio.on('request_qr_update')
         def handle_qr_request():
             """Handle client request for QR update."""
@@ -584,7 +588,7 @@ class QRLiveWebServer:
                 # Broadcast update to all clients
                 self.socketio.emit('user_data_updated', {
                     "user_data": self.user_input_data,
-                    "timestamp": datetime.utcnow().isoformat()
+                    "timestamp": datetime.now(timezone.utc).isoformat()
                 })
 
             except Exception as e:
@@ -600,7 +604,7 @@ class QRLiveWebServer:
         update_data = {
             "qr_data": asdict(self.current_qr_data),
             "qr_image": f"data:image/png;base64,{image_b64}",
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
         # Broadcast to all clients
@@ -616,7 +620,7 @@ class QRLiveWebServer:
         update_data = {
             "qr_data": asdict(self.current_qr_data),
             "qr_image": f"data:image/png;base64,{image_b64}",
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
         emit('qr_update', update_data)
@@ -635,12 +639,12 @@ class QRLiveWebServer:
                     self.app,
                     handler_class=WebSocketHandler
                 )
-                print(f"🌐 Starting gevent server on {self.settings.host}:{self.settings.port}")
+                _logger.info(f"🌐 Starting gevent server on {self.settings.host}:{self.settings.port}")
                 self.gevent_server.serve_forever()
 
             except ImportError:
                 # Fallback to Flask-SocketIO
-                print(f"🌐 Starting Flask-SocketIO server on {self.settings.host}:{self.settings.port}")
+                _logger.info(f"🌐 Starting Flask-SocketIO server on {self.settings.host}:{self.settings.port}")
                 self.socketio.run(
                     self.app,
                     host=self.settings.host,
@@ -651,10 +655,10 @@ class QRLiveWebServer:
                 )
 
         except Exception as e:
-            print(f"Server error: {e}")
+            _logger.error(f"Server error: {e}")
             # Try fallback server
             try:
-                print("🔄 Trying fallback server...")
+                _logger.info("🔄 Trying fallback server...")
                 self.socketio.run(
                     self.app,
                     host=self.settings.host,
@@ -664,7 +668,7 @@ class QRLiveWebServer:
                     allow_unsafe_werkzeug=True
                 )
             except Exception as fallback_error:
-                print(f"Fallback server also failed: {fallback_error}")
+                _logger.error(f"Fallback server also failed: {fallback_error}")
             self.is_running = False
 
     def _open_browser(self) -> None:
@@ -672,15 +676,13 @@ class QRLiveWebServer:
         try:
             webbrowser.open(self.get_server_url())
         except Exception as e:
-            print(f"Could not open browser: {e}")
-
+            _logger.warning(f"Could not open browser: {e}")
     def open_improve_dashboard(self) -> None:
         """Open browser directly to the improvement dashboard."""
         try:
             webbrowser.open(f"{self.get_server_url()}/improve")
         except Exception as e:
-            print(f"Could not open improve dashboard: {e}")
-
+            _logger.warning(f"Could not open improve dashboard: {e}")
     def _get_verifier(self):
         """Return configured verifier, creating a local default if needed."""
         if self.verifier is None:
@@ -742,7 +744,7 @@ class QRLiveWebServer:
         current_qr = asdict(self.current_qr_data) if self.current_qr_data else None
 
         return {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "server": self.get_statistics(),
             "readiness": {
                 "passed": passed,
@@ -806,7 +808,7 @@ class QRLiveWebServer:
 
             return {
                 "success": bool(verification.get("valid")) and chunk_ok and len(qr_image) > 0,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "signed_round_trip": {
                     "valid": verification.get("valid"),
                     "trust_mode": verification.get("trust_mode"),

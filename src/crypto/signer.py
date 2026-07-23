@@ -332,8 +332,7 @@ class QRSignatureManager:
         Returns:
             QR data dictionary with signature field
         """
-        signature_payload = canonicalize_qr_payload_for_signature(qr_data)
-        signature, used_key_id = self.sign_qr_with_key(signature_payload, signing_key_id)
+        signature, used_key_id = self.sign_qr_with_key(qr_data, signing_key_id)
 
         # Create signed QR data
         if hasattr(qr_data, '__dict__'):
@@ -372,9 +371,8 @@ class QRSignatureManager:
         except (KeyError, TypeError, ValueError):
             return False
 
-        verification_data = canonicalize_qr_payload_for_signature(signed_qr_data)
         return self.verify_qr_signature(
-            verification_data,
+            signed_qr_data,
             signature,
             key_id,
             public_key_pem=public_key_pem,

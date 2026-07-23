@@ -135,34 +135,42 @@ class QRLPConfig:
         config = cls()
 
         # Update from environment variables
-        if os.getenv('QRLP_UPDATE_INTERVAL'):
-            config.update_interval = float(os.getenv('QRLP_UPDATE_INTERVAL'))
+        update_interval = os.getenv('QRLP_UPDATE_INTERVAL')
+        if update_interval:
+            config.update_interval = float(update_interval)
 
-        if os.getenv('QRLP_WEB_PORT'):
-            config.web_settings.port = int(os.getenv('QRLP_WEB_PORT'))
+        web_port = os.getenv('QRLP_WEB_PORT')
+        if web_port:
+            config.web_settings.port = int(web_port)
 
-        if os.getenv('QRLP_WEB_HOST'):
-            config.web_settings.host = os.getenv('QRLP_WEB_HOST')
+        web_host = os.getenv('QRLP_WEB_HOST')
+        if web_host:
+            config.web_settings.host = web_host
 
         if os.getenv('QRLP_WEB_CORS_ENABLED'):
             config.web_settings.cors_enabled = os.getenv('QRLP_WEB_CORS_ENABLED', '').lower() in {
                 '1', 'true', 'yes', 'on'
             }
 
-        if os.getenv('QRLP_WEB_ADMIN_TOKEN'):
-            config.web_settings.admin_token = os.getenv('QRLP_WEB_ADMIN_TOKEN')
+        web_admin_token = os.getenv('QRLP_WEB_ADMIN_TOKEN')
+        if web_admin_token:
+            config.web_settings.admin_token = web_admin_token
 
-        if os.getenv('QRLP_IDENTITY_FILE'):
-            config.identity_settings.identity_file = os.getenv('QRLP_IDENTITY_FILE')
+        identity_file = os.getenv('QRLP_IDENTITY_FILE')
+        if identity_file:
+            config.identity_settings.identity_file = identity_file
 
-        if os.getenv('QRLP_LOG_LEVEL'):
-            config.logging_settings.level = os.getenv('QRLP_LOG_LEVEL')
+        log_level = os.getenv('QRLP_LOG_LEVEL')
+        if log_level:
+            config.logging_settings.level = log_level
 
-        if os.getenv('QRLP_ISSUER_ID'):
-            config.security_settings.issuer_id = os.getenv('QRLP_ISSUER_ID')
+        issuer_id = os.getenv('QRLP_ISSUER_ID')
+        if issuer_id:
+            config.security_settings.issuer_id = issuer_id
 
-        if os.getenv('QRLP_EVENT_ID'):
-            config.security_settings.event_id = os.getenv('QRLP_EVENT_ID')
+        event_id = os.getenv('QRLP_EVENT_ID')
+        if event_id:
+            config.security_settings.event_id = event_id
 
         return config
 

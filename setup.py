@@ -15,8 +15,7 @@ if len(sys.argv) == 1:
     print("=" * 70)
     print()
     os.execvp(sys.executable, [
-        sys.executable, "-m", "pip", "install", 
-        "--break-system-packages", "."
+        sys.executable, "-m", "pip", "install", "."
     ])
     # execvp replaces the process, so we never reach here
 
@@ -54,7 +53,7 @@ else:
 
 setup(
     name="qr-live-protocol",
-    version="1.0.1",
+    version="1.1.0",
     author="QRLP Development Team", 
     author_email="contact@qrlp.org",
     description="Generate live, verifiable QR codes for streaming and official video releases",

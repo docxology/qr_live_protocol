@@ -322,7 +322,7 @@ class TestIdentityManager:
 
     def test_hash_algorithm_configuration(self):
         """Test different hash algorithms."""
-        for algorithm in ["sha256", "sha512", "md5"]:
+        for algorithm in ["sha256", "sha512"]:
             settings = IdentitySettings(
                 auto_generate=True,
                 hash_algorithm=algorithm
@@ -333,10 +333,21 @@ class TestIdentityManager:
             expected_length = {
                 "sha256": 64,  # 32 bytes * 2 hex chars
                 "sha512": 128, # 64 bytes * 2 hex chars
-                "md5": 32      # 16 bytes * 2 hex chars
             }
 
             assert len(hash_value) == expected_length[algorithm]
+
+    def test_md5_falls_back_to_sha256(self):
+        """MD5 is insecure and should fall back to SHA-256."""
+        settings = IdentitySettings(
+            auto_generate=True,
+            hash_algorithm="md5"
+        )
+        im = IdentityManager(settings)
+
+        hash_value = im.get_identity_hash()
+        # MD5 is rejected; falls back to SHA-256 (64 hex chars)
+        assert len(hash_value) == 64
 
     def test_identity_change_detection(self, tmp_path):
         """Test identity change detection."""

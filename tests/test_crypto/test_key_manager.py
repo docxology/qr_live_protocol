@@ -10,7 +10,6 @@ import json
 from pathlib import Path
 
 from src.crypto import KeyManager, KeyPair, KeyInfo
-from src.crypto.exceptions import KeyError
 
 
 class TestKeyManager:

@@ -70,3 +70,7 @@ docs/_build/
 qr_data.json
 qr_*.png
 *.qr
+.qrlp/
+*.key
+key_metadata.json
+.master_key

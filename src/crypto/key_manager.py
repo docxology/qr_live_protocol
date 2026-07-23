@@ -5,6 +5,7 @@ Secure key generation, storage, and management for QRLP cryptographic operations
 Supports RSA and ECDSA key pairs with secure storage and backup capabilities.
 """
 
+import logging
 import os
 import json
 import base64
@@ -18,6 +19,9 @@ from cryptography.hazmat.primitives.asymmetric import rsa, ec, padding
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 import secrets
+
+_logger = logging.getLogger("qrlp.crypto.key_manager")
+
 
 
 @dataclass
@@ -297,7 +301,7 @@ class KeyManager:
             return True
 
         except Exception as e:
-            print(f"Backup failed: {e}")
+            _logger.error(f"Backup failed: {e}")
             return False
 
     def _generate_key_id(self) -> str:
@@ -396,8 +400,7 @@ class KeyManager:
                     purpose=key_data['purpose']
                 )
         except Exception as e:
-            print(f"Warning: Could not load key metadata: {e}")
-
+            _logger.warning(f"Warning: Could not load key metadata: {e}")
     def _save_key_metadata(self) -> None:
         """Save key metadata to disk."""
         data = {}

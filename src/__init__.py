@@ -8,7 +8,7 @@ and official video releases.
 Built on the qrkey protocol for QR code generation and recovery.
 """
 
-__version__ = "1.0.1"
+__version__ = "1.1.0"
 __author__ = "QRLP Development Team (@docxology)"
 __email__ = "danielarifriedman@gmail.com"
 
@@ -25,7 +25,7 @@ from .crypto import (
     DigitalSigner, SignatureVerifier, QRSignatureManager,
     DataEncryptor, EncryptionKey,
     HMACManager,
-    CryptoError, KeyError, SignatureError, EncryptionError
+    CryptoError, KeyManagementError, SignatureError, EncryptionError, HMACError
 )
 from .error_recovery import (
     CircuitBreaker, CircuitBreakerConfig, CircuitBreakerState,
@@ -46,7 +46,7 @@ __all__ = [
     "DigitalSigner", "SignatureVerifier", "QRSignatureManager",
     "DataEncryptor", "EncryptionKey",
     "HMACManager",
-    "CryptoError", "KeyError", "SignatureError", "EncryptionError",
+    "CryptoError", "KeyManagementError", "SignatureError", "EncryptionError", "HMACError",
     "CircuitBreaker", "CircuitBreakerConfig", "CircuitBreakerState",
     "RetryStrategy", "ResilientOperation", "ResilienceManager",
     "CircuitBreakerOpenError"

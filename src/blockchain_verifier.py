@@ -5,6 +5,7 @@ Handles blockchain verification by retrieving current block hashes
 from multiple blockchain networks to provide tamper-evident timestamps.
 """
 
+import logging
 import time
 import hashlib
 import threading
@@ -14,6 +15,8 @@ import requests
 from dataclasses import dataclass, asdict
 
 from .config import BlockchainSettings
+
+_logger = logging.getLogger("qrlp.blockchain")
 
 
 @dataclass 
@@ -85,8 +88,7 @@ class BlockchainVerifier:
         try:
             self._update_all_chains()
         except Exception as e:
-            print(f"Initial blockchain update warning: {e}")
-    
+            _logger.warning(f"Initial blockchain update warning: {e}")
     def get_blockchain_hashes(self) -> Dict[str, str]:
         """
         Get current blockchain hashes for all enabled chains.
@@ -203,14 +205,21 @@ class BlockchainVerifier:
                 break
 
         # Only update if needed and not already updating
-        if needs_update and not hasattr(self, '_updating'):
+        if needs_update and not getattr(self, '_updating', False):
             self._updating = True
             try:
                 # Use a single thread to update all chains sequentially
-                threading.Thread(target=self._update_all_chains, daemon=True).start()
+                threading.Thread(target=self._update_all_chains_safe, daemon=True).start()
             finally:
                 # Reset the flag after a delay to prevent rapid-fire updates
                 threading.Timer(1.0, lambda: setattr(self, '_updating', False) if hasattr(self, '_updating') else None).start()
+
+    def _update_all_chains_safe(self) -> None:
+        """Wrapper that clears the _updating flag after completion."""
+        try:
+            self._update_all_chains()
+        finally:
+            self._updating = False
     
     def _update_all_chains(self) -> bool:
         """Update all enabled blockchain chains."""
@@ -221,7 +230,7 @@ class BlockchainVerifier:
                 if self._update_chain(chain):
                     success_count += 1
             except Exception as e:
-                print(f"{chain.title()} API error: {e}")
+                _logger.error(f"{chain.title()} API error: {e}")
                 # Continue with other chains even if one fails
                 continue
         
@@ -275,7 +284,7 @@ class BlockchainVerifier:
                     return {"text": response.text.strip()}
                     
             except Exception as e:
-                print(f"API request failed for {endpoint}: {e}")
+                _logger.error(f"API request failed for {endpoint}: {e}")
                 continue
         
         return None
@@ -303,8 +312,7 @@ class BlockchainVerifier:
                             retrieved_at=time.time()
                         )
             except Exception as e:
-                print(f"Blockstream.info API failed: {e}")
-
+                _logger.error(f"Blockstream.info API failed: {e}")
             # Fallback to mempool.space
             try:
                 response = requests.get("https://mempool.space/api/blocks/tip/hash", timeout=5)
@@ -323,8 +331,7 @@ class BlockchainVerifier:
                             retrieved_at=time.time()
                         )
             except Exception as e:
-                print(f"Mempool.space API failed: {e}")
-            
+                _logger.error(f"Mempool.space API failed: {e}")
             # Final fallback to blockcypher
             try:
                 response = requests.get("https://api.blockcypher.com/v1/btc/main", timeout=5)
@@ -341,11 +348,11 @@ class BlockchainVerifier:
             except Exception:
                 pass
             
-            print("All Bitcoin API endpoints failed")
+            _logger.error("All Bitcoin API endpoints failed")
             return None
             
         except Exception as e:
-            print(f"Bitcoin API error: {e}")
+            _logger.error(f"Bitcoin API error: {e}")
             return None
     
     def _get_ethereum_info(self) -> Optional[BlockchainInfo]:
@@ -364,11 +371,11 @@ class BlockchainVerifier:
                     retrieved_at=time.time()
                 )
             
-            print("Ethereum API request failed")
+            _logger.error("Ethereum API request failed")
             return None
             
         except Exception as e:
-            print(f"Ethereum API error: {e}")
+            _logger.error(f"Ethereum API error: {e}")
             return None
     
     def _get_litecoin_info(self) -> Optional[BlockchainInfo]:
@@ -386,9 +393,9 @@ class BlockchainVerifier:
                     retrieved_at=time.time()
                 )
             
-            print("Litecoin API request failed")
+            _logger.error("Litecoin API request failed")
             return None
             
         except Exception as e:
-            print(f"Litecoin API error: {e}")
+            _logger.error(f"Litecoin API error: {e}")
             return None 

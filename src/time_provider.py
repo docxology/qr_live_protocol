@@ -5,6 +5,7 @@ Handles time synchronization with multiple time servers and provides
 accurate timestamp verification for QR codes.
 """
 
+import logging
 import time
 import socket
 import struct
@@ -16,6 +17,9 @@ import ntplib
 from dataclasses import dataclass
 
 from .config import TimeSettings
+
+_logger = logging.getLogger("qrlp.time")
+
 
 
 @dataclass

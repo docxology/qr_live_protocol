@@ -10,7 +10,7 @@ class CryptoError(Exception):
     pass
 
 
-class KeyError(CryptoError):
+class KeyManagementError(CryptoError):
     """Exception for key management operations."""
     pass
 

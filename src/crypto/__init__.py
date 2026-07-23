@@ -16,14 +16,14 @@ from .key_manager import KeyManager, KeyPair, KeyInfo
 from .signer import DigitalSigner, SignatureVerifier, QRSignatureManager
 from .encryptor import DataEncryptor, EncryptionKey
 from .hmac import HMACManager
-from .exceptions import CryptoError, KeyError, SignatureError, EncryptionError
+from .exceptions import CryptoError, KeyManagementError, SignatureError, EncryptionError, HMACError
 
 __all__ = [
     'KeyManager', 'KeyPair', 'KeyInfo',
     'DigitalSigner', 'SignatureVerifier', 'QRSignatureManager',
     'DataEncryptor', 'EncryptionKey',
     'HMACManager',
-    'CryptoError', 'KeyError', 'SignatureError', 'EncryptionError'
+    'CryptoError', 'KeyManagementError', 'SignatureError', 'EncryptionError', 'HMACError'
 ]
 
 __version__ = "1.0.0"

@@ -10,9 +10,10 @@ import time
 import hashlib
 import threading
 import secrets
+import logging
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional, Union, Callable, Any
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, fields
 
 from .qr_generator import QRGenerator
 from .time_provider import TimeProvider
@@ -21,6 +22,9 @@ from .identity_manager import IdentityManager
 from .config import QRLPConfig
 from .crypto import KeyManager, QRSignatureManager, DataEncryptor, HMACManager
 from .trust import TrustStore
+
+_logger = logging.getLogger("qrlp.core")
+
 
 
 @dataclass
@@ -61,9 +65,15 @@ class QRData:
 
     @classmethod
     def from_json(cls, json_str: str) -> 'QRData':
-        """Create QRData from JSON string."""
+        """Create QRData from JSON string.
+
+        Unknown fields are silently ignored so that forward-compatible
+        QR payloads (with newly added fields) do not break older verifiers.
+        """
         data = json.loads(json_str)
-        return cls(**data)
+        known_fields = {f.name for f in fields(cls)}  # type: ignore[name-defined]
+        filtered = {k: v for k, v in data.items() if k in known_fields}
+        return cls(**filtered)
 
 
 class QRLiveProtocol:
@@ -329,7 +339,10 @@ class QRLiveProtocol:
                 return encrypted_data
             except Exception as e:
                 # If encryption fails, continue with HMAC-only
-                print(f"Warning: Encryption failed: {e}, continuing with HMAC-only")
+                import logging
+                logging.getLogger(__name__).warning(
+                    "Encryption failed, continuing with HMAC-only: %s", e
+                )
 
         return hmac_qr_data
 
@@ -443,7 +456,7 @@ class QRLiveProtocol:
             if qr_time.tzinfo is None:
                 qr_time = qr_time.replace(tzinfo=timezone.utc)
             now = datetime.now(timezone.utc)
-            time_diff = abs((datetime.now(timezone.utc) - qr_time).total_seconds())
+            time_diff = abs((now - qr_time).total_seconds())
             time_verified = time_diff <= self.config.verification_settings.max_time_drift
             if self.config.verification_settings.require_time_server and not qr_data.time_server_verification:
                 time_verified = False
@@ -510,7 +523,7 @@ class QRLiveProtocol:
                 time.sleep(sleep_time)
 
             except Exception as e:
-                print(f"Update loop error: {e}")
+                _logger.error(f"Update loop error: {e}")
                 # Continue running even if one update fails
                 time.sleep(1.0)  # Brief pause before retry
 
@@ -530,7 +543,7 @@ class QRLiveProtocol:
         try:
             callback_data = self._user_data_callback()
         except Exception as e:
-            print(f"User data callback error: {e}")
+            _logger.error(f"User data callback error: {e}")
             return None
 
         if callback_data is None:
@@ -580,4 +593,4 @@ class QRLiveProtocol:
             try:
                 callback(qr_data, qr_image)
             except Exception as e:
-                print(f"Callback error: {e}")
+                _logger.error(f"Callback error: {e}")

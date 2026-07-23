@@ -4,12 +4,16 @@ QR Code Generation module for QRLP.
 Handles QR code creation, optimization, and image generation based on the qrkey protocol.
 """
 
+import logging
 import binascii
 import hashlib
 
 import qrcode
 import qrcode.constants
 import qrcode.exceptions
+
+_logger = logging.getLogger("qrlp.qr_generator")
+
 try:
     from qrcode.image.styledpil import StyledPilImage
     from qrcode.image.styles.moduledrawers import RoundedModuleDrawer, SquareModuleDrawer
@@ -646,5 +650,5 @@ class QRGenerator:
             
         except Exception as e:
             # Return original QR if text overlay fails
-            print(f"Text overlay error: {e}")
+            _logger.error(f"Text overlay error: {e}")
             return qr_img_bytes

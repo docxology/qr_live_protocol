@@ -5,6 +5,7 @@ Handles user identity creation, management, and cryptographic hashing
 for QR code verification and authenticity.
 """
 
+import logging
 import os
 import hashlib
 import platform
@@ -17,6 +18,9 @@ from typing import Dict, Optional, Any, List
 from dataclasses import dataclass, asdict
 
 from .config import IdentitySettings
+
+_logger = logging.getLogger("qrlp.identity")
+
 
 
 @dataclass
@@ -130,7 +134,7 @@ class IdentityManager:
             return False
             
         except Exception as e:
-            print(f"Error adding file to identity: {e}")
+            _logger.error(f"Error adding file to identity: {e}")
             return False
     
     def remove_file_from_identity(self, file_key: str) -> bool:
@@ -173,7 +177,7 @@ class IdentityManager:
             return True
             
         except Exception as e:
-            print(f"Error exporting identity: {e}")
+            _logger.error(f"Error exporting identity: {e}")
             return False
     
     def import_identity(self, file_path: str) -> bool:
@@ -208,7 +212,7 @@ class IdentityManager:
             return True
             
         except Exception as e:
-            print(f"Error importing identity: {e}")
+            _logger.error(f"Error importing identity: {e}")
             return False
     
     def get_statistics(self) -> Dict:
@@ -319,10 +323,8 @@ class IdentityManager:
             return hashlib.sha256(combined.encode('utf-8')).hexdigest()
         elif self.settings.hash_algorithm == "sha512":
             return hashlib.sha512(combined.encode('utf-8')).hexdigest()
-        elif self.settings.hash_algorithm == "md5":
-            return hashlib.md5(combined.encode('utf-8')).hexdigest()
         else:
-            # Default to SHA-256
+            # Default to SHA-256; reject insecure algorithms like md5
             return hashlib.sha256(combined.encode('utf-8')).hexdigest()
     
     def _collect_system_info(self) -> Dict[str, Any]:

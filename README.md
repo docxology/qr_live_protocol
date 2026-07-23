@@ -1,7 +1,10 @@
 # QR Live Protocol (QRLP)
 
+[![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)](CHANGELOG.md)
 [![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
 [![Python Version](https://img.shields.io/badge/python-3.9+-blue.svg)](https://pypi.org/project/qr-live-protocol/)
+[![Tests](https://img.shields.io/badge/tests-547%20passing-brightgreen.svg)](#testing)
+[![Coverage](https://img.shields.io/badge/coverage-88%25-green.svg)](#testing)
 
 A comprehensive, source-available system for generating live QR codes with local integrity checks and optional public-key authenticity verification for livestreaming, official video releases, and content verification.
 
@@ -382,13 +385,36 @@ Core dependencies:
 - `click` - Command-line interface
 - `bleach` - HTML sanitization
 - `cryptography` - Cryptographic operations
+- `aiohttp` - Async HTTP for blockchain/time APIs
 
 **Development Tools:**
 - `uv` - Modern Python package manager (recommended)
-- `pytest` + `pytest-cov` - Testing framework
+- `pytest` + `pytest-cov` + `pytest-asyncio` - Testing framework
 - `black` - Code formatting
 - `flake8` - Code linting
 - `mypy` - Type checking
+
+## Testing
+
+QRLP has a comprehensive test suite with 547 tests and 88% code coverage:
+
+```bash
+# Install with dev dependencies
+uv pip install -e ".[dev]"
+
+# Run full test suite (fast, no coverage)
+python -m pytest tests/ --no-cov -q
+
+# Run with coverage report
+python -m pytest tests/ -q
+
+# Run specific module tests
+python -m pytest tests/test_core/ --no-cov -q
+python -m pytest tests/test_crypto/ --no-cov -q
+python -m pytest tests/test_async_core.py --no-cov -q
+```
+
+All tests use mocked network calls -- no external API dependencies required.
 
 ## 🎯 Use Cases
 

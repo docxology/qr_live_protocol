@@ -5,6 +5,7 @@ Provides async/await patterns for non-blocking QR generation, verification,
 and cryptographic operations with improved performance and scalability.
 """
 
+import logging
 import asyncio
 import json
 import time
@@ -13,8 +14,15 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional, Union, Callable, Any, Tuple
 from dataclasses import dataclass, asdict
 import aiohttp
-import aiofiles
 import concurrent.futures
+
+_logger = logging.getLogger("qrlp.async_core")
+
+
+try:
+    import aiofiles
+except ImportError:
+    aiofiles = None  # type: ignore[assignment]
 
 from .core import QRLiveProtocol, QRData
 from .config import QRLPConfig
@@ -187,7 +195,7 @@ class AsyncQRLiveProtocol:
         successful_results = []
         for result in results:
             if isinstance(result, Exception):
-                print(f"Batch generation error: {result}")
+                _logger.error(f"Batch generation error: {result}")
             else:
                 successful_results.append(result)
 
@@ -223,16 +231,14 @@ class AsyncQRLiveProtocol:
                     try:
                         await callback(qr_data, qr_image)
                     except Exception as e:
-                        print(f"Stream callback error: {e}")
-
+                        _logger.error(f"Stream callback error: {e}")
                 # Wait for next interval
                 await asyncio.sleep(interval)
 
         except asyncio.CancelledError:
-            print("QR stream generation cancelled")
+            _logger.info("QR stream generation cancelled")
         except Exception as e:
-            print(f"Stream generation error: {e}")
-
+            _logger.error(f"Stream generation error: {e}")
         return generated_qrs
 
     async def get_blockchain_data_async(self) -> Dict[str, str]:
@@ -255,7 +261,7 @@ class AsyncQRLiveProtocol:
             blockchain_hashes = {}
             for result in results:
                 if isinstance(result, Exception):
-                    print(f"Blockchain API error: {result}")
+                    _logger.error(f"Blockchain API error: {result}")
                 elif isinstance(result, dict):
                     blockchain_hashes.update(result)
 
@@ -292,11 +298,11 @@ class AsyncQRLiveProtocol:
                         # Other chains return full block info
                         return {chain: data.get('hash', '')}
                 else:
-                    print(f"Blockchain API error for {chain}: {response.status}")
+                    _logger.error(f"Blockchain API error for {chain}: {response.status}")
                     return {}
 
         except Exception as e:
-            print(f"Blockchain API exception for {chain}: {e}")
+            _logger.error(f"Blockchain API exception for {chain}: {e}")
             return {}
 
     async def get_time_data_async(self) -> Dict[str, Any]:
@@ -319,7 +325,7 @@ class AsyncQRLiveProtocol:
             time_verification = {}
             for result in results:
                 if isinstance(result, Exception):
-                    print(f"Time server error: {result}")
+                    _logger.error(f"Time server error: {result}")
                 elif isinstance(result, dict):
                     time_verification.update(result)
 
@@ -333,8 +339,8 @@ class AsyncQRLiveProtocol:
         session = self._session_pool[0]
 
         try:
-            # Use HTTP time API
-            url = f"http://worldtimeapi.org/api/timezone/UTC"
+            # Use HTTP time API (NTP over async is non-trivial; HTTP is the async path)
+            url = "http://worldtimeapi.org/api/timezone/UTC"
             async with session.get(url) as response:
                 if response.status == 200:
                     data = await response.json()
@@ -349,8 +355,7 @@ class AsyncQRLiveProtocol:
                     }
 
         except Exception as e:
-            print(f"Time server error for {server}: {e}")
-
+            _logger.error(f"Time server error for {server}: {e}")
         return {}
 
     async def start_live_generation_async(self, callback: Optional[Callable] = None) -> None:
@@ -373,7 +378,7 @@ class AsyncQRLiveProtocol:
                 except asyncio.CancelledError:
                     break
                 except Exception as e:
-                    print(f"Async generation error: {e}")
+                    _logger.error(f"Async generation error: {e}")
                     await asyncio.sleep(1.0)
 
         # Start generation loop as background task

@@ -5,6 +5,7 @@ AES-256 encryption and decryption for sensitive QR data and user information.
 Provides secure storage and transmission of confidential data.
 """
 
+import logging
 import os
 import json
 import base64
@@ -16,6 +17,9 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes, hmac
 
 from .exceptions import EncryptionError
+
+_logger = logging.getLogger("qrlp.crypto.encryptor")
+
 
 
 @dataclass
@@ -197,7 +201,7 @@ class DataEncryptor:
                             additional_data=f"qr_field_{field}"
                         )
                 except Exception as e:
-                    print(f"Warning: Failed to decrypt field {field}: {e}")
+                    _logger.error(f"Warning: Failed to decrypt field {field}: {e}")
                     # Keep encrypted value if decryption fails
 
         return decrypted_qr

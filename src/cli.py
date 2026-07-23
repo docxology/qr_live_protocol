@@ -18,7 +18,7 @@ from .web_server import QRLiveWebServer
 
 
 @click.group()
-@click.version_option(version="1.0.0")
+@click.version_option(version="1.1.0")
 @click.option('--config', '-c', type=click.Path(exists=True),
               help='Configuration file path (JSON or YAML)')
 @click.option('--debug', '-d', is_flag=True, help='Enable debug mode')
