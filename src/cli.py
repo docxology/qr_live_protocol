@@ -18,7 +18,7 @@ from .web_server import QRLiveWebServer
 
 
 @click.group()
-@click.version_option(version="1.1.0")
+@click.version_option(version="1.2.0")
 @click.option('--config', '-c', type=click.Path(exists=True),
               help='Configuration file path (JSON or YAML)')
 @click.option('--debug', '-d', is_flag=True, help='Enable debug mode')
@@ -488,8 +488,9 @@ def config_init(ctx, output, format):
 
 
 @cli.command()
+@click.option('--json-output', is_flag=True, help='Output status as JSON')
 @click.pass_context
-def status(ctx):
+def status(ctx, json_output):
     """Show current QRLP status and statistics."""
     config = ctx.obj['config']
 
@@ -497,8 +498,11 @@ def status(ctx):
         # Initialize QRLP (without starting live generation)
         qrlp = QRLiveProtocol(config)
 
-        # Get statistics
         stats = qrlp.get_statistics()
+
+        if json_output:
+            click.echo(json.dumps(stats, indent=2, default=str))
+            return
 
         click.echo("QRLP Status:")
         click.echo(f"  Running: {'Yes' if stats['running'] else 'No'}")
@@ -556,6 +560,33 @@ def add_file(ctx, file_path, alias):
 
     except Exception as e:
         click.echo(f"Error adding file: {e}", err=True)
+        sys.exit(1)
+
+
+@cli.command()
+@click.argument('config_path', type=click.Path(exists=True))
+@click.pass_context
+def config_validate(ctx, config_path):
+    """Validate a configuration file without starting QRLP."""
+    try:
+        config = QRLPConfig.from_file(config_path)
+        issues = config.validate()
+
+        if issues:
+            click.echo(f"✗ Configuration has {len(issues)} issue(s):", err=True)
+            for issue in issues:
+                click.echo(f"  - {issue}", err=True)
+            sys.exit(1)
+        else:
+            click.echo(f"✓ Configuration is valid: {config_path}")
+            click.echo(f"  Update interval: {config.update_interval}s")
+            click.echo(f"  Web port: {config.web_settings.port}")
+            click.echo(f"  Error correction: {config.qr_settings.error_correction_level}")
+            click.echo(f"  Enabled chains: {config.blockchain_settings.enabled_chains or 'none'}")
+            click.echo(f"  Max time drift: {config.verification_settings.max_time_drift}s")
+
+    except Exception as e:
+        click.echo(f"Error validating configuration: {e}", err=True)
         sys.exit(1)
 
 

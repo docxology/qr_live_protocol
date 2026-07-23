@@ -9,7 +9,7 @@ import hashlib
 import json
 from typing import Dict, Tuple, Any, Optional
 from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import rsa, ec, padding, utils
+from cryptography.hazmat.primitives.asymmetric import rsa, ec, padding
 from cryptography.exceptions import InvalidSignature
 
 from .key_manager import KeyManager

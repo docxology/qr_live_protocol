@@ -12,7 +12,7 @@ import threading
 import secrets
 import logging
 from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Optional, Union, Callable, Any
+from typing import Dict, List, Optional, Callable, Any
 from dataclasses import dataclass, asdict, fields
 
 from .qr_generator import QRGenerator
@@ -63,6 +63,24 @@ class QRData:
         filtered_dict = {k: v for k, v in data_dict.items() if v is not None}
         return json.dumps(filtered_dict, separators=(',', ':'))
 
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary, filtering out None values.
+
+        Unlike ``asdict()``, this returns a clean dict without None
+        entries, suitable for JSON serialization or API responses.
+        """
+        data_dict = asdict(self)
+        return {k: v for k, v in data_dict.items() if v is not None}
+
+    def __repr__(self) -> str:
+        return (
+            f"QRData(seq={self.sequence_number}, ts={self.timestamp[:19]}, "
+            f"issuer={self.issuer_id}, signed={'yes' if self.digital_signature else 'no'})"
+        )
+
+    def __str__(self) -> str:
+        return self.__repr__()
+
     @classmethod
     def from_json(cls, json_str: str) -> 'QRData':
         """Create QRData from JSON string.
@@ -74,6 +92,30 @@ class QRData:
         known_fields = {f.name for f in fields(cls)}  # type: ignore[name-defined]
         filtered = {k: v for k, v in data.items() if k in known_fields}
         return cls(**filtered)
+
+
+@dataclass
+class VerificationResult:
+    """Structured result of QR data verification.
+
+    Replaces the untyped dict returned by ``verify_qr_data`` with a
+    typed dataclass that can be serialized to JSON or inspected programmatically.
+    """
+
+    valid_json: bool
+    identity_verified: bool = False
+    time_verified: bool = False
+    blockchain_verified: bool = False
+    signature_verified: bool = False
+    hmac_verified: bool = False
+    encrypted: bool = False
+    valid: bool = False
+    trust_mode: str = "none"
+    error: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {k: v for k, v in asdict(self).items() if v is not None}
 
 
 class QRLiveProtocol:

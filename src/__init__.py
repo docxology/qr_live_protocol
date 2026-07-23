@@ -8,11 +8,11 @@ and official video releases.
 Built on the qrkey protocol for QR code generation and recovery.
 """
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 __author__ = "QRLP Development Team (@docxology)"
 __email__ = "danielarifriedman@gmail.com"
 
-from .core import QRLiveProtocol, QRData
+from .core import QRLiveProtocol, QRData, VerificationResult
 from .config import QRLPConfig
 from .qr_generator import QRDataTooLargeError, QRGenerator
 from .time_provider import TimeProvider
@@ -34,7 +34,7 @@ from .error_recovery import (
 )
 
 __all__ = [
-    "QRLiveProtocol", "QRData",
+    "QRLiveProtocol", "QRData", "VerificationResult",
     "QRLPConfig",
     "QRGenerator", "QRDataTooLargeError",
     "TimeProvider",

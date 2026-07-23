@@ -142,32 +142,36 @@ class TestMakeRequestWithFallback:
         verifier = BlockchainVerifier(settings)
         time.sleep(0.3)
 
-        with patch('requests.get') as mock_get:
-            mock_get.return_value = make_mock_response(200, json_data={"key": "val"})
-            result = verifier._make_request_with_fallback("bitcoin", "/tip/hash")
-            assert result == {"key": "val"}
+        mock_session = MagicMock()
+        mock_session.get.return_value = make_mock_response(200, json_data={"key": "val"})
+        verifier._session = mock_session
+        result = verifier._make_request_with_fallback("bitcoin", "/tip/hash")
+        assert result == {"key": "val"}
 
     def test_first_fails_second_succeeds(self):
         settings = BlockchainSettings(enabled_chains=set())
         verifier = BlockchainVerifier(settings)
         time.sleep(0.3)
 
-        with patch('requests.get') as mock_get:
-            mock_get.side_effect = [
-                Exception("first endpoint down"),
-                make_mock_response(200, json_data={"key": "val"}),
-            ]
-            result = verifier._make_request_with_fallback("bitcoin", "/tip/hash")
-            assert result == {"key": "val"}
+        mock_session = MagicMock()
+        mock_session.get.side_effect = [
+            Exception("first endpoint down"),
+            make_mock_response(200, json_data={"key": "val"}),
+        ]
+        verifier._session = mock_session
+        result = verifier._make_request_with_fallback("bitcoin", "/tip/hash")
+        assert result == {"key": "val"}
 
     def test_all_endpoints_fail(self):
         settings = BlockchainSettings(enabled_chains=set())
         verifier = BlockchainVerifier(settings)
         time.sleep(0.3)
 
-        with patch('requests.get', side_effect=Exception("all down")):
-            result = verifier._make_request_with_fallback("bitcoin", "/tip/hash")
-            assert result is None
+        mock_session = MagicMock()
+        mock_session.get.side_effect = Exception("all down")
+        verifier._session = mock_session
+        result = verifier._make_request_with_fallback("bitcoin", "/tip/hash")
+        assert result is None
 
     def test_text_response(self):
         """Non-JSON response returns as text."""
@@ -175,15 +179,16 @@ class TestMakeRequestWithFallback:
         verifier = BlockchainVerifier(settings)
         time.sleep(0.3)
 
-        with patch('requests.get') as mock_get:
-            resp = MagicMock()
-            resp.status_code = 200
-            resp.headers = {'content-type': 'text/plain'}
-            resp.text = "  plain text  "
-            resp.raise_for_status = MagicMock()
-            mock_get.return_value = resp
-            result = verifier._make_request_with_fallback("bitcoin")
-            assert result == {"text": "plain text"}
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.headers = {'content-type': 'text/plain'}
+        resp.text = "  plain text  "
+        resp.raise_for_status = MagicMock()
+        mock_session = MagicMock()
+        mock_session.get.return_value = resp
+        verifier._session = mock_session
+        result = verifier._make_request_with_fallback("bitcoin")
+        assert result == {"text": "plain text"}
 
 
 class TestUpdateAllChainsSafe:

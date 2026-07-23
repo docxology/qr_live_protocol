@@ -7,12 +7,11 @@ from multiple blockchain networks to provide tamper-evident timestamps.
 
 import logging
 import time
-import hashlib
 import threading
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, Optional, Tuple, Any
 import requests
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 
 from .config import BlockchainSettings
 
@@ -49,7 +48,10 @@ class BlockchainVerifier:
         self.cached_blocks: Dict[str, BlockchainInfo] = {}
         self.last_update: Dict[str, float] = {}
         self.update_lock = threading.Lock()
-        
+
+        # Connection pool for keep-alive HTTP
+        self._session: Optional[requests.Session] = None
+
         # Statistics
         self.total_requests = 0
         self.successful_requests = 0
@@ -267,26 +269,33 @@ class BlockchainVerifier:
         finally:
             self.update_lock.release()
     
+    def _get_session(self) -> requests.Session:
+        """Return a cached requests.Session for keep-alive connection pooling."""
+        if self._session is None:
+            self._session = requests.Session()
+        return self._session
+
     def _make_request_with_fallback(self, chain: str, path: str = "") -> Optional[Dict]:
         """Make API request with fallback to multiple endpoints."""
         endpoints = self.api_endpoints.get(chain, [])
-        
+        session = self._get_session()
+
         for endpoint in endpoints:
             try:
                 url = f"{endpoint}{path}"
-                response = requests.get(url, timeout=self.settings.timeout)
+                response = session.get(url, timeout=self.settings.timeout)
                 response.raise_for_status()
-                
+
                 # Handle different response types
                 if response.headers.get('content-type', '').startswith('application/json'):
                     return response.json()
                 else:
                     return {"text": response.text.strip()}
-                    
+
             except Exception as e:
                 _logger.error(f"API request failed for {endpoint}: {e}")
                 continue
-        
+
         return None
     
     def _get_bitcoin_info(self) -> Optional[BlockchainInfo]:

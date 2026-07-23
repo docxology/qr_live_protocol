@@ -6,15 +6,14 @@ Provides secure storage and transmission of confidential data.
 """
 
 import logging
-import os
 import json
 import base64
 import secrets
-from typing import Dict, Optional, Any, Tuple
+from typing import Dict, Optional, Any
 from dataclasses import dataclass
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives import hashes, hmac
+from cryptography.hazmat.primitives import hmac
 
 from .exceptions import EncryptionError
 

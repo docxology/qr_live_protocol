@@ -5,6 +5,38 @@ All notable changes to QR Live Protocol (QRLP) will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-07-22
+
+### Architecture
+- Added `VerificationResult` dataclass to replace the untyped dict returned by
+  `verify_qr_data` — enables cleaner API and type checking. Exported from `src`.
+- Added `QRData.to_dict()` method — returns a clean dict without None entries,
+  suitable for JSON serialization or API responses.
+- Added `QRData.__repr__` and `QRData.__str__` for better debugging output.
+
+### Security
+- Added Content-Security-Policy headers to all web responses (CSP, X-Content-Type-Options,
+  X-Frame-Options, Referrer-Policy).
+
+### Performance
+- Added `requests.Session` connection pooling to `BlockchainVerifier` — uses
+  keep-alive connections for all blockchain API calls instead of creating a new
+  connection per request.
+
+### Code Quality
+- Removed 29 unused imports across 9 source files (async_core, blockchain_verifier,
+  core, crypto/encryptor, crypto/key_manager, crypto/signer, identity_manager,
+  time_provider, web_server).
+
+### New CLI Commands
+- `qrlp config-validate <path>` — validate a configuration file without starting QRLP.
+- `qrlp status --json-output` — output status as machine-readable JSON.
+
+### Tests
+- **567 tests** (up from 547), **0 failures**.
+- Added `tests/test_v12_features.py` — 20 tests for VerificationResult, QRData.to_dict/__repr__,
+  config-validate, status --json, CSP headers, and connection pooling.
+
 ## [1.1.0] - 2026-07-22
 
 ### Security Fixes

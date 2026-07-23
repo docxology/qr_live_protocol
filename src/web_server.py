@@ -66,7 +66,7 @@ from datetime import datetime, timezone
 from typing import Dict, Optional, Any, Callable
 from dataclasses import asdict
 
-from flask import Flask, render_template, jsonify, send_from_directory, request, abort
+from flask import Flask, render_template, jsonify, request, abort
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
 
@@ -274,6 +274,20 @@ def security_middleware(app, settings: WebSettings):
             "message": str(e),
             "timestamp": datetime.now(timezone.utc).isoformat()
         }), 429
+
+    @app.after_request
+    def add_security_headers(response):
+        """Add Content-Security-Policy and other security headers to all responses."""
+        response.headers.setdefault(
+            "Content-Security-Policy",
+            "default-src 'self'; img-src 'self' data:; "
+            "script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
+            "connect-src 'self' ws: wss:;"
+        )
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        return response
 
 
 class QRLiveWebServer:

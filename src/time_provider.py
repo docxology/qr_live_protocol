@@ -7,11 +7,9 @@ accurate timestamp verification for QR codes.
 
 import logging
 import time
-import socket
-import struct
 import threading
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 import requests
 import ntplib
 from dataclasses import dataclass

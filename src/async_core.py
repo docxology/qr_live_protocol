@@ -9,10 +9,9 @@ import logging
 import asyncio
 import json
 import time
-import threading
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Union, Callable, Any, Tuple
-from dataclasses import dataclass, asdict
+from typing import Dict, List, Optional, Callable, Any, Tuple
+from dataclasses import asdict
 import aiohttp
 import concurrent.futures
 
@@ -26,7 +25,7 @@ except ImportError:
 
 from .core import QRLiveProtocol, QRData
 from .config import QRLPConfig
-from .crypto import KeyManager, QRSignatureManager, DataEncryptor, HMACManager
+from .crypto import QRSignatureManager, DataEncryptor, HMACManager
 
 
 class AsyncQRLiveProtocol:
