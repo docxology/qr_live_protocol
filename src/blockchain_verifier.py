@@ -9,7 +9,7 @@ import logging
 import time
 import threading
 from datetime import datetime, timezone
-from typing import Dict, Optional, Tuple, Any
+from typing import Dict, Optional, Any
 import requests
 from dataclasses import dataclass
 

@@ -11,7 +11,6 @@ import json
 import time
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Callable, Any, Tuple
-from dataclasses import asdict
 import aiohttp
 import concurrent.futures
 
@@ -25,7 +24,7 @@ except ImportError:
 
 from .core import QRLiveProtocol, QRData
 from .config import QRLPConfig
-from .crypto import QRSignatureManager, DataEncryptor, HMACManager
+from .crypto import HMACManager
 
 
 class AsyncQRLiveProtocol:

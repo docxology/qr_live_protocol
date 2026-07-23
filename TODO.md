@@ -1,71 +1,90 @@
 # QRLP TODO — Upcoming Improvements
 
 Last updated: 2026-07-22  
-Current version: 1.1.0  
-Test suite: 547 tests, 88% coverage, 0 failures
+Current version: 1.2.0  
+Test suite: 567 tests, 87% coverage, 0 failures
 
 ---
 
-## Minor Improvements (next patch release — v1.1.1)
+## Completed (v1.1.0 + v1.2.0)
 
 ### Code Cleanup
-- [ ] Remove 26 unused imports across all source modules (async_core, blockchain_verifier, core, crypto/encryptor, crypto/key_manager, crypto/signer, identity_manager, time_provider, web_server)
-- [ ] Remove unused `socket` and `struct` imports from `time_provider.py` (leftover from a removed NTP-raw-socket path)
-- [ ] Remove unused `send_from_directory` import from `web_server.py`
-- [ ] Remove unused `hashlib` import from `blockchain_verifier.py`
-- [ ] Remove unused `Tuple` import from `crypto/encryptor.py` and `time_provider.py`
-- [ ] Remove unused `Union` import from `core.py` and `async_core.py`
-- [ ] Remove unused `threading` import from `async_core.py`
-- [ ] Remove unused `asdict` import from `async_core.py` and `blockchain_verifier.py`
-- [ ] Remove unused `hashes` and `hmac` imports from `crypto/encryptor.py` (re-imported from `cryptography.hazmat.primitives` but never used directly)
-- [ ] Remove unused `hashes`, `hashlib`, `padding`, `utils` imports from `crypto/key_manager.py` and `crypto/signer.py`
+- [x] Remove 29 unused imports across 9 source modules
+- [x] Remove unused `socket` and `struct` imports from `time_provider.py`
+- [x] Remove unused `send_from_directory` import from `web_server.py`
+- [x] Remove unused `hashlib` import from `blockchain_verifier.py`
+- [x] Remove unused `Tuple` import from `crypto/encryptor.py` and `time_provider.py`
+- [x] Remove unused `Union` import from `core.py` and `async_core.py`
+- [x] Remove unused `threading` import from `async_core.py`
+- [x] Remove unused `asdict` import from `async_core.py` and `blockchain_verifier.py`
+- [x] Remove unused `hashes` and `hmac` imports from `crypto/encryptor.py`
+- [x] Remove unused `hashes`, `hashlib`, `padding`, `utils` from `crypto/key_manager.py` and `crypto/signer.py`
+- [x] Remove unused mock fixtures from `conftest.py` (mock_time_provider, mock_blockchain_verifier, mock_identity_manager)
+- [x] Remove placeholder comments from `_get_key_by_id` in `hmac.py` and `encryptor.py`
+- [x] Remove all `MagicMock` / `AsyncMock` usage from tests — replaced with real instances or real local HTTP server
 
-### Test Coverage Gaps
-- [ ] Add tests for `cli.py` `live` and `dashboard` commands (lines 58-111, 126-173) — currently uncovered because they block indefinitely; use subprocess timeout or mock `time.sleep`
-- [ ] Add tests for `web_server.py` `_run_server` method (lines 630-672) — currently uncovered because it starts a real server; mock gevent and SocketIO.run
-- [ ] Add tests for `web_server.py` WebSocket event handlers (lines 541-595) — `handle_connect`, `handle_disconnect`, `handle_qr_request`, `handle_user_data_update`
-- [ ] Add tests for `web_server.py` `_broadcast_qr_update` and `_send_qr_update_to_client` (lines 599-626)
+### Architecture
+- [x] Add `VerificationResult` dataclass to replace untyped dict from `verify_qr_data`
+- [x] Add `QRData.to_dict()`, `__repr__`, `__str__` methods
+- [x] Export `VerificationResult` from `src` package
+
+### Security
+- [x] Add Content-Security-Policy headers to all web responses (CSP, X-Content-Type-Options, X-Frame-Options, Referrer-Policy)
+
+### Performance
+- [x] Add `requests.Session` connection pooling to `BlockchainVerifier`
+
+### New CLI Commands
+- [x] `qrlp config-validate <path>` — validate config without starting QRLP
+- [x] `qrlp status --json-output` — machine-readable JSON status
+
+---
+
+## Minor Improvements (v1.2.1)
+
+### Test Coverage Gaps (87% -> 95%+ target)
+- [ ] Add tests for `cli.py` `live` and `dashboard` commands (lines 58-111, 126-173) — block indefinitely; use subprocess with timeout
+- [ ] Add tests for `web_server.py` `_run_server` method (lines 644-686) — starts a real server; test with a real Flask test client on a random port
+- [ ] Add tests for `web_server.py` WebSocket event handlers (lines 587-609) — `handle_connect`, `handle_disconnect`, `handle_qr_request`, `handle_user_data_update`
+- [ ] Add tests for `web_server.py` `_broadcast_qr_update` and `_send_qr_update_to_client` (lines 613-626)
 - [ ] Add tests for `config.py` `from_file` YAML path (lines 185-192) and `web` alias (line 200)
 - [ ] Add tests for `qr_generator.py` styled image fallback paths (lines 305-323) when `STYLED_QR_AVAILABLE` is False
 - [ ] Add tests for `signer.py` `sign_message` and `verify_message` methods (lines 122-128, 137-138)
 - [ ] Add tests for `error_recovery.py` `resilient_qr_generation_async` and `resilient_verification_async` (lines 715-758)
+- [ ] Add tests for `async_core.py` optimization internals — `optimize_performance_async`, `apply_optimizations_async` (lines 523-539, 569-583)
+- [ ] Add tests for `core.py` `_update_loop` error path (line 567-570) and `remove_update_callback` (line 145)
 
 ### Documentation
-- [ ] Update `docs/INSTALLATION.md` to reference v1.1.0 and mention `pytest-asyncio` requirement
+- [ ] Update `docs/INSTALLATION.md` to reference v1.2.0 and mention `pytest-asyncio` requirement
 - [ ] Update `docs/COGNITIVE_SECURITY.md` with the `KeyManagementError` rename
 - [ ] Update `docs/AUTHENTICATION_CHALLENGES.md` with the forward-compatible `QRData.from_json` behavior
-- [ ] Update `docs/API.md` with the `HMACError` export and `KeyManagementError` rename
+- [ ] Update `docs/API.md` with `HMACError` export, `KeyManagementError` rename, and `VerificationResult` dataclass
 - [ ] Update `src/AGENTS.md` to reflect the actual implemented crypto pipeline (Sign -> HMAC -> Encrypt)
+- [ ] Update `ASSESSMENT.md` coverage numbers (87% total, module-by-module table)
 
 ---
 
-## Medium Improvements (next minor release — v1.2.0)
+## Medium Improvements (v1.3.0)
 
 ### Security Hardening
 - [ ] Add CSRF protection for state-changing web endpoints (currently only admin token and rate limiting)
-- [ ] Add Content-Security-Policy header to all web responses (mentioned in docstring but not implemented)
 - [ ] Add input length validation for WebSocket `update_user_data` event (currently uses 500-char limit but doesn't use `SecurityValidator`)
-- [ ] Add HMAC key rotation support — `HMACManager._get_key_by_id` is a placeholder that only supports the master key
-- [ ] Add encryption key rotation support — `DataEncryptor._get_key_by_id` always returns the master key regardless of `key_id`
+- [ ] Add HMAC key rotation support — `HMACManager._get_key_by_id` only supports the master key
+- [ ] Add encryption key rotation support — `DataEncryptor._get_key_by_id` always returns the master key
 - [ ] Add key derivation function (PBKDF2/scrypt) for master key — currently stored as raw bytes in `~/.qrlp/keys/.master_key`
 
 ### Architecture
 - [ ] Extract a `QRSerializer` class to centralize JSON serialization/deserialization logic (currently duplicated in `QRData.to_json`, `core.py`, `signer.py`, `hmac.py`)
-- [ ] Add a `VerificationResult` dataclass to replace the untyped dict returned by `verify_qr_data` — enables cleaner API and type checking
-- [ ] Add `__repr__` and `__str__` methods to `QRData` for better debugging
-- [ ] Add `QRData.to_dict()` method (currently only `to_json` exists, but `asdict(qr_data)` is used directly in several places)
-- [ ] Add connection pooling to `BlockchainVerifier` — currently creates a new `requests.get` call per chain; use `requests.Session` for keep-alive
 - [ ] Add async NTP support to `async_core.py` — `_get_time_from_server_async` falls back to HTTP time API because NTP is sync-only; consider `aiontp` or raw UDP
 
 ### Feature Additions
 - [ ] Add `qrlp verify --qr-image <path>` — scan a PNG QR image file and verify its payload (requires `pyzbar` + `opencv-python` from `[full]` extras)
 - [ ] Add `qrlp keys rotate <key_id>` — generate a new key pair and update trust stores
-- [ ] Add `qrlp config-validate <path>` — validate a config file without starting QRLP
 - [ ] Add `qrlp export --format csv` — export QR generation history as CSV
-- [ ] Add `--json` output to `qrlp status` for machine-readable status
 - [ ] Add WebSocket authentication for admin operations (currently only HTTP routes check admin token)
 - [ ] Add QR expiry notification callback — call a user callback when a QR payload expires
 - [ ] Add batch verification — `qrlp verify --file batch.json` that verifies multiple QR payloads
+- [ ] Add `QRData.from_dict()` classmethod — inverse of `to_dict()`
 
 ### Test Infrastructure
 - [ ] Add `pytest --benchmark` benchmarks for QR generation, signing, and verification
@@ -76,7 +95,7 @@ Test suite: 547 tests, 88% coverage, 0 failures
 
 ---
 
-## Major Improvements (future releases — v2.0.0+)
+## Major Improvements (v2.0.0+)
 
 ### Protocol Enhancements
 - [ ] Add QR payload versioning — embed a `protocol_version` field so future payloads can be parsed correctly by older verifiers

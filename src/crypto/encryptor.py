@@ -13,13 +13,10 @@ from typing import Dict, Optional, Any
 from dataclasses import dataclass
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives import hmac
 
 from .exceptions import EncryptionError
 
 _logger = logging.getLogger("qrlp.crypto.encryptor")
-
-
 
 @dataclass
 class EncryptionKey:
@@ -29,7 +26,6 @@ class EncryptionKey:
     algorithm: str
     created_at: str
     purpose: str
-
 
 class DataEncryptor:
     """
