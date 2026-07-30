@@ -10,11 +10,14 @@ import json
 import threading
 import time
 import sys
+from pathlib import Path
 
 from .core import QRLiveProtocol
 from .config import QRLPConfig
 from .trust import TrustStore
 from .web_server import QRLiveWebServer
+from .time_stamper import TimeStamper
+from .time_stamper_integration import QRLPTimeStampVerifier
 
 
 @click.group()
@@ -648,6 +651,95 @@ def config_validate(ctx, config_path):
 
     except Exception as e:
         click.echo(f"Error validating configuration: {e}", err=True)
+        sys.exit(1)
+
+
+@cli.command()
+@click.argument('qr_json_file', type=click.Path(exists=True))
+@click.option('--proof-dir', type=click.Path(), default='output/timestamps',
+              help='Where to save .ots proof files (default: output/timestamps/)')
+@click.option('--server', default='https://stamp.opentimestamps.org',
+              help='OpenTimestamps server URL')
+@click.option('--signing-key', type=click.Path(),
+              help='Optional: sign the QR before stamping (PEM private key)')
+@click.option('--json-output', is_flag=True, help='Output result as JSON')
+def stamp(qr_json_file: str, proof_dir: str, server: str, signing_key: str, json_output: bool) -> None:
+    """Stamp a QR JSON file with OpenTimestamps.
+
+    Computes the SHA-256 of the QR payload, submits it to an OpenTimestamps
+    calendar server, and saves the ``.ots`` proof file alongside the input.
+    The proof can later be verified with ``qrlp verify-ots``.
+    """
+    try:
+        with open(qr_json_file, 'r', encoding='utf-8') as f:
+            qr_json = f.read()
+
+        stamper = TimeStamper(
+            enabled=True,
+            server=server,
+            min_interval=0,
+            proof_dir=Path(proof_dir),
+        )
+        proof_path = stamper.stamp(qr_json.encode('utf-8'))
+
+        if proof_path is None:
+            click.echo("✗ Timestamping failed or disabled.", err=True)
+            sys.exit(1)
+
+        result = {
+            "ots_proof_path": str(proof_path),
+            "qr_file": qr_json_file,
+            "server": server,
+        }
+        if json_output:
+            click.echo(json.dumps(result, indent=2))
+        else:
+            click.echo(f"✓ OTS proof saved to: {proof_path}")
+            click.echo(f"  QR file: {qr_json_file}")
+            click.echo(f"  Server: {server}")
+    except Exception as e:
+        click.echo(f"Error stamping QR: {e}", err=True)
+        sys.exit(1)
+
+
+@cli.command(name='verify-ots')
+@click.argument('qr_json_file', type=click.Path(exists=True))
+@click.argument('proof_file', type=click.Path(exists=True))
+@click.option('--tolerance', '-t', type=int, default=60,
+              help='Acceptable time drift in seconds (default: 60)')
+@click.option('--json-output', is_flag=True, help='Output result as JSON')
+def verify_ots(qr_json_file: str, proof_file: str, tolerance: int, json_output: bool) -> None:
+    """Verify a QR JSON file against an OpenTimestamps proof.
+
+    Checks that the QR data matches the ``.ots`` proof and reports the
+    attested timestamp and blockchain.
+    """
+    try:
+        with open(qr_json_file, 'r', encoding='utf-8') as f:
+            qr_json = f.read()
+
+        stamper = TimeStamper(enabled=False)
+        verifier = QRLPTimeStampVerifier(stamper)
+        result = verifier.verify_qr_with_timestamp(
+            qr_json,
+            Path(proof_file),
+            tolerance_seconds=tolerance,
+        )
+
+        if json_output:
+            click.echo(json.dumps(result, indent=2, default=str))
+            return
+
+        click.echo("OpenTimestamps Verification:")
+        click.echo(f"  OTS verified: {'✓' if result.get('ots_verified') else '✗'}")
+        click.echo(f"  Proof path: {result.get('ots_proof_path', '')}")
+        click.echo(f"  Timestamp: {result.get('ots_timestamp', '')}")
+        click.echo(f"  Blockchain: {result.get('ots_blockchain', '')}")
+        click.echo(
+            f"\nOverall: {'✓ VERIFIED' if result.get('ots_verified') else '✗ NOT VERIFIED'}"
+        )
+    except Exception as e:
+        click.echo(f"Error verifying OTS proof: {e}", err=True)
         sys.exit(1)
 
 

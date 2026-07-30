@@ -52,6 +52,17 @@ Test suite: 602 tests, 0 failures
 - [x] Update docs/INSTALLATION.md with pytest-asyncio and optional deps
 - [x] Update ASSESSMENT.md with coverage table
 
+### OpenTimestamps (OTS) Integration
+- [x] Add `TimeStamper` class for OpenTimestamps stamping (SHA-256 → public calendar server → `.ots` proof)
+- [x] Add `QRLPTimeStampVerifier` for verifying `.ots` proofs against QR payloads
+- [x] Add OTS fields to `QRData` (`ots_proof_path`, `ots_verified`, `ots_timestamp`) — additive, backwards compatible
+- [x] Add OTS fields to `TimeSettings` (`ots_enabled`, `ots_server`, `ots_min_interval`, `ots_proof_dir`)
+- [x] Integrate periodic stamping into `generate_single_qr` with graceful degradation
+- [x] Add `qrlp stamp` and `qrlp verify-ots` CLI commands
+- [x] Add `opentimestamps` dependency to `pyproject.toml`
+- [x] 47 tests, 100% coverage on both OTS modules; mypy clean
+- [x] Update README.md with OTS usage section
+
 ---
 
 ## Minor Improvements (v1.4.0)

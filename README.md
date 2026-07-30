@@ -284,6 +284,51 @@ qrlp verify --file qr_data.json --trust-store trust.json
 # ✓ Overall: VALID
 ```
 
+#### OpenTimestamps (OTS) — Blockchain Timestamp Attestation
+
+QRLP can optionally commit QR payloads to a public blockchain via
+[OpenTimestamps](https://opentimestamps.org/), producing a `.ots` proof file
+that anyone can verify independently — proving *"this QR data existed at this
+time"* without trusting any single provider. OTS is **additive**: it layers on
+top of the existing NTP + blockchain-hash + signature model and is disabled by
+default, so existing behaviour is unchanged.
+
+```bash
+# Stamp a QR JSON payload with OpenTimestamps (writes a .ots proof)
+qrlp stamp qr_data.json --proof-dir output/timestamps/
+
+# Verify a QR payload against an OpenTimestamps proof
+qrlp verify-ots qr_data.json output/timestamps/<digest>.ots
+
+# verify-ots output:
+# OpenTimestamps Verification:
+#   OTS verified: ✓
+#   Proof path: output/timestamps/<digest>.ots
+#   Timestamp: 2025-01-11T15:30:45+00:00
+#   Blockchain: bitcoin
+# Overall: ✓ VERIFIED
+```
+
+Enable automatic periodic stamping during live generation by setting the OTS
+fields in `TimeSettings` (or a config file):
+
+```json
+{
+  "time_settings": {
+    "ots_enabled": true,
+    "ots_server": "https://stamp.opentimestamps.org",
+    "ots_min_interval": 300,
+    "ots_proof_dir": "output/timestamps"
+  }
+}
+```
+
+When enabled, `generate_single_qr()` periodically stamps the QR payload
+(every `ots_min_interval` seconds) and stores the resulting proof path in the
+`QRData.ots_proof_path` field. If the OTS server is unreachable, stamping is
+skipped gracefully — QR generation continues with NTP + signatures.
+
+
 #### Programmatic Verification
 ```python
 # Verify in your application

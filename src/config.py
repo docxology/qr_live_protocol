@@ -35,6 +35,16 @@ class TimeSettings:
     local_fallback: bool = True  # Use local time if servers unavailable
     timezone: str = "UTC"
 
+    # OpenTimestamps (OTS) settings — additive verifiable timestamp layer.
+    # When enabled, QR commitments are periodically stamped against a public
+    # blockchain via an OpenTimestamps calendar server, producing ``.ots``
+    # proof files that anyone can verify independently. Disabled by default so
+    # existing behaviour is unchanged.
+    ots_enabled: bool = False
+    ots_server: str = "https://stamp.opentimestamps.org"
+    ots_min_interval: int = 300  # minimum seconds between stamps
+    ots_proof_dir: str = "output/timestamps"
+
 
 @dataclass
 class BlockchainSettings:

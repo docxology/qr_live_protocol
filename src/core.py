@@ -12,6 +12,7 @@ import threading
 import secrets
 import logging
 from datetime import datetime, timezone, timedelta
+from pathlib import Path
 from typing import Dict, List, Optional, Callable, Any
 from dataclasses import dataclass, asdict, fields
 
@@ -22,6 +23,7 @@ from .identity_manager import IdentityManager
 from .config import QRLPConfig
 from .crypto import KeyManager, QRSignatureManager, DataEncryptor, HMACManager
 from .trust import TrustStore
+from .time_stamper import TimeStamper
 
 _logger = logging.getLogger("qrlp.core")
 
@@ -54,6 +56,13 @@ class QRData:
     _encryption_key_id: Optional[str] = None
     _data_key_id: Optional[str] = None
     _encrypted_at: Optional[str] = None
+
+    # OpenTimestamps (OTS) proof — additive, optional, backwards compatible.
+    # Populated when OTS stamping is enabled in TimeSettings. Old QR payloads
+    # without these fields still verify unchanged.
+    ots_proof_path: Optional[str] = None
+    ots_verified: Optional[bool] = None
+    ots_timestamp: Optional[str] = None
 
     def to_json(self) -> str:
         """Convert to JSON string for QR encoding."""
@@ -160,6 +169,17 @@ class QRLiveProtocol:
         self.time_provider = TimeProvider(self.config.time_settings)
         self.blockchain_verifier = BlockchainVerifier(self.config.blockchain_settings)
         self.identity_manager = IdentityManager(self.config.identity_settings)
+
+        # OpenTimestamps stamper — additive layer. Disabled by default; when
+        # enabled, QR commitments are periodically stamped against a public
+        # blockchain. Graceful degradation: stamping failures never block QR
+        # generation.
+        self.time_stamper = TimeStamper(
+            enabled=self.config.time_settings.ots_enabled,
+            server=self.config.time_settings.ots_server,
+            min_interval=self.config.time_settings.ots_min_interval,
+            proof_dir=Path(self.config.time_settings.ots_proof_dir),
+        )
 
         # Initialize cryptographic components
         self._key_manager: Optional[KeyManager] = None
@@ -311,6 +331,20 @@ class QRLiveProtocol:
         # Generate QR code image
         qr_json = json.dumps(signed_qr_data, separators=(',', ':'))
         qr_image = self.qr_generator.generate_qr_image(qr_json)
+
+        # OpenTimestamps stamping (additive, opt-in). The proof is stamped
+        # against the exact QR payload bytes (``qr_json``) so that any verifier
+        # can later confirm "this QR data existed at this time" on a public
+        # blockchain. Only stamps periodically (``ots_min_interval``) to avoid
+        # stamping every frame. Failures degrade gracefully: the QR is still
+        # returned, just without an OTS proof path.
+        if self.config.time_settings.ots_enabled:
+            try:
+                proof_path = self.time_stamper.stamp(qr_json.encode("utf-8"))
+                if proof_path is not None:
+                    signed_qr_data["ots_proof_path"] = str(proof_path)
+            except Exception as e:
+                _logger.debug("OTS stamping skipped: %s", e)
 
         # Return the original qr_data but with HMAC fields populated
         qr_data_enhanced = QRData(**signed_qr_data)
