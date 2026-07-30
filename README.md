@@ -1,6 +1,6 @@
 # QR Live Protocol (QRLP)
 
-[![Version](https://img.shields.io/badge/version-1.4.0-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.5.0-blue.svg)](CHANGELOG.md)
 [![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
 [![Python Version](https://img.shields.io/badge/python-3.9+-blue.svg)](https://pypi.org/project/qr-live-protocol/)
 [![Tests](https://img.shields.io/badge/tests-624%20passing-brightgreen.svg)](#testing)
@@ -678,7 +678,7 @@ Contact us at **enterprise@qrlp.org** for:
 
 ## 🌟 Project Status
 
-**Current Version**: 1.4.0 (Stable)
+**Current Version**: 1.5.0 (Stable)
 **Active Development**: ✅ Yes
 **Community Support**: ✅ GitHub Issues & Discussions
 **Professional Support**: ✅ Available for enterprise users

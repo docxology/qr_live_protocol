@@ -3307,7 +3307,7 @@ wheels = [
 
 [[package]]
 name = "qr-live-protocol"
-version = "1.4.0"
+version = "1.5.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp", version = "3.13.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },

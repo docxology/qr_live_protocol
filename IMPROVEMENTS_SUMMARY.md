@@ -1,6 +1,6 @@
 # QRLP Improvements Summary
 
-**Version:** 1.4.0  
+**Version:** 1.5.0  
 **Date:** 2026-07-22  
 **Status:** Production-Ready  
 

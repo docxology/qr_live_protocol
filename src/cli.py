@@ -21,7 +21,7 @@ from .time_stamper_integration import QRLPTimeStampVerifier
 
 
 @click.group()
-@click.version_option(version="1.4.0")
+@click.version_option(version="1.5.0")
 @click.option('--config', '-c', type=click.Path(exists=True),
               help='Configuration file path (JSON or YAML)')
 @click.option('--debug', '-d', is_flag=True, help='Enable debug mode')
