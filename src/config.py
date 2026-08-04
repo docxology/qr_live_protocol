@@ -94,6 +94,12 @@ class VerificationSettings:
     require_blockchain: bool = False  # Require blockchain verification
     require_time_server: bool = False  # Require time server verification
     min_verifications: int = 1  # Minimum successful verifications required
+    # Replay protection. When enabled, a verifier remembers the nonce of each
+    # accepted QR (within replay_window_seconds) and marks a re-submitted QR as
+    # a replay, which fails verification. Off by default to preserve the
+    # existing stateless behaviour.
+    enable_replay_protection: bool = False
+    replay_window_seconds: int = 300
 
 
 @dataclass

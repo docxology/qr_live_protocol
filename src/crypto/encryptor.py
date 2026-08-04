@@ -215,13 +215,19 @@ class DataEncryptor:
         key_data = secrets.token_bytes(32)
         key_id = self._generate_key_id()
 
-        return EncryptionKey(
+        key = EncryptionKey(
             key_id=key_id,
             key_data=key_data,
             algorithm="aes-256-gcm",
             created_at=self._get_timestamp(),
-            purpose=purpose
+            purpose=purpose,
         )
+        # Register the key so later lookups find it in key_store instead of
+        # silently falling back to the master key. Without this, a caller who
+        # generates a data key and then encrypts with it actually encrypts with
+        # the master key, defeating the whole point of per-data-key separation.
+        self.key_store[key_id] = key_data
+        return key
 
     def create_encrypted_qr_data(self, qr_data: Dict[str, Any], key_id: str) -> Dict[str, Any]:
         """
@@ -289,18 +295,21 @@ class DataEncryptor:
         from datetime import datetime, timezone
         return datetime.now(timezone.utc).isoformat()
 
-    def _get_key_by_id(self, key_id: str) -> Optional[EncryptionKey]:
+    def _get_key_by_id(self, key_id: str) -> EncryptionKey:
         """Get encryption key by ID.
 
-        Looks up the key in key_store first, falls back to master key
-        for backward compatibility.
+        Looks up the key in key_store, falling back to the master key only when
+        ``key_id`` is this encryptor's own master key id. Any other unknown
+        id raises instead of silently decrypting/encrypting with the master key
+        (fail-open on an arbitrary key id would defeat key separation).
         """
-        key_data = None
         if key_id in self.key_store:
             key_data = self.key_store[key_id]
-        else:
-            # Fall back to master key for backward compatibility
+        elif key_id == self.key_id:
+            # Legacy calls may refer to the master key by its own id.
             key_data = self.master_key
+        else:
+            raise EncryptionError(f"Encryption key not found: {key_id}")
 
         return EncryptionKey(
             key_id=key_id,

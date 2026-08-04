@@ -205,6 +205,10 @@ class QRLiveProtocol:
         # Expiry notification callback
         self._expiry_callback: Optional[Callable[[QRData], None]] = None
 
+        # Replay-protection state: nonce -> timestamp of first sighting, pruned
+        # on each use. Only consulted when replay protection is enabled.
+        self._seen_nonces: Dict[str, float] = {}
+
         # Performance tracking
         self._last_update_time = 0
         self._update_count = 0
@@ -516,9 +520,16 @@ class QRLiveProtocol:
                 "signature_verified": False,
                 "hmac_verified": False,
                 "encrypted": '_encrypted_fields' in raw_data,
+                "replayed": False,
                 "valid": False,
                 "trust_mode": "none"
             }
+
+            # Replay protection: if enabled, a QR whose nonce was already seen
+            # within the replay window is a replay and is rejected.
+            replay = self._check_and_record_replay(qr_data)
+            if self.config.verification_settings.enable_replay_protection:
+                results["replayed"] = replay
 
             # Verify HMAC integrity (always present)
             try:
@@ -588,7 +599,8 @@ class QRLiveProtocol:
                 results["valid_json"] and
                 results["time_verified"] and
                 blockchain_ok and
-                authenticity_ok
+                authenticity_ok and
+                not results["replayed"]
             )
 
             return results
@@ -603,6 +615,7 @@ class QRLiveProtocol:
                 "signature_verified": False,
                 "hmac_verified": False,
                 "encrypted": False,
+                "replayed": False,
                 "valid": False,
                 "trust_mode": "none"
             }
@@ -671,6 +684,35 @@ class QRLiveProtocol:
     def _content_hash(self, user_data: Optional[Dict]) -> str:
         canonical = json.dumps(user_data or {}, sort_keys=True, separators=(',', ':'))
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+    def _check_and_record_replay(self, qr_data: "QRData") -> bool:
+        """Return ``True`` if ``qr_data`` is a replay within the window.
+
+        A QR is identified by its ``nonce`` (scoped by issuer to avoid
+        cross-issuer collisions). First sighting records the nonce and returns
+        ``False``; a repeat sighting inside the configured window returns
+        ``True``. Stale entries are pruned on each call so the map stays
+        bounded. When replay protection is disabled this still tracks nonces,
+        but the caller only consults the result when protection is enabled.
+        """
+        window = self.config.verification_settings.replay_window_seconds
+        if window <= 0 or not qr_data.nonce:
+            return False
+
+        now = time.time()
+        issuer = qr_data.issuer_id or ""
+        replay_key = f"{issuer}:{qr_data.nonce}"
+
+        with self._state_lock:
+            # Prune entries older than the window.
+            stale = [k for k, t in self._seen_nonces.items() if now - t > window]
+            for k in stale:
+                del self._seen_nonces[k]
+
+            is_replay = replay_key in self._seen_nonces
+            if not is_replay:
+                self._seen_nonces[replay_key] = now
+            return is_replay
 
     def _expires_at(self, issued_at: datetime) -> str:
         ttl = self.config.security_settings.qr_ttl_seconds

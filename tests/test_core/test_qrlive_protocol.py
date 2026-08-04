@@ -425,3 +425,36 @@ class TestQRLiveProtocol:
 
         # Should be marked as encrypted
         assert results['encrypted'] is True
+
+
+class TestReplayProtection:
+    """Tests for optional nonce-based replay protection."""
+
+    def _make_protocol(self, test_config, temp_key_dir):
+        test_config.verification_settings.enable_replay_protection = True
+        test_config.verification_settings.replay_window_seconds = 300
+        return QRLiveProtocol(test_config, key_manager=KeyManager(str(temp_key_dir)))
+
+    def test_repeat_verification_is_replay(self, test_config, temp_key_dir):
+        """Re-verifying the same QR inside the window is flagged as a replay."""
+        qrlp = self._make_protocol(test_config, temp_key_dir)
+        qr_data, _ = qrlp.generate_single_qr(sign_data=True)
+        qr_json = qr_data.to_json()
+
+        first = qrlp.verify_qr_data(qr_json)
+        assert first["replayed"] is False
+        assert first["valid"] is True
+
+        replay = qrlp.verify_qr_data(qr_json)
+        assert replay["replayed"] is True
+        assert replay["valid"] is False
+
+    def test_distinct_qr_not_replay(self, test_config, temp_key_dir):
+        """A freshly generated QR (new nonce) is not flagged as a replay."""
+        qrlp = self._make_protocol(test_config, temp_key_dir)
+        qr1, _ = qrlp.generate_single_qr()
+        qr2, _ = qrlp.generate_single_qr()
+
+        assert qrlp.verify_qr_data(qr1.to_json())["replayed"] is False
+        assert qrlp.verify_qr_data(qr2.to_json())["replayed"] is False
+        assert qrlp.verify_qr_data(qr2.to_json())["replayed"] is True

@@ -319,3 +319,43 @@ class TestDataEncryptor:
         assert key.purpose == "metadata_test"
         assert key.created_at is not None
 
+
+
+class TestEncryptorKeySeparation:
+    """Tests for per-data-key separation and fail-closed key lookup."""
+
+    def test_generated_data_key_is_registered_and_usable(self):
+        """A generated data key must actually be used, not the master key.
+
+        Previously generate_data_key() returned a key that was never added to
+        key_store, so create_encrypted_qr_data() fell back to the master key and
+        silently ignored the caller's chosen data key.
+        """
+        encryptor = DataEncryptor()
+        key = encryptor.generate_data_key("qr_encryption")
+
+        # The key must be registered for lookup and must differ from master.
+        assert key.key_id in encryptor.key_store
+        assert encryptor.key_store[key.key_id] == key.key_data
+        assert key.key_data != encryptor.master_key
+
+        qr_data = {"timestamp": "2025-01-11T15:30:45Z", "identity_hash": "h",
+                   "user_data": {"secret": "value"}}
+        encrypted = encryptor.create_encrypted_qr_data(qr_data, key.key_id)
+        assert encrypted["_data_key_id"] == key.key_id
+
+        # Round-trip must succeed with the same encryptor holding the key.
+        decrypted = encryptor.decrypt_encrypted_qr_data(encrypted)
+        assert decrypted["user_data"] == {"secret": "value"}
+
+    def test_unknown_key_id_fails_closed(self):
+        """_get_key_by_id must not fall back to the master key for a random id."""
+        encryptor = DataEncryptor()
+        with pytest.raises(EncryptionError):
+            encryptor._get_key_by_id("not-a-registered-key")
+
+    def test_master_key_id_still_resolves(self):
+        """References to the encryptor's own master key id still work."""
+        encryptor = DataEncryptor()
+        resolved = encryptor._get_key_by_id(encryptor.key_id)
+        assert resolved.key_data == encryptor.master_key
