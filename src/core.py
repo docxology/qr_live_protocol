@@ -503,8 +503,10 @@ class QRLiveProtocol:
             else:
                 qr_data_dict = raw_data
 
-            # Create QRData object from dictionary
-            qr_data = QRData(**qr_data_dict)
+            # Create QRData object from dictionary. from_dict() silently drops
+            # unknown fields so forward-compatible payloads (fields added by
+            # newer versions) still verify instead of raising here.
+            qr_data = QRData.from_dict(qr_data_dict)
 
             results = {
                 "valid_json": True,

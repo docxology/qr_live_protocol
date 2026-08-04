@@ -57,6 +57,7 @@ import logging
 import os
 import base64
 import json
+import hmac
 import threading
 import webbrowser
 import re
@@ -232,7 +233,11 @@ def security_middleware(app, settings: WebSettings):
     def validate_request():
         """Validate incoming requests."""
         if settings.rate_limit_per_minute:
-            client_id = request.headers.get("X-Forwarded-For", request.remote_addr or "unknown")
+            # Key rate limiting on the peer address only. The X-Forwarded-For
+            # header is attacker-controlled unless a trusted reverse proxy is
+            # guaranteed to overwrite it, so trusting it here would let clients
+            # rotate the header to bypass the limit.
+            client_id = request.remote_addr or "unknown"
             now = time.time()
             window_start = now - 60
             with request_log_lock:
@@ -855,12 +860,16 @@ class QRLiveWebServer:
         auth = request.headers.get("Authorization", "")
         if auth.startswith("Bearer "):
             token = auth.removeprefix("Bearer ").strip()
-        return token == self.settings.admin_token
+        token = token if isinstance(token, str) else ""
+        # Constant-time comparison prevents timing-based token disclosure.
+        return hmac.compare_digest(token, self.settings.admin_token)
 
-    def _authorized_socket(self, data: Dict[str, Any]) -> bool:
+    def _authorized_socket(self, data: Optional[Dict[str, Any]]) -> bool:
         if not self.settings.admin_token:
             return True
-        return data.get("admin_token") == self.settings.admin_token
+        supplied = (data or {}).get("admin_token")
+        supplied = supplied if isinstance(supplied, str) else ""
+        return hmac.compare_digest(supplied, self.settings.admin_token)
 
     def _get_template_dir(self) -> str:
         """Get template directory path."""

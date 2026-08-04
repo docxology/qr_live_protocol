@@ -1,0 +1,84 @@
+================================================================================
+QR Live Protocol (QRLP) — Release v1.5.0
+================================================================================
+Release date: 2026-07-30
+Previous release: v1.4.0 (2026-07-23)
+Repository: https://github.com/docxology/qr_live_protocol
+Tag: v1.5.0
+Release commit: bbd8fb8fd332542bef7c356aca008a627962e012
+
+--------------------------------------------------------------------------------
+Summary
+--------------------------------------------------------------------------------
+
+v1.5.0 is a minor feature release that adds OpenTimestamps (OTS) integration
+for QR timestamp attestation. This is an additive, opt-in feature: it layers on
+top of the existing NTP + blockchain-hash + signature model and is disabled by
+default, so existing behaviour is unchanged.
+
+What OTS does for this project:
+  - Commits QR payloads to a public blockchain (Bitcoin) via OpenTimestamps,
+    producing a `.ots` proof file.
+  - Anyone can verify the proof independently — proving "this QR data existed
+    at this time" without trusting any single provider.
+  - New CLI commands: `qrlp stamp` (create a proof) and `qrlp verify-ots`
+    (verify a proof against the Bitcoin blockchain).
+  - Optional automatic periodic stamping during live generation via the
+    `ots_*` fields in `TimeSettings`.
+
+--------------------------------------------------------------------------------
+Installation
+--------------------------------------------------------------------------------
+
+    pip install qr-live-protocol
+
+--------------------------------------------------------------------------------
+Usage
+--------------------------------------------------------------------------------
+
+    # Stamp a QR JSON payload with OpenTimestamps (writes a .ots proof)
+    qrlp stamp qr_data.json --proof-dir output/timestamps/
+
+    # Verify a QR payload against an OpenTimestamps proof
+    qrlp verify-ots qr_data.json output/timestamps/<digest>.ots
+
+    # Enable automatic periodic stamping during live generation:
+    #   set ots_enabled=true (and ots_server / ots_min_interval / ots_proof_dir)
+    #   in the time_settings block of your config file.
+
+--------------------------------------------------------------------------------
+Full git log since v1.4.0
+--------------------------------------------------------------------------------
+
+commit bbd8fb8fd332542bef7c356aca008a627962e012
+Author: AI Agent <danielarifriedman@gmail.com>
+Date:   2026-07-30
+
+    Release v1.5.0: OpenTimestamps integration for QR timestamp attestation
+
+commit 5789dae7de924436c4994b53a4ae386c63dbf2bd
+Author: AI Agent <danielarifriedman@gmail.com>
+Date:   2026-07-30
+
+    feat: OpenTimestamps integration for QR timestamp attestation
+
+--------------------------------------------------------------------------------
+Changed files (feature commit 5789dae)
+--------------------------------------------------------------------------------
+
+ README.md                              |   45 +  (OTS documentation)
+ TODO.md                                |   11 +  (release notes / roadmap)
+ pyproject.toml                         |    2 +  (ots dependency)
+ src/__init__.py                        |    3 +  (exports)
+ src/cli.py                             |   92 +  (stamp / verify-ots commands)
+ src/config.py                          |   10 +  (ots config fields)
+ src/core.py                            |   34 +  (stamper wiring)
+ src/time_stamper.py                    |  379 ++ (new — OpenTimestamps stamper)
+ src/time_stamper_integration.py        |  158 ++ (new — QRLP OTS verifier)
+ tests/test_time_stamper.py             |  411 ++ (new — unit tests)
+ tests/test_time_stamper_integration.py |  203 ++ (new — integration tests)
+ uv.lock                                | 3909 ++(lockfile)
+
+ 12 files changed, 5257 insertions(+)
+
+================================================================================

@@ -58,3 +58,28 @@ class TestQRDataForwardCompat:
         assert "user_data" not in data
         assert "issuer_id" not in data
         assert "digital_signature" not in data
+
+    def test_verify_qr_data_tolerates_unknown_fields(self, qrlp_instance):
+        """verify_qr_data must not crash on a QR that carries extra unknown fields.
+
+        This is the wire-level counterpart of ``from_json`` forward
+        compatibility. Previously ``verify_qr_data`` built ``QRData(**dict)``
+        directly, so an unfamiliar field raised a TypeError that surfaced as
+        ``valid_json=False`` — even for a legitimately-signed QR from a newer
+        version. Now unknown fields are dropped for parsing, so verification
+        runs and reports a definitive crypto outcome instead.
+        """
+        qr_data, _ = qrlp_instance.generate_single_qr(sign_data=True)
+        payload = json.loads(qr_data.to_json())
+        payload["future_field"] = "ignored-by-older-verifier"
+        payload["another_new_field"] = {"nested": [1, 2, 3]}
+
+        results = qrlp_instance.verify_qr_data(json.dumps(payload))
+
+        # The payload still parses as valid JSON (no crash), and the crypto
+        # layer produced a real decision rather than erroring out. The injected
+        # field was not part of what was signed/HMAC'd, so both checks fail —
+        # which is the correct tamper-detection outcome.
+        assert results["valid_json"] is True
+        assert results["signature_verified"] is False
+        assert results["hmac_verified"] is False

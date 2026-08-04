@@ -304,6 +304,29 @@ class TestAdminToken:
         assert server._authorized_socket({"admin_token": "wrong"}) is False
         assert server._authorized_socket({}) is False
 
+    def test_authorized_socket_handles_none_and_nonstring(self):
+        """_authorized_socket safely handles None data and non-string tokens."""
+        settings = WebSettings(admin_token="tok")
+        server = QRLiveWebServer(settings, verifier=None)
+        assert server._authorized_socket(None) is False
+        assert server._authorized_socket({}) is False
+        assert server._authorized_socket({"admin_token": 123}) is False
+        assert server._authorized_socket({"admin_token": None}) is False
+        assert server._authorized_socket({"admin_token": "tok"}) is True
+
+    def test_authorized_request_constant_time(self, web_server_with_token):
+        """_authorized_request uses constant-time comparison."""
+        client = web_server_with_token.app.test_client()
+        # Missing token -> 401
+        assert client.post(
+            '/api/user-data', json={"user_text": "x"},
+            content_type='application/json').status_code == 401
+        # Matching token -> 200
+        assert client.post(
+            '/api/user-data', json={"user_text": "x"},
+            content_type='application/json',
+            headers={"X-QRLP-Admin-Token": "secret-token"}).status_code == 200
+
 
 class TestWebServerUtilities:
     """Test utility methods."""
@@ -379,6 +402,28 @@ class TestRateLimiting:
 
         # 4th request rate-limited
         resp = client.get('/api/status')
+        assert resp.status_code == 429
+
+    def test_rate_limit_not_bypassed_by_xff(self):
+        """Rotating X-Forwarded-For must not bypass the per-peer rate limit."""
+        settings = WebSettings(
+            host="localhost", port=0, auto_open_browser=False,
+            rate_limit_per_minute=3,
+        )
+        config = QRLPConfig()
+        config.blockchain_settings.enabled_chains = set()
+        config.time_settings.time_servers = []
+        server = QRLiveWebServer(settings, verifier=QRLiveProtocol(config))
+        client = server.app.test_client()
+
+        # Same peer address, distinct (spoofed) X-Forwarded-For values.
+        for i in range(3):
+            resp = client.get('/api/status',
+                              headers={"X-Forwarded-For": f"1.2.3.{i}"})
+            assert resp.status_code == 200
+
+        # A new spoofed X-Forwarded-For still cannot reset the budget.
+        resp = client.get('/api/status', headers={"X-Forwarded-For": "9.9.9.9"})
         assert resp.status_code == 429
 
 

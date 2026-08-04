@@ -7,6 +7,7 @@ The tests exercise stamping, verification, interval enforcement, canonical
 serialisation, and graceful degradation.
 """
 
+import hashlib
 import json
 import time
 from pathlib import Path
@@ -228,6 +229,31 @@ class TestVerification:
             path = s.stamp(b"fallback-data")
         assert path is not None
         assert s.verify(b"fallback-data", path) is True
+
+    def test_verify_rejects_attestation_less_fabricated_proof(self, proof_dir):
+        """verify() rejects a proof carrying no attestation at all.
+
+        This is defense-in-depth: the opentimestamps library already refuses to
+        *serialize* an empty-attestation timestamp ("An empty timestamp can't
+        be serialized"), so a crafted ``.ots`` file cannot normally be produced
+        through the library. But a hand-built binary (or a future library
+        change) could reach ``verify()`` with no calendar or chain behind the
+        digest, and accepting it would let an attacker "verify" arbitrary data
+        against a proof they manufactured offline. ``verify()`` must therefore
+        reject proofs whose timestamp carries no attestation.
+        """
+        from opentimestamps.core.timestamp import DetachedTimestampFile, Timestamp
+        from opentimestamps.core.op import OpSHA256
+
+        s = TimeStamper(enabled=True, server="https://example.test",
+                        min_interval=0, proof_dir=proof_dir)
+        digest = hashlib.sha256(b"forged-data").digest()
+        # A timestamp with NO attestations — no calendar, no chain.
+        forged = DetachedTimestampFile(OpSHA256(), Timestamp(digest))
+        path = proof_dir / "forged.ots"
+
+        with patch.object(TimeStamper, "_read_proof", return_value=forged):
+            assert s.verify(b"forged-data", path) is False
 
 
 # --------------------------------------------------------------------------- #

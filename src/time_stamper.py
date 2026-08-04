@@ -154,6 +154,12 @@ class TimeStamper:
         verification is attempted best-effort but is not required for a
         ``True`` result — the digest match itself proves ``data`` was the
         committed value.
+
+        A proof that carries **no attestation at all** is rejected. Such a file
+        can be fabricated entirely offline (just a digest and a timestamp with
+        no calendar or chain behind it) and therefore provides no evidence that
+        the data was ever committed — accepting it would let an attacker cook
+        up a ``.ots`` file that "verifies" arbitrary data.
         """
         try:
             dts = self._read_proof(proof_path)
@@ -166,10 +172,17 @@ class TimeStamper:
             _logger.warning("OTS digest mismatch for %s", proof_path)
             return False
 
-        # The digest matches and the proof is structurally valid. Best-effort
+        # Reject offline-fabricated proofs with no calendar/chain attestation.
+        if not _has_attestation(dts.timestamp):
+            _logger.warning("OTS proof %s has no attestation; rejecting", proof_path)
+            return False
+
+        # The digest matches and the proof is structurally valid, carrying at
+        # least a submitted (pending or confirmed) attestation. Best-effort
         # on-chain confirmation: if a block-header attestation is present we
-        # cannot verify it without the corresponding block header, so we treat
-        # the digest match as sufficient (the proof still attests the data).
+        # cannot verify the header without the full block, so the digest match
+        # plus a real attestation is treated as sufficient evidence the data
+        # was committed.
         return True
 
     def proof_info(self, proof_path: Path) -> dict[str, Any]:
