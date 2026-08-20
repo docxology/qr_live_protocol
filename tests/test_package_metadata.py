@@ -1,8 +1,9 @@
 """Regression tests for package metadata and distributable assets."""
 
 import re
-import tomllib
 from pathlib import Path
+
+import tomllib
 
 from src import __version__
 

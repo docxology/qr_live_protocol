@@ -7,7 +7,7 @@ hmac.py, encryptor.py, and qr_generator.py.
 """
 
 import json
-from typing import Any, Dict
+from typing import Any
 
 
 class QRSerializer:
@@ -60,7 +60,7 @@ class QRSerializer:
         return json.loads(json_str)
 
     @staticmethod
-    def serialize_to_dict(data: Any, filter_none: bool = True) -> Dict[str, Any]:
+    def serialize_to_dict(data: Any, filter_none: bool = True) -> dict[str, Any]:
         """Convert data to a clean dictionary, optionally filtering None values.
 
         Args:

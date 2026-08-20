@@ -4,16 +4,17 @@ expiry callback, WebSocket validation, fuzz tests.
 """
 
 import json
-import time
-import pytest
 import random
 import string
+import time
+from datetime import UTC, datetime, timedelta
+
+import pytest
 from click.testing import CliRunner
-from datetime import datetime, timezone, timedelta
 
 from src.cli import cli
 from src.config import QRLPConfig
-from src.core import QRLiveProtocol, QRData
+from src.core import QRData, QRLiveProtocol
 from src.serializer import QRSerializer
 
 
@@ -111,7 +112,7 @@ class TestCLIKeysRotate:
         ])
         assert result.exit_code == 0
         assert "New key generated" in result.output
-        assert "Old key deleted" in result.output
+        assert "Old key archived" in result.output
         assert f"{key_id}" in result.output
 
     def test_keys_rotate_nonexistent(self, runner, config_file):
@@ -207,7 +208,7 @@ class TestExpiryCallback:
         # Manually set expiry in the past
         if qrlp._current_qr_data:
             qrlp._current_qr_data.expires_at = (
-                datetime.now(timezone.utc) - timedelta(seconds=10)
+                datetime.now(UTC) - timedelta(seconds=10)
             ).isoformat()
 
         # Start the loop briefly

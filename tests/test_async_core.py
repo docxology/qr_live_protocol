@@ -7,12 +7,11 @@ Network-dependent tests use a real local HTTP server.
 """
 
 import asyncio
-import json
 import http.server
+import json
 import threading
+
 import pytest
-import tempfile
-from pathlib import Path
 
 from src.async_core import AsyncQRLiveProtocol
 from src.config import QRLPConfig

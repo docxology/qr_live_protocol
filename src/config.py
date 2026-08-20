@@ -4,9 +4,11 @@ Configuration module for QRLP.
 Defines all configuration structures and default values for the QR Live Protocol.
 """
 
-from dataclasses import dataclass, field, fields, is_dataclass
-from typing import List, Dict, Optional, Set, Any
+from __future__ import annotations
+
 import os
+from dataclasses import dataclass, field, fields, is_dataclass
+from typing import Any
 
 
 @dataclass
@@ -25,7 +27,7 @@ class QRSettings:
 class TimeSettings:
     """Time provider settings."""
     update_interval: float = 1.0  # Seconds between time updates
-    time_servers: List[str] = field(default_factory=lambda: [
+    time_servers: list[str] = field(default_factory=lambda: [
         "time.nist.gov",
         "pool.ntp.org",
         "time.google.com",
@@ -49,10 +51,10 @@ class TimeSettings:
 @dataclass
 class BlockchainSettings:
     """Blockchain verification settings."""
-    enabled_chains: Set[str] = field(default_factory=lambda: {
+    enabled_chains: set[str] = field(default_factory=lambda: {
         "bitcoin", "ethereum", "litecoin"
     })
-    api_endpoints: Dict[str, str] = field(default_factory=lambda: {
+    api_endpoints: dict[str, str] = field(default_factory=lambda: {
         "bitcoin": "https://blockstream.info/api",
         "ethereum": "https://api.etherscan.io/api",
         "litecoin": "https://api.blockcypher.com/v1/ltc/main"
@@ -65,7 +67,7 @@ class BlockchainSettings:
 @dataclass
 class IdentitySettings:
     """Identity management settings."""
-    identity_file: Optional[str] = None  # Path to identity file
+    identity_file: str | None = None  # Path to identity file
     auto_generate: bool = True  # Generate identity if none exists
     hash_algorithm: str = "sha256"
     include_system_info: bool = True  # Include system info in identity
@@ -82,8 +84,8 @@ class WebSettings:
     static_dir: str = "static"
     debug: bool = False
     cors_enabled: bool = False
-    cors_allowed_origins: List[str] = field(default_factory=list)
-    admin_token: Optional[str] = None
+    cors_allowed_origins: list[str] = field(default_factory=list)
+    admin_token: str | None = None
     rate_limit_per_minute: int = 120
 
 
@@ -106,23 +108,23 @@ class VerificationSettings:
 class SecuritySettings:
     """Security and encryption settings."""
     encrypt_qr_data: bool = False
-    encryption_key: Optional[str] = None
+    encryption_key: str | None = None
     sign_qr_data: bool = False
-    private_key_file: Optional[str] = None
-    public_key_file: Optional[str] = None
-    key_dir: Optional[str] = None
-    issuer_id: Optional[str] = None
+    private_key_file: str | None = None
+    public_key_file: str | None = None
+    key_dir: str | None = None
+    issuer_id: str | None = None
     event_id: str = "default"
-    signing_key_id: Optional[str] = None
+    signing_key_id: str | None = None
     signature_algorithm: str = "rsa"
-    qr_ttl_seconds: Optional[int] = None
+    qr_ttl_seconds: int | None = None
 
 
 @dataclass
 class LoggingSettings:
     """Logging configuration."""
     level: str = "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
-    log_file: Optional[str] = None
+    log_file: str | None = None
     max_file_size: int = 10 * 1024 * 1024  # 10MB
     backup_count: int = 5
     format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -146,7 +148,7 @@ class QRLPConfig:
     logging_settings: LoggingSettings = field(default_factory=LoggingSettings)
 
     @classmethod
-    def from_env(cls) -> 'QRLPConfig':
+    def from_env(cls) -> QRLPConfig:
         """Create configuration from environment variables."""
         config = cls()
 
@@ -191,11 +193,11 @@ class QRLPConfig:
         return config
 
     @classmethod
-    def from_file(cls, config_file: str) -> 'QRLPConfig':
+    def from_file(cls, config_file: str) -> QRLPConfig:
         """Load configuration from JSON or YAML file."""
         import json
 
-        with open(config_file, 'r') as f:
+        with open(config_file) as f:
             if config_file.endswith('.json'):
                 data = json.load(f)
             elif config_file.endswith(('.yml', '.yaml')):
@@ -217,12 +219,12 @@ class QRLPConfig:
 
         return config
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         """Convert configuration to dictionary."""
         from dataclasses import asdict
         return asdict(self)
 
-    def validate(self) -> List[str]:
+    def validate(self) -> list[str]:
         """Validate configuration and return list of issues."""
         issues = []
 
@@ -252,7 +254,7 @@ class QRLPConfig:
         return issues
 
 
-def _update_dataclass(target: Any, values: Dict[str, Any]) -> None:
+def _update_dataclass(target: Any, values: dict[str, Any]) -> None:
     """Recursively update a dataclass from a plain config dictionary."""
     if not is_dataclass(target) or not isinstance(values, dict):
         return

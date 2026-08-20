@@ -7,30 +7,22 @@ functions, async_core optimization, core _update_loop, qr_generator
 styled image fallbacks.
 """
 
-import asyncio
 import json
-import time
-import pytest
-import tempfile
+import os
 import subprocess
 import sys
-import os
-from pathlib import Path
-from datetime import datetime, timezone
+import time
+
+import pytest
 from click.testing import CliRunner
 
-from src.cli import cli, _parse_user_data, _load_qr_data_argument, _write_bytes
-from src.config import QRLPConfig, WebSettings
-from src.core import QRLiveProtocol, QRData
-from src.crypto.signer import DigitalSigner, SignatureVerifier
+from src.cli import cli
+from src.config import QRLPConfig, QRSettings, WebSettings
+from src.core import QRData, QRLiveProtocol
 from src.crypto import KeyManager
-from src.error_recovery import (
-    resilience_manager, resilient_qr_generation, resilient_verification,
-    CircuitBreaker, CircuitBreakerConfig, RetryStrategy, ResilientOperation,
-)
+from src.crypto.signer import DigitalSigner, SignatureVerifier
 from src.qr_generator import QRGenerator
-from src.config import QRSettings
-from src.web_server import QRLiveWebServer, SecurityValidator
+from src.web_server import QRLiveWebServer
 
 
 @pytest.fixture

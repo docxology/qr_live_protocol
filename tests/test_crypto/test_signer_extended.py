@@ -6,16 +6,21 @@ and HMACError export.
 """
 
 import pytest
+
 from src.crypto import (
-    KeyManager, QRSignatureManager, HMACManager, DataEncryptor,
-    CryptoError, KeyManagementError, SignatureError, EncryptionError, HMACError,
+    CryptoError,
+    HMACError,
+    KeyManagementError,
+    KeyManager,
+    QRSignatureManager,
+    SignatureError,
 )
 from src.crypto.signer import (
+    ENCRYPTION_FIELDS,
+    HMAC_FIELDS,
+    SIGNATURE_FIELDS,
     canonicalize_qr_payload_for_signature,
-    DigitalSigner, SignatureVerifier,
-    SIGNATURE_FIELDS, HMAC_FIELDS, ENCRYPTION_FIELDS,
 )
-from src.crypto.exceptions import KeyManagementError as exceptions_KeyManagementError
 
 
 class TestCryptoExceptions:

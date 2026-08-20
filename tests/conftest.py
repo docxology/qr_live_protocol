@@ -5,16 +5,16 @@ Provides common test fixtures, configuration, and utilities used across
 the entire test suite.
 """
 
-import pytest
-import tempfile
-import shutil
-import os
 import json
+import shutil
+import tempfile
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any
+
+import pytest
 
 from src import QRLiveProtocol, QRLPConfig
-from src.crypto import KeyManager, DataEncryptor, HMACManager, QRSignatureManager
+from src.crypto import DataEncryptor, HMACManager, KeyManager
 
 
 @pytest.fixture
@@ -120,19 +120,19 @@ class TestUtils:
     """Utility functions for testing."""
 
     @staticmethod
-    def create_test_qr_json(data: Dict[str, Any]) -> str:
+    def create_test_qr_json(data: dict[str, Any]) -> str:
         """Create JSON string for testing."""
         return json.dumps(data, separators=(',', ':'))
 
     @staticmethod
-    def assert_qr_data_structure(qr_data: Dict[str, Any]):
+    def assert_qr_data_structure(qr_data: dict[str, Any]):
         """Assert that QR data has expected structure."""
         required_fields = ['timestamp', 'identity_hash', 'sequence_number']
         for field in required_fields:
             assert field in qr_data, f"Missing required field: {field}"
 
     @staticmethod
-    def assert_verification_result(result: Dict[str, Any]):
+    def assert_verification_result(result: dict[str, Any]):
         """Assert that verification result has expected structure."""
         expected_keys = [
             'valid_json', 'identity_verified', 'time_verified',

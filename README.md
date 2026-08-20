@@ -85,6 +85,38 @@ python main.py
 | 📱 **OBS Integration** | Optimized browser source for OBS Studio | Professional livestreaming |
 | 🔐 **Cryptographic Security** | HMAC integrity + optional trusted digital signatures | Tamper detection and issuer verification |
 | 📊 **Real-time Monitoring** | Live statistics and performance metrics | Production monitoring |
+| 🔁 **Fault-Tolerant Recovery** | Receiver-side frame re-ordering + gap recovery over lossy optical channels | Unreliable camera / scan pipelines |
+| ⚡ **Optical Throughput Control** | Dynamic frame cadence + payload symbol reuse to maximize readable fps | High-fps live display |
+| 🧪 **Live Simulator** | End-to-end optical delivery simulation without hardware | Testing, capacity planning |
+
+### Simulate & benchmark the live pipeline
+
+QRLP ships a hardware-free end-to-end simulator and an in-process WebSocket
+benchmark so you can validate optical-delivery behaviour before going live.
+
+```bash
+# Simulate 200 frames over a 15%-loss optical channel (human-readable)
+qrlp simulate-live --frames 200 --drop-rate 0.15 --seed 42
+
+# Same, as JSON for scripting / CI
+qrlp simulate-live --frames 200 --drop-rate 0.15 --seed 42 --json-output
+
+# Benchmark WebSocket QR-update throughput (payload build + base64 encode)
+qrlp benchmark-ws --iterations 200 --json-output
+```
+
+The simulator wires together the throughput controller (`src/optical_throughput.py`),
+the frame recovery controller (`src/frame_recovery.py`), and a deterministic
+optical channel model. All three are importable for embedding in real receivers
+and producers:
+
+```python
+from src import (
+    FrameRecoveryController,       # re-order + gap recovery on the receiver side
+    OpticalThroughputController,   # dynamic cadence + symbol reuse on the producer side
+    LiveSimulator,                 # end-to-end delivery testbed
+)
+```
 
 ### Why QRLP?
 

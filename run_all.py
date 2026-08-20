@@ -28,21 +28,18 @@ Options:
     --help              Show this help message
 """
 
-import sys
-import os
-import time
 import argparse
 import subprocess
-import importlib.util
+import sys
+import time
 from pathlib import Path
-from typing import List, Dict, Any, Optional
-import webbrowser
+from typing import Any
 
 # Add project root to path
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
-from src import QRLiveProtocol, QRLPConfig
+from src import QRLiveProtocol
 
 
 class QRLPComprehensiveRunner:
@@ -301,7 +298,7 @@ class QRLPComprehensiveRunner:
                 self.log("❌ requirements.txt not found", "ERROR")
                 return False
 
-            with open(requirements_file, 'r') as f:
+            with open(requirements_file) as f:
                 requirements = [line.strip() for line in f if line.strip() and not line.startswith('#')]
 
             if not requirements:
@@ -485,12 +482,13 @@ class QRLPComprehensiveRunner:
     def _check_pytest_available(self) -> bool:
         """Check if pytest is available."""
         try:
-            import pytest
+            import importlib
+            importlib.import_module("pytest")
             return True
         except ImportError:
             return False
 
-    def _run_test_suite(self) -> Dict[str, Any]:
+    def _run_test_suite(self) -> dict[str, Any]:
         """Run the test suite."""
         try:
             # Run tests with coverage
@@ -698,8 +696,8 @@ class QRLPComprehensiveRunner:
         self.log("🌐 Web Interface Demo", "INFO")
 
         try:
-            from src.web_server import QRLiveWebServer
             from src.config import WebSettings
+            from src.web_server import QRLiveWebServer
 
             # Create web server configuration
             web_config = WebSettings()
@@ -738,18 +736,18 @@ class QRLPComprehensiveRunner:
             # Start QRLP first to generate QR data
             qrlp.start_live_generation()
             self.log("📱 Started QR generation", "SUCCESS")
-            
+
             # Wait for first QR to be generated
             time.sleep(3)
-            
+
             # Start web server
             server.start_server(threaded=True)
             self.log("🌐 Started web server", "SUCCESS")
-            
+
             # Test API endpoints
             time.sleep(2)
             import requests
-            
+
             try:
                 status = requests.get('http://localhost:8080/api/status', timeout=5)
                 if status.status_code == 200:
@@ -869,7 +867,7 @@ class QRLPComprehensiveRunner:
             print(f"   Verification: {'✅ Working' if verification['hmac_verified'] else '❌ Failed'}")
             print(f"   Components: {len(stats)} statistics collected")
             print(f"   Crypto Keys: {stats['crypto_stats']['keys_count']}")
-            print(f"   Memory Usage: Normal")
+            print("   Memory Usage: Normal")
 
             if qr_data and verification['hmac_verified']:
                 print("🏥 Overall Health: EXCELLENT")

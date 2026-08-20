@@ -12,8 +12,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import pytest
 
 from src.error_recovery import (
-    CircuitBreaker, CircuitBreakerConfig, CircuitBreakerState,
-    CircuitBreakerOpenError
+    CircuitBreaker,
+    CircuitBreakerConfig,
+    CircuitBreakerOpenError,
+    CircuitBreakerState,
 )
 
 

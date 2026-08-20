@@ -4,14 +4,12 @@ Unit tests for Identity Manager functionality.
 Tests system fingerprinting, file hashing, and identity management operations.
 """
 
-import pytest
 import json
-import tempfile
 import os
-from pathlib import Path
+import tempfile
 
-from src.identity_manager import IdentityManager, IdentityInfo
 from src.config import IdentitySettings
+from src.identity_manager import IdentityInfo, IdentityManager
 
 
 class TestIdentityManager:
@@ -395,7 +393,7 @@ class TestIdentityManager:
         info = im.get_identity_info()
         assert len(info.file_hashes) == 3
 
-        for filename in files_data.keys():
+        for filename in files_data:
             assert filename in info.file_hashes
             assert len(info.file_hashes[filename]) == 64  # SHA-256 hash
 

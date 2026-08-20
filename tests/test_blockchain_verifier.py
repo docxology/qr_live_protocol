@@ -6,10 +6,9 @@ verification logic without making real network requests.
 """
 
 import time
-import pytest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from src.blockchain_verifier import BlockchainVerifier, BlockchainInfo
+from src.blockchain_verifier import BlockchainInfo, BlockchainVerifier
 from src.config import BlockchainSettings
 
 
@@ -60,7 +59,7 @@ class TestBlockchainVerifierStats:
                 chain="bitcoin",
                 block_number=800000,
                 block_hash="00000000000000000008a15c",
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
                 retrieved_at=time.time(),
             )
         }
@@ -90,7 +89,7 @@ class TestBlockchainVerifierVerify:
                 chain="bitcoin",
                 block_number=800000,
                 block_hash=block_hash,
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
                 retrieved_at=time.time(),
             )
         }
@@ -108,7 +107,7 @@ class TestBlockchainVerifierVerify:
                 chain="bitcoin",
                 block_number=800000,
                 block_hash="00000000000000000008a15c",
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
                 retrieved_at=time.time(),
             )
         }
@@ -124,7 +123,7 @@ class TestBlockchainVerifierVerify:
             chain="bitcoin",
             block_number=800000,
             block_hash="abc",
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             retrieved_at=time.time(),
         )
         verifier.cached_blocks = {"bitcoin": block_info}
@@ -147,11 +146,11 @@ class TestBlockchainVerifierVerify:
         verifier.cached_blocks = {
             "bitcoin": BlockchainInfo(
                 chain="bitcoin", block_number=1, block_hash="a",
-                timestamp=datetime.now(timezone.utc), retrieved_at=time.time(),
+                timestamp=datetime.now(UTC), retrieved_at=time.time(),
             ),
             "ethereum": BlockchainInfo(
                 chain="ethereum", block_number=2, block_hash="b",
-                timestamp=datetime.now(timezone.utc), retrieved_at=time.time(),
+                timestamp=datetime.now(UTC), retrieved_at=time.time(),
             ),
         }
         all_info = verifier.get_all_blockchain_info()
@@ -179,7 +178,7 @@ class TestBlockchainVerifierForceUpdate:
 
         real_info = BlockchainInfo(
             chain="bitcoin", block_number=800000, block_hash="abc",
-            timestamp=datetime.now(timezone.utc), retrieved_at=time.time(),
+            timestamp=datetime.now(UTC), retrieved_at=time.time(),
         )
         # Override the chain handler with a real function that returns test data
         def _test_bitcoin_handler():

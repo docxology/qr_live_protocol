@@ -5,15 +5,16 @@ Covers text overlay, live display QR, _split_data,
 verify_qr_readability with pyzbar, and cache eviction.
 """
 
-import json
 import base64
 import hashlib
-import pytest
+import json
 from io import BytesIO
+
+import pytest
 from PIL import Image
 
-from src.qr_generator import QRGenerator, QRDataTooLargeError, QRMetadata
 from src.config import QRSettings
+from src.qr_generator import QRGenerator
 
 
 class TestTextOverlay:

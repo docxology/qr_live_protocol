@@ -4,12 +4,11 @@ Unit tests for Key Manager cryptographic functionality.
 Tests key generation, storage, encryption, and management operations.
 """
 
-import pytest
-import os
 import json
-from pathlib import Path
 
-from src.crypto import KeyManager, KeyPair, KeyInfo
+import pytest
+
+from src.crypto import KeyInfo, KeyManager
 
 
 class TestKeyManager:
@@ -215,7 +214,7 @@ class TestKeyManager:
         assert backup_file.exists()
 
         # Check backup content
-        with open(backup_file, 'r') as f:
+        with open(backup_file) as f:
             backup_data = json.load(f)
 
         assert "backup_created" in backup_data

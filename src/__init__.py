@@ -12,47 +12,106 @@ __version__ = "1.5.0"
 __author__ = "QRLP Development Team (@docxology)"
 __email__ = "danielarifriedman@gmail.com"
 
-from .core import QRLiveProtocol, QRData, VerificationResult
-from .config import QRLPConfig
-from .serializer import QRSerializer
-from .qr_generator import QRDataTooLargeError, QRGenerator
-from .time_provider import TimeProvider
 from .blockchain_verifier import BlockchainVerifier
-from .identity_manager import IdentityManager
-from .web_server import QRLiveWebServer
-from .trust import TrustStore, TrustedPublicKey
-from .time_stamper import TimeStamper
-from .time_stamper_integration import QRLPTimeStampVerifier
+from .config import QRLPConfig
+from .core import QRData, QRLiveProtocol, VerificationResult
 from .crypto import (
-    KeyManager, KeyPair, KeyInfo,
-    DigitalSigner, SignatureVerifier, QRSignatureManager,
-    DataEncryptor, EncryptionKey,
+    CryptoError,
+    DataEncryptor,
+    DigitalSigner,
+    EncryptionError,
+    EncryptionKey,
+    HMACError,
     HMACManager,
-    CryptoError, KeyManagementError, SignatureError, EncryptionError, HMACError
+    KeyInfo,
+    KeyManagementError,
+    KeyManager,
+    KeyPair,
+    QRSignatureManager,
+    SignatureError,
+    SignatureVerifier,
 )
 from .error_recovery import (
-    CircuitBreaker, CircuitBreakerConfig, CircuitBreakerState,
-    RetryStrategy, ResilientOperation, ResilienceManager,
-    CircuitBreakerOpenError
+    CircuitBreaker,
+    CircuitBreakerConfig,
+    CircuitBreakerOpenError,
+    CircuitBreakerState,
+    ResilienceManager,
+    ResilientOperation,
+    RetryStrategy,
 )
+from .frame_recovery import (
+    FrameRecoveryConfig,
+    FrameRecoveryController,
+    FrameRecoveryStats,
+    RecoveryDecision,
+)
+from .identity_manager import IdentityManager
+from .live_simulator import (
+    LiveSimulator,
+    OpticalChannelModel,
+    SimulatedFrame,
+    SimulationReport,
+)
+from .optical_throughput import (
+    OpticalThroughputController,
+    ThroughputConfig,
+    ThroughputStats,
+)
+from .qr_generator import QRDataTooLargeError, QRGenerator
+from .serializer import QRSerializer
+from .time_provider import TimeProvider
+from .time_stamper import TimeStamper
+from .time_stamper_integration import QRLPTimeStampVerifier
+from .trust import TrustedPublicKey, TrustStore
+from .web_server import QRLiveWebServer
 
 __all__ = [
-    "QRLiveProtocol", "QRData", "VerificationResult",
-    "QRLPConfig",
-    "QRSerializer",
-    "QRGenerator", "QRDataTooLargeError",
-    "TimeProvider",
     "BlockchainVerifier",
-    "IdentityManager",
-    "QRLiveWebServer",
-    "TrustStore", "TrustedPublicKey",
-    "TimeStamper", "QRLPTimeStampVerifier",
-    "KeyManager", "KeyPair", "KeyInfo",
-    "DigitalSigner", "SignatureVerifier", "QRSignatureManager",
-    "DataEncryptor", "EncryptionKey",
+    "CircuitBreaker",
+    "CircuitBreakerConfig",
+    "CircuitBreakerOpenError",
+    "CircuitBreakerState",
+    "CryptoError",
+    "DataEncryptor",
+    "DigitalSigner",
+    "EncryptionError",
+    "EncryptionKey",
+    "FrameRecoveryConfig",
+    "FrameRecoveryController",
+    "FrameRecoveryStats",
+    "HMACError",
     "HMACManager",
-    "CryptoError", "KeyManagementError", "SignatureError", "EncryptionError", "HMACError",
-    "CircuitBreaker", "CircuitBreakerConfig", "CircuitBreakerState",
-    "RetryStrategy", "ResilientOperation", "ResilienceManager",
-    "CircuitBreakerOpenError"
+    "IdentityManager",
+    "KeyInfo",
+    "KeyManagementError",
+    "KeyManager",
+    "KeyPair",
+    "LiveSimulator",
+    "OpticalChannelModel",
+    "OpticalThroughputController",
+    "QRData",
+    "QRDataTooLargeError",
+    "QRGenerator",
+    "QRLPConfig",
+    "QRLPTimeStampVerifier",
+    "QRLiveProtocol",
+    "QRLiveWebServer",
+    "QRSerializer",
+    "QRSignatureManager",
+    "RecoveryDecision",
+    "ResilienceManager",
+    "ResilientOperation",
+    "RetryStrategy",
+    "SignatureError",
+    "SignatureVerifier",
+    "SimulatedFrame",
+    "SimulationReport",
+    "ThroughputConfig",
+    "ThroughputStats",
+    "TimeProvider",
+    "TimeStamper",
+    "TrustStore",
+    "TrustedPublicKey",
+    "VerificationResult"
 ]

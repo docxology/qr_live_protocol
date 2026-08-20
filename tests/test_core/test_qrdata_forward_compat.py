@@ -6,7 +6,7 @@ forward-compatible QR payloads don't break older verifiers.
 """
 
 import json
-import pytest
+
 from src.core import QRData
 
 

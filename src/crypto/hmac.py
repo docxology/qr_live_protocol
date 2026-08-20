@@ -8,9 +8,9 @@ Provides tamper detection for QR codes and data integrity checks.
 import hashlib
 import hmac
 import secrets
-from typing import Dict, Optional, Any, Tuple
-from datetime import datetime, timezone
 from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import Any
 
 from .exceptions import HMACError
 
@@ -33,7 +33,7 @@ class HMACManager:
     ensuring data has not been tampered with during transmission.
     """
 
-    def __init__(self, master_key: Optional[bytes] = None):
+    def __init__(self, master_key: bytes | None = None):
         """
         Initialize HMAC manager.
 
@@ -42,9 +42,9 @@ class HMACManager:
         """
         self.master_key = master_key or secrets.token_bytes(32)
         self.key_id = self._generate_key_id()
-        self.key_store: Dict[str, bytes] = {}
+        self.key_store: dict[str, bytes] = {}
 
-    def generate_hmac(self, data: Any, key_id: Optional[str] = None) -> Tuple[bytes, str]:
+    def generate_hmac(self, data: Any, key_id: str | None = None) -> tuple[bytes, str]:
         """
         Generate HMAC for data integrity verification.
 
@@ -77,7 +77,7 @@ class HMACManager:
 
         return hmac_value, key_id or self.key_id
 
-    def verify_hmac(self, data: Any, hmac_value: bytes, key_id: Optional[str] = None) -> bool:
+    def verify_hmac(self, data: Any, hmac_value: bytes, key_id: str | None = None) -> bool:
         """
         Verify HMAC for data integrity.
 
@@ -99,7 +99,7 @@ class HMACManager:
         except Exception as e:
             raise HMACError(f"HMAC verification failed: {e}")
 
-    def create_integrity_checked_qr(self, qr_data: Dict[str, Any]) -> Dict[str, Any]:
+    def create_integrity_checked_qr(self, qr_data: dict[str, Any]) -> dict[str, Any]:
         """
         Create QR data with HMAC integrity check.
 
@@ -121,7 +121,7 @@ class HMACManager:
 
         return integrity_checked_data
 
-    def verify_integrity_checked_qr(self, qr_data: Dict[str, Any]) -> bool:
+    def verify_integrity_checked_qr(self, qr_data: dict[str, Any]) -> bool:
         """
         Verify QR code with embedded HMAC.
 
@@ -148,7 +148,7 @@ class HMACManager:
         verification_data.pop('_hmac_key_id', None)
         verification_data.pop('_hmac_algorithm', None)
         verification_data.pop('_integrity_checked_at', None)
-        
+
         # Also filter out None values to match serialization during creation
         verification_data = {k: v for k, v in verification_data.items() if v is not None}
 
@@ -195,7 +195,7 @@ class HMACManager:
 
     def _get_timestamp(self) -> str:
         """Get current timestamp in ISO format."""
-        return datetime.now(timezone.utc).isoformat()
+        return datetime.now(UTC).isoformat()
 
     def _get_key_by_id(self, key_id: str) -> bytes:
         """Get HMAC key by ID.

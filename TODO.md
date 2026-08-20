@@ -1,126 +1,125 @@
 # QRLP TODO — Upcoming Improvements
 
-Last updated: 2026-07-23  
-Current version: 1.5.0  
-Test suite: 602 tests, 0 failures
+Last updated: 2026-08-19
+Current version: 1.5.0
+Test suite: 752 tests, 0 failures (1 skipped: PyYAML optional)
+Coverage: 89%
 
 ---
 
-## Completed (v1.1.0 + v1.2.0 + v1.3.0)
+## Completed (this pass — v1.6.0 optical-delivery hardening)
 
-### Code Cleanup
-- [x] Remove 29+ unused imports across 9 source modules
-- [x] Remove unused mock fixtures from conftest.py
-- [x] Remove placeholder comments from _get_key_by_id in hmac.py and encryptor.py
-- [x] Remove all MagicMock/AsyncMock usage from tests
+### Major
+- [x] **High-fps dynamic optical throughput optimization** —
+  `src/optical_throughput.py`: dynamic frame cadence (`adapt`, floor/ceiling),
+  payload symbol reuse (per-payload cache), batch pre-encode + bounded FIFO
+  drain, latency averaging, and a performance report. 99% coverage.
+- [x] **Fault-tolerant frame recovery algorithms** —
+  `src/frame_recovery.py`: receiver-side re-ordering, gap detection, gap
+  recovery within a retransmission window, unrecoverable-gap stream resets,
+  and isolateable stats snapshots. 100% coverage.
+- [x] **End-to-end live simulator suite** —
+  `src/live_simulator.py` + `qrlp simulate-live`: deterministic optical
+  channel model (drop/reorder), wires throughput controller + frame recovery
+  into a full delivery loop, emits JSON/human reports. 97% coverage.
+  Tests: `tests/test_live_simulator.py`, `tests/test_optical_throughput.py`,
+  `tests/test_frame_recovery.py`, plus CLI integration tests.
 
-### Architecture
-- [x] Add VerificationResult dataclass
-- [x] Add QRData.to_dict(), __repr__, __str__ methods
-- [x] Add QRData.from_dict() classmethod
-- [x] Export VerificationResult from src package
+### Medium
+- [x] **Extended key rotation mechanisms** —
+  `KeyManager.archive_key` / `KeyManager.rotate_signing_key` (archive instead
+  of destroy) and `qrlp keys rotate --archive-dir/--trust-store/--issuer` for
+  continued verification of previously signed QRs.
+- [x] **Stream error resilience** —
+  `tests/test_async_core_resilience.py` exercising batch partial-failure,
+  stream cancellation/data/callback errors, live-gen start/stop, network
+  degradation, and performance optimization paths.
+- [x] **WebSocket protocol benchmarks** —
+  `QRLiveWebServer.benchmark_websocket_throughput` (in-process, no network)
+  and `qrlp benchmark-ws --iterations N [--json-output]`.
 
-### Security
-- [x] Add Content-Security-Policy headers to all web responses
-- [x] Add HMAC key rotation (key_store, add_key, rotate_key)
-- [x] Add encryption key rotation (key_store, add_key, rotate_key)
-- [x] Add PBKDF2-HMAC-SHA256 key derivation for KeyManager
-- [x] Add WebSocket input validation using SecurityValidator
+### Minor
+- [x] Typing annotations: implicit-Optional `= None` → `= None` in
+  `core.py`/`async_core.py`; added `from __future__ import annotations` and
+  forward-ref annotations where forward class references were unresolved.
+- [x] CLI formatting + lint: new `simulate-live` / `benchmark-ws` commands;
+  `ruff` config added to `pyproject.toml`; whole tree now passes
+  `uv run ruff check` clean; upgraded `examples/`, `main.py`, `run_all.py`,
+  and tests to pass lint (removed dead/malformed demo code).
+- [x] Documentation: README + docs/API.md sections for recovery, throughput,
+  simulator, and key-rotation trust continuity.
 
-### Performance
-- [x] Add requests.Session connection pooling to BlockchainVerifier
+---
 
-### New CLI Commands
-- [x] qrlp config-validate <path>
-- [x] qrlp status --json-output
-
-### Test Coverage Gaps
-- [x] Tests for cli live/dashboard (subprocess)
-- [x] Tests for web_server broadcast/stop
-- [x] Tests for config YAML and web alias
-- [x] Tests for signer sign_message/verify_message (RSA+ECDSA)
-- [x] Tests for error_recovery async resilient functions
-- [x] Tests for async_core optimization internals
-- [x] Tests for core _update_loop error path
-- [x] Tests for QR generator style fallbacks
-- [x] Tests for HMAC type handling
+## Minor Improvements
 
 ### Documentation
-- [x] Update docs/API.md with VerificationResult and crypto exceptions
-- [x] Update src/AGENTS.md with crypto pipeline
-- [x] Update docs/AUTHENTICATION_CHALLENGES.md with forward-compat QR payloads
-- [x] Update docs/INSTALLATION.md with pytest-asyncio and optional deps
-- [x] Update ASSESSMENT.md with coverage table
+- [ ] Add a dedicated `docs/OPTICAL_DELIVERY.md` guide with latency/fps tuning.
+- [ ] Document `benchmark-ws` percentile interpretation and CI usage.
+- [ ] Add a "key rotation runbook" (rotate → archive → trust store → verify).
 
-### OpenTimestamps (OTS) Integration
-- [x] Add `TimeStamper` class for OpenTimestamps stamping (SHA-256 → public calendar server → `.ots` proof)
-- [x] Add `QRLPTimeStampVerifier` for verifying `.ots` proofs against QR payloads
-- [x] Add OTS fields to `QRData` (`ots_proof_path`, `ots_verified`, `ots_timestamp`) — additive, backwards compatible
-- [x] Add OTS fields to `TimeSettings` (`ots_enabled`, `ots_server`, `ots_min_interval`, `ots_proof_dir`)
-- [x] Integrate periodic stamping into `generate_single_qr` with graceful degradation
-- [x] Add `qrlp stamp` and `qrlp verify-ots` CLI commands
-- [x] Add `opentimestamps` dependency to `pyproject.toml`
-- [x] 47 tests, 100% coverage on both OTS modules; mypy clean
-- [x] Update README.md with OTS usage section
+### Typing & Tooling
+- [ ] Run `mypy --strict` and close remaining gaps (new modules already typed).
+- [ ] Add more typing annotations to `examples/` and `run_all.py`.
+- [ ] Enforce `ruff` + import sorting in CI via a lint job.
+
+### CLI Formatting
+- [ ] Add `--no-color`/`--plain` output flag for script-friendly CLI.
+- [ ] Consistent `--json-output` envelope for all status/health commands.
 
 ---
 
-## Minor Improvements (v1.4.0)
+## Medium Improvements
 
-### Architecture
-- [ ] Extract a QRSerializer class to centralize JSON serialization/deserialization logic
-- [ ] Add async NTP support to async_core.py
+### Key Rotation & Key Lifecycle
+- [ ] Add `qrlp keys list --archived` and `qrlp keys restore <key_id>`.
+- [ ] Add scheduled/automated rotation policy (age- or usage-based) + CLI `keys
+      policy`.
+- [ ] Add trust-store diff/merge command for multi-verifier deployments.
 
-### Feature Additions
-- [ ] Add `qrlp keys rotate <key_id>` — generate a new key pair and update trust stores
-- [ ] Add batch verification — `qrlp verify --file batch.json`
-- [ ] Add QR expiry notification callback
-- [ ] Add WebSocket authentication for admin operations
+### Stream & Transport Resilience
+- [ ] Surface partial-failure counts from `batch_generate_qr_async` (not just
+      successful subset).
+- [ ] Add jitter + burst (correlated loss) models to `OpticalChannelModel`.
+- [ ] Add adaptive retransmission: derive `retransmission_window` from live
+      loss statistics instead of a fixed config.
+- [ ] Add reconnect/backoff handling for WebSocket drops in `web_server.py`.
 
-### Test Infrastructure
-- [ ] Add property-based tests with hypothesis for chunk round-trip
-- [ ] Add real Flask server integration tests on random port
-- [ ] Add fuzz tests for QRData.from_json with random JSON payloads
-- [ ] Add tests for QRGenerator.verify_qr_readability with real pyzbar (skip if not installed)
+### Benchmarks
+- [ ] Add a `qrlp benchmark-live` that runs the full simulator headlessly and
+      writes a CSV/JSON report to a file.
+- [ ] Add multi-client WebSocket benchmark (simulated N socket clients).
+- [ ] Add a decode-side benchmark using real QR readability checks when
+      `pyzbar`/`cv2` are installed.
 
 ---
 
-## Major Improvements (v2.0.0+)
+## Major Improvements
 
-### Protocol Enhancements
-- [ ] Add QR payload versioning
-- [ ] Add on-chain content commitment
-- [ ] Add decentralized identity (DIDs/verifiable credentials)
-- [ ] Add QR payload compression (zlib/gzip)
-- [ ] Add QR payload encryption with ECDH
-- [ ] Add multi-signature QR payloads
-- [ ] Add QR revocation
+### Optical Delivery & Recovery
+- [ ] **Fault-tolerant frame recovery with parity/ECC** — add XOR parity frames
+      so a single lost frame within a group is reconstructible, not just
+      re-requested.
+- [ ] Payload compression (zlib/gzip) before encoding to raise usable payload
+      per frame / reduce chunk count.
+- [ ] QR payload versioning + on-chain content commitment.
+- [ ] ECDH-based QR payload encryption and multi-signature payloads.
 
-### Platform Support
-- [ ] Add Docker container with health check
-- [ ] Add systemd service unit
-- [ ] Add Kubernetes manifest
-- [ ] Add Prometheus metrics endpoint
-- [ ] Add OpenTelemetry tracing
-- [ ] Add native mobile scanner SDK
-- [ ] Add OBS Studio plugin
+### Live Engineering
+- [ ] Wire throughput controller + frame recovery into `async_core`/`core`
+      production loops (opt-in), not just the simulator.
+- [ ] OBS / browser-source optimized renderer with higher fps.
+- [ ] Native mobile scanner SDK and GPU-accelerated encode path.
 
-### Infrastructure
-- [ ] Add CI/CD pipeline with GitHub Actions
-- [ ] Add pre-commit hooks
-- [ ] Add semantic release automation
-- [ ] Add PyPI publishing workflow
-- [ ] Add ReadTheDocs documentation build
-- [ ] Add SECURITY.md
-- [ ] Add Dependabot configuration
-- [ ] Add Snyk/CodeQL security scanning
+### Platform & Operations
+- [ ] Docker container with health check; systemd unit; Kubernetes manifest.
+- [ ] CI/CD (GitHub Actions) with lint + test + coverage gates.
+- [ ] Prometheus metrics endpoint + OpenTelemetry tracing.
+- [ ] SQLite-backed key store, audit logging, and multi-tenancy.
+- [ ] Flask → FastAPI migration and `requests` → `httpx` replacement.
 
-### Architecture (v2.0.0)
-- [ ] Migrate from Flask to FastAPI
-- [ ] Replace requests with httpx
-- [ ] Add SQLite-backed key store
-- [ ] Add plugin system
-- [ ] Add gRPC API
-- [ ] Add WebSocket-based live QR streaming API
-- [ ] Add multi-tenancy
-- [ ] Add audit logging
+---
+
+## Security Backlog
+- [ ] Add SECURITY.md and Dependabot + CodeQL/Snyk scanning.
+- [ ] Add QR revocation + decentralized identity (DIDs / verifiable credentials).

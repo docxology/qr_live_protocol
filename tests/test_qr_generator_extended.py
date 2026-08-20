@@ -5,12 +5,14 @@ Covers chunk payload encoding/decoding, error correction capacity,
 QR readability verification, text overlay, and statistics.
 """
 
-import json
 import base64
 import hashlib
+import json
+
 import pytest
-from src.qr_generator import QRGenerator, QRDataTooLargeError, QRMetadata
+
 from src.config import QRSettings
+from src.qr_generator import QRDataTooLargeError, QRGenerator, QRMetadata
 
 
 class TestQRGeneratorChunking:

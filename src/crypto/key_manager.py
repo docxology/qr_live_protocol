@@ -5,21 +5,20 @@ Secure key generation, storage, and management for QRLP cryptographic operations
 Supports RSA and ECDSA key pairs with secure storage and backup capabilities.
 """
 
-import logging
-import os
-import json
 import base64
-from datetime import datetime, timezone
+import json
+import logging
+import secrets
+import threading
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Dict, Optional, Tuple, Union
-from dataclasses import dataclass, asdict
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import rsa, ec
+
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import ec, rsa
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.backends import default_backend
-import secrets
 
 _logger = logging.getLogger("qrlp.crypto.key_manager")
 
@@ -43,7 +42,7 @@ class KeyInfo:
     algorithm: str
     key_size: int
     created_at: datetime
-    last_used: Optional[datetime]
+    last_used: datetime | None
     usage_count: int
     encrypted: bool
     purpose: str
@@ -57,7 +56,7 @@ class KeyManager:
     for both RSA and ECDSA key pairs used in digital signatures and encryption.
     """
 
-    def __init__(self, key_dir: Optional[str] = None, password: Optional[str] = None):
+    def __init__(self, key_dir: str | None = None, password: str | None = None):
         """
         Initialize key manager.
 
@@ -70,20 +69,22 @@ class KeyManager:
         """
         self.key_dir = Path(key_dir) if key_dir else Path.home() / ".qrlp" / "keys"
         self.key_dir.mkdir(parents=True, exist_ok=True)
+        self._lock = threading.RLock()
 
         self._password = password
 
         self.keys_file = self.key_dir / "key_metadata.json"
-        self.keys_info: Dict[str, KeyInfo] = {}
-        self._load_key_metadata()
-        if not self.keys_file.exists():
-            self._save_key_metadata()
+        self.keys_info: dict[str, KeyInfo] = {}
+        with self._lock:
+            self._load_key_metadata()
+            if not self.keys_file.exists():
+                self._save_key_metadata()
 
         # Master key for encrypting private keys on disk
         self._master_key = self._get_or_create_master_key()
 
     def generate_keypair(self, algorithm: str = "rsa", key_size: int = 2048,
-                        purpose: str = "general") -> Tuple[bytes, bytes]:
+                        purpose: str = "general") -> tuple[bytes, bytes]:
         """
         Generate a new cryptographic key pair.
 
@@ -137,32 +138,33 @@ class KeyManager:
             key_id=key_id,
             algorithm=algorithm,
             key_size=key_size,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
             last_used=None,
             usage_count=0,
             encrypted=True,  # Private key will be encrypted on disk
             purpose=purpose
         )
 
-        self.keys_info[key_id] = key_info
+        with self._lock:
+            self.keys_info[key_id] = key_info
 
-        # Store encrypted private key
-        encrypted_private = self._encrypt_private_key(private_pem, key_id)
-        key_pair = KeyPair(
-            public_key=public_pem,
-            private_key=encrypted_private,
-            algorithm=algorithm,
-            key_size=key_size,
-            created_at=datetime.now(timezone.utc),
-            key_id=key_id
-        )
+            # Store encrypted private key
+            encrypted_private = self._encrypt_private_key(private_pem, key_id)
+            key_pair = KeyPair(
+                public_key=public_pem,
+                private_key=encrypted_private,
+                algorithm=algorithm,
+                key_size=key_size,
+                created_at=datetime.now(UTC),
+                key_id=key_id
+            )
 
-        self._save_key_pair(key_pair)
-        self._save_key_metadata()
+            self._save_key_pair(key_pair)
+            self._save_key_metadata()
 
         return public_pem, private_pem
 
-    def get_keypair(self, key_id: str) -> Optional[KeyPair]:
+    def get_keypair(self, key_id: str) -> KeyPair | None:
         """
         Retrieve a key pair by ID.
 
@@ -172,69 +174,147 @@ class KeyManager:
         Returns:
             KeyPair object or None if not found
         """
-        key_file = self.key_dir / f"{key_id}.key"
-        if not key_file.exists():
-            return None
+        with self._lock:
+            key_file = self.key_dir / f"{key_id}.key"
+            if not key_file.exists():
+                return None
 
-        try:
-            with open(key_file, 'rb') as f:
-                data = json.load(f)
+            try:
+                with open(key_file, 'rb') as f:
+                    data = json.load(f)
 
-            # Decrypt private key for use
-            encrypted_private = base64.b64decode(data['private_key'])
-            decrypted_private = self._decrypt_private_key(encrypted_private, key_id)
+                # Decrypt private key for use
+                encrypted_private = base64.b64decode(data['private_key'])
+                decrypted_private = self._decrypt_private_key(encrypted_private, key_id)
 
-            if key_id in self.keys_info:
-                key_info = self.keys_info[key_id]
-                key_info.usage_count += 1
-                key_info.last_used = datetime.now(timezone.utc)
-                self._save_key_metadata()
+                if key_id in self.keys_info:
+                    key_info = self.keys_info[key_id]
+                    key_info.usage_count += 1
+                    key_info.last_used = datetime.now(UTC)
+                    self._save_key_metadata()
 
-            return KeyPair(
-                public_key=base64.b64decode(data['public_key']),
-                private_key=decrypted_private,
-                algorithm=data['algorithm'],
-                key_size=data['key_size'],
-                created_at=datetime.fromisoformat(data['created_at']),
-                key_id=key_id
-            )
-        except Exception:
-            return None
+                return KeyPair(
+                    public_key=base64.b64decode(data['public_key']),
+                    private_key=decrypted_private,
+                    algorithm=data['algorithm'],
+                    key_size=data['key_size'],
+                    created_at=datetime.fromisoformat(data['created_at']),
+                    key_id=key_id
+                )
+            except Exception:
+                return None
 
-    def list_keys(self) -> Dict[str, KeyInfo]:
+    def list_keys(self) -> dict[str, KeyInfo]:
         """
         List all available keys with their metadata.
 
         Returns:
             Dictionary mapping key_id to KeyInfo
         """
-        return self.keys_info.copy()
+        with self._lock:
+            return self.keys_info.copy()
 
     def delete_key(self, key_id: str) -> bool:
         """
         Delete a key pair and its metadata.
 
         Args:
-            key_id: Key identifier to delete
+            key_id: Unique key identifier
 
         Returns:
-            True if key was deleted successfully
+            True if key was deleted, False if not found
         """
-        if key_id not in self.keys_info:
-            return False
+        with self._lock:
+            if key_id not in self.keys_info:
+                return False
 
-        # Remove key file
-        key_file = self.key_dir / f"{key_id}.key"
-        if key_file.exists():
-            key_file.unlink()
+            # Remove key file
+            key_file = self.key_dir / f"{key_id}.key"
+            if key_file.exists():
+                key_file.unlink()
 
-        # Remove metadata
-        del self.keys_info[key_id]
-        self._save_key_metadata()
+            # Remove metadata
+            del self.keys_info[key_id]
+            self._save_key_metadata()
 
-        return True
+            return True
 
-    def export_public_key(self, key_id: str, format: str = "pem") -> Optional[bytes]:
+    def archive_key(self, key_id: str, archive_dir: str | None = None) -> bytes | None:
+        """
+        Archive a key instead of deleting it.
+
+        The encrypted key file is moved to an archive directory and removed
+        from the active key store, while the public key is returned so it can
+        still be added to a trust store for verifying previously signed QRs.
+
+        Args:
+            key_id: Key identifier to archive.
+            archive_dir: Directory to store the archived key. Defaults to
+                ``<key_dir>/archive``.
+
+        Returns:
+            The key's public PEM bytes, or ``None`` if the key was not found.
+        """
+        with self._lock:
+            if key_id not in self.keys_info:
+                return None
+
+            key_file = self.key_dir / f"{key_id}.key"
+            if not key_file.exists():
+                return None
+
+            with open(key_file, 'rb') as f:
+                data = json.load(f)
+            public_pem = base64.b64decode(data['public_key'])
+
+            archive_path = Path(archive_dir) if archive_dir else self.key_dir / "archive"
+            archive_path.mkdir(parents=True, exist_ok=True)
+            archived_file = archive_path / f"{key_id}.key"
+            key_file.rename(archived_file)
+
+            del self.keys_info[key_id]
+            self._save_key_metadata()
+            _logger.info("Archived key %s to %s", key_id, archived_file)
+            return public_pem
+
+    def rotate_signing_key(
+        self,
+        key_id: str | None = None,
+        algorithm: str = "rsa",
+        key_size: int = 2048,
+        archive_dir: str | None = None,
+    ) -> tuple[str, bytes | None]:
+        """
+        Rotate the signing key: generate a new key and archive the old one.
+
+        Args:
+            key_id: Optional old key id to rotate out. When ``None``, a new
+                key is added without archiving an old one.
+            algorithm: Algorithm for the new key ('rsa' or 'ecdsa').
+            key_size: Key size for the new key.
+            archive_dir: Optional archive directory for the old key.
+
+        Returns:
+            A tuple of (``new_key_id``, ``old_public_pem_or_None``).
+        """
+        with self._lock:
+            before = set(self.keys_info.keys())
+            self.generate_keypair(algorithm, key_size, purpose="qr_signing")
+            after = set(self.keys_info.keys())
+            new_ids = after - before
+            if not new_ids:
+                raise RuntimeError("key generation did not register a new key")
+            new_id = new_ids.pop()
+
+            old_public = self.archive_key(key_id, archive_dir) if key_id else None
+            _logger.info(
+                "Rotated signing key: new=%s old=%s",
+                new_id,
+                key_id or "(none)",
+            )
+            return new_id, old_public
+
+    def export_public_key(self, key_id: str, format: str = "pem") -> bytes | None:
         """
         Export public key in specified format.
 
@@ -287,7 +367,7 @@ class KeyManager:
             # Backup key metadata
             metadata_backup = backup_path / "keys_backup.json"
             backup_data = {
-                "backup_created": datetime.now(timezone.utc).isoformat(),
+                "backup_created": datetime.now(UTC).isoformat(),
                 "keys": {}
             }
 
@@ -417,7 +497,7 @@ class KeyManager:
             return
 
         try:
-            with open(self.keys_file, 'r') as f:
+            with open(self.keys_file) as f:
                 data = json.load(f)
 
             for key_id, key_data in data.items():

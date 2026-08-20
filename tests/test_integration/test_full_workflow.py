@@ -5,7 +5,6 @@ Tests end-to-end functionality including QR generation, verification,
 and cryptographic operations working together.
 """
 
-import pytest
 import json
 import time
 
@@ -243,8 +242,8 @@ class TestFullWorkflow:
 
     def test_concurrent_qr_generation(self, qrlp_instance):
         """Test QR generation under concurrent access."""
-        import threading
         import queue
+        import threading
 
         results_queue = queue.Queue()
 

@@ -6,19 +6,20 @@ from multiple blockchain networks to provide tamper-evident timestamps.
 """
 
 import logging
-import time
 import threading
-from datetime import datetime, timezone
-from typing import Dict, Optional, Any
-import requests
+import time
 from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import Any
+
+import requests
 
 from .config import BlockchainSettings
 
 _logger = logging.getLogger("qrlp.blockchain")
 
 
-@dataclass 
+@dataclass
 class BlockchainInfo:
     """Information about a blockchain block."""
     chain: str
@@ -36,7 +37,7 @@ class BlockchainVerifier:
     Retrieves current block hashes from multiple blockchain networks
     to provide cryptographic proof of time and immutable verification.
     """
-    
+
     def __init__(self, settings: BlockchainSettings):
         """
         Initialize blockchain verifier with settings.
@@ -45,26 +46,26 @@ class BlockchainVerifier:
             settings: BlockchainSettings configuration object
         """
         self.settings = settings
-        self.cached_blocks: Dict[str, BlockchainInfo] = {}
-        self.last_update: Dict[str, float] = {}
+        self.cached_blocks: dict[str, BlockchainInfo] = {}
+        self.last_update: dict[str, float] = {}
         self.update_lock = threading.Lock()
 
         # Connection pool for keep-alive HTTP
-        self._session: Optional[requests.Session] = None
+        self._session: requests.Session | None = None
 
         # Statistics
         self.total_requests = 0
         self.successful_requests = 0
         self.failed_requests = 0
         self.cache_hits = 0
-        
+
         # Initialize supported chains with multiple API endpoints for redundancy
         self.chain_handlers = {
             'bitcoin': self._get_bitcoin_info,
             'ethereum': self._get_ethereum_info,
             'litecoin': self._get_litecoin_info,
         }
-        
+
         # Multiple API endpoints for redundancy
         self.api_endpoints = {
             'bitcoin': [
@@ -81,17 +82,17 @@ class BlockchainVerifier:
                 "https://litecoinspace.org/api"
             ]
         }
-        
+
         # Perform initial update in background
         threading.Thread(target=self._initial_update, daemon=True).start()
-    
+
     def _initial_update(self):
         """Perform initial blockchain data update."""
         try:
             self._update_all_chains()
         except Exception as e:
             _logger.warning(f"Initial blockchain update warning: {e}")
-    def get_blockchain_hashes(self) -> Dict[str, str]:
+    def get_blockchain_hashes(self) -> dict[str, str]:
         """
         Get current blockchain hashes for all enabled chains.
         
@@ -99,15 +100,15 @@ class BlockchainVerifier:
             Dictionary mapping chain names to block hashes
         """
         self._update_if_needed()
-        
+
         hashes = {}
         for chain, block_info in self.cached_blocks.items():
             if chain in self.settings.enabled_chains:
                 hashes[chain] = block_info.block_hash
-        
+
         return hashes
-    
-    def get_blockchain_info(self, chain: str) -> Optional[BlockchainInfo]:
+
+    def get_blockchain_info(self, chain: str) -> BlockchainInfo | None:
         """
         Get detailed blockchain information for a specific chain.
         
@@ -119,16 +120,16 @@ class BlockchainVerifier:
         """
         self._update_if_needed()
         return self.cached_blocks.get(chain)
-    
-    def get_all_blockchain_info(self) -> Dict[str, BlockchainInfo]:
+
+    def get_all_blockchain_info(self) -> dict[str, BlockchainInfo]:
         """Get detailed information for all cached blockchains."""
         self._update_if_needed()
         return {
             chain: info for chain, info in self.cached_blocks.items()
             if chain in self.settings.enabled_chains
         }
-    
-    def verify_blockchain_hash(self, chain: str, block_hash: str, tolerance_blocks: int = 10) -> Dict[str, Any]:
+
+    def verify_blockchain_hash(self, chain: str, block_hash: str, tolerance_blocks: int = 10) -> dict[str, Any]:
         """
         Verify if a blockchain hash is recent and valid.
         
@@ -147,11 +148,11 @@ class BlockchainVerifier:
                     "valid": False,
                     "error": f"No current data for {chain}"
                 }
-            
+
             # For simplicity, just check if hash matches recent blocks
             # In practice, you'd need to check the actual blockchain
             is_current = current_info.block_hash == block_hash
-            
+
             return {
                 "valid": is_current,
                 "chain": chain,
@@ -160,14 +161,14 @@ class BlockchainVerifier:
                 "current_block": current_info.block_number,
                 "block_age_seconds": time.time() - current_info.retrieved_at
             }
-            
+
         except Exception as e:
             return {
                 "valid": False,
                 "error": str(e)
             }
-    
-    def force_update(self, chain: Optional[str] = None) -> bool:
+
+    def force_update(self, chain: str | None = None) -> bool:
         """
         Force update of blockchain data.
         
@@ -181,8 +182,8 @@ class BlockchainVerifier:
             return self._update_chain(chain)
         else:
             return self._update_all_chains()
-    
-    def get_statistics(self) -> Dict:
+
+    def get_statistics(self) -> dict:
         """Get blockchain verifier statistics."""
         return {
             "total_requests": self.total_requests,
@@ -193,7 +194,7 @@ class BlockchainVerifier:
             "cached_chains": list(self.cached_blocks.keys()),
             "last_updates": self.last_update.copy()
         }
-    
+
     def _update_if_needed(self) -> None:
         """Update blockchain data if cache is stale."""
         current_time = time.time()
@@ -222,11 +223,11 @@ class BlockchainVerifier:
             self._update_all_chains()
         finally:
             self._updating = False
-    
+
     def _update_all_chains(self) -> bool:
         """Update all enabled blockchain chains."""
         success_count = 0
-        
+
         for chain in self.settings.enabled_chains:
             try:
                 if self._update_chain(chain):
@@ -235,9 +236,9 @@ class BlockchainVerifier:
                 _logger.error(f"{chain.title()} API error: {e}")
                 # Continue with other chains even if one fails
                 continue
-        
+
         return success_count > 0
-    
+
     def _update_chain(self, chain: str) -> bool:
         """
         Update blockchain data for a specific chain.
@@ -251,10 +252,10 @@ class BlockchainVerifier:
         if not self.update_lock.acquire(blocking=False):
             self.cache_hits += 1
             return True  # Another thread is updating
-        
+
         try:
             self.total_requests += 1
-            
+
             if chain in self.chain_handlers:
                 block_info = self.chain_handlers[chain]()
                 if block_info:
@@ -262,20 +263,20 @@ class BlockchainVerifier:
                     self.last_update[chain] = time.time()
                     self.successful_requests += 1
                     return True
-            
+
             self.failed_requests += 1
             return False
-            
+
         finally:
             self.update_lock.release()
-    
+
     def _get_session(self) -> requests.Session:
         """Return a cached requests.Session for keep-alive connection pooling."""
         if self._session is None:
             self._session = requests.Session()
         return self._session
 
-    def _make_request_with_fallback(self, chain: str, path: str = "") -> Optional[Dict]:
+    def _make_request_with_fallback(self, chain: str, path: str = "") -> dict | None:
         """Make API request with fallback to multiple endpoints."""
         endpoints = self.api_endpoints.get(chain, [])
         session = self._get_session()
@@ -297,8 +298,8 @@ class BlockchainVerifier:
                 continue
 
         return None
-    
-    def _get_bitcoin_info(self) -> Optional[BlockchainInfo]:
+
+    def _get_bitcoin_info(self) -> BlockchainInfo | None:
         """Get Bitcoin blockchain information with improved API handling."""
         try:
             # Try blockstream.info API first
@@ -317,7 +318,7 @@ class BlockchainVerifier:
                             chain="bitcoin",
                             block_number=block_data["height"],
                             block_hash=block_hash,
-                            timestamp=datetime.fromtimestamp(block_data["timestamp"], timezone.utc),
+                            timestamp=datetime.fromtimestamp(block_data["timestamp"], UTC),
                             retrieved_at=time.time()
                         )
             except Exception as e:
@@ -336,7 +337,7 @@ class BlockchainVerifier:
                             chain="bitcoin",
                             block_number=block_data["height"],
                             block_hash=block_hash,
-                            timestamp=datetime.fromtimestamp(block_data["timestamp"], timezone.utc),
+                            timestamp=datetime.fromtimestamp(block_data["timestamp"], UTC),
                             retrieved_at=time.time()
                         )
             except Exception as e:
@@ -346,65 +347,65 @@ class BlockchainVerifier:
                 response = requests.get("https://api.blockcypher.com/v1/btc/main", timeout=5)
                 if response.status_code == 200:
                     data = response.json()
-                    
+
                     return BlockchainInfo(
                         chain="bitcoin",
                         block_number=data["height"],
                         block_hash=data["hash"],
-                        timestamp=datetime.now(timezone.utc),
+                        timestamp=datetime.now(UTC),
                         retrieved_at=time.time()
                     )
             except Exception:
                 pass
-            
+
             _logger.error("All Bitcoin API endpoints failed")
             return None
-            
+
         except Exception as e:
             _logger.error(f"Bitcoin API error: {e}")
             return None
-    
-    def _get_ethereum_info(self) -> Optional[BlockchainInfo]:
+
+    def _get_ethereum_info(self) -> BlockchainInfo | None:
         """Get Ethereum blockchain information with simplified API."""
         try:
             # Use blockcypher for Ethereum (no API key required)
             response = requests.get("https://api.blockcypher.com/v1/eth/main", timeout=self.settings.timeout)
             if response.status_code == 200:
                 data = response.json()
-                
+
                 return BlockchainInfo(
                     chain="ethereum",
                     block_number=data["height"],
                     block_hash=data["hash"],
-                    timestamp=datetime.now(timezone.utc),
+                    timestamp=datetime.now(UTC),
                     retrieved_at=time.time()
                 )
-            
+
             _logger.error("Ethereum API request failed")
             return None
-            
+
         except Exception as e:
             _logger.error(f"Ethereum API error: {e}")
             return None
-    
-    def _get_litecoin_info(self) -> Optional[BlockchainInfo]:
+
+    def _get_litecoin_info(self) -> BlockchainInfo | None:
         """Get Litecoin blockchain information."""
         try:
             response = requests.get("https://api.blockcypher.com/v1/ltc/main", timeout=self.settings.timeout)
             if response.status_code == 200:
                 data = response.json()
-                
+
                 return BlockchainInfo(
                     chain="litecoin",
                     block_number=data["height"],
                     block_hash=data["hash"],
-                    timestamp=datetime.now(timezone.utc),
+                    timestamp=datetime.now(UTC),
                     retrieved_at=time.time()
                 )
-            
+
             _logger.error("Litecoin API request failed")
             return None
-            
+
         except Exception as e:
             _logger.error(f"Litecoin API error: {e}")
-            return None 
+            return None

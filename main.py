@@ -16,13 +16,12 @@ The demo will:
 4. Open browser window automatically (unless disabled)
 """
 
-import sys
+import argparse
 import os
 import subprocess
-import platform
-import webbrowser
+import sys
 import time
-import argparse
+import webbrowser
 from pathlib import Path
 
 
@@ -74,7 +73,8 @@ For development setup:
 
     # Check if QRLP is installed
     try:
-        from src import QRLiveProtocol
+        import importlib
+        importlib.import_module("src.core")
         print("✅ QRLP package available")
     except ImportError as e:
         print(f"❌ QRLP package not available: {e}")
@@ -136,4 +136,4 @@ For development setup:
 
 
 if __name__ == "__main__":
-    sys.exit(main()) 
+    sys.exit(main())

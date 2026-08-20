@@ -53,27 +53,28 @@ try:
 except ImportError:
     pass
 
+import base64
+import hmac
+import json
 import logging
 import os
-import base64
-import json
-import hmac
-import threading
-import webbrowser
 import re
-import time
 import tempfile
-from datetime import datetime, timezone
-from typing import Dict, Optional, Any, Callable
+import threading
+import time
+import webbrowser
+from collections.abc import Callable
 from dataclasses import asdict
+from datetime import UTC, datetime
+from typing import Any
 
-from flask import Flask, render_template, jsonify, request, abort
+import bleach
+from flask import Flask, abort, jsonify, render_template, request
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
 
 # Security imports
 from werkzeug.exceptions import BadRequest
-import bleach
 
 from .config import WebSettings
 from .core import QRData
@@ -198,7 +199,7 @@ class SecurityValidator:
         return qr_data
 
     @staticmethod
-    def validate_json_input(data: Any) -> Dict[str, Any]:
+    def validate_json_input(data: Any) -> dict[str, Any]:
         """
         Validate JSON input data.
 
@@ -226,7 +227,7 @@ class SecurityValidator:
 def security_middleware(app, settings: WebSettings):
     """Add security middleware to Flask app."""
     import threading as _threading
-    request_log: Dict[str, list] = {}
+    request_log: dict[str, list] = {}
     request_log_lock = _threading.Lock()
 
     @app.before_request
@@ -259,7 +260,7 @@ def security_middleware(app, settings: WebSettings):
         return jsonify({
             "error": "Bad Request",
             "message": str(e),
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(UTC).isoformat()
         }), 400
 
     @app.errorhandler(500)
@@ -268,7 +269,7 @@ def security_middleware(app, settings: WebSettings):
         return jsonify({
             "error": "Internal Server Error",
             "message": "An unexpected error occurred",
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(UTC).isoformat()
         }), 500
 
     @app.errorhandler(429)
@@ -277,7 +278,7 @@ def security_middleware(app, settings: WebSettings):
         return jsonify({
             "error": "Too Many Requests",
             "message": str(e),
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(UTC).isoformat()
         }), 429
 
     @app.after_request
@@ -303,7 +304,7 @@ class QRLiveWebServer:
     information, suitable for livestreaming and official video releases.
     """
 
-    def __init__(self, settings: WebSettings, verifier: Optional[Any] = None):
+    def __init__(self, settings: WebSettings, verifier: Any | None = None):
         """
         Initialize web server with settings.
 
@@ -334,13 +335,13 @@ class QRLiveWebServer:
         security_middleware(self.app, self.settings)
 
         # State management
-        self.current_qr_data: Optional[QRData] = None
-        self.current_qr_image: Optional[bytes] = None
+        self.current_qr_data: QRData | None = None
+        self.current_qr_image: bytes | None = None
         self.is_running = False
-        self.update_callback: Optional[Callable] = None
+        self.update_callback: Callable | None = None
 
         # User input for QR codes
-        self.user_input_data: Optional[str] = None
+        self.user_input_data: str | None = None
 
         # Statistics
         self.page_views = 0
@@ -410,7 +411,7 @@ class QRLiveWebServer:
         """Get the server URL."""
         return f"http://{self.settings.host}:{self.settings.port}"
 
-    def get_statistics(self) -> Dict:
+    def get_statistics(self) -> dict:
         """Get web server statistics."""
         return {
             "is_running": self.is_running,
@@ -421,7 +422,7 @@ class QRLiveWebServer:
             "current_qr_available": self.current_qr_data is not None
         }
 
-    def get_user_data(self) -> Optional[str]:
+    def get_user_data(self) -> str | None:
         """Get current user input data for QR generation."""
         return self.user_input_data
 
@@ -448,7 +449,7 @@ class QRLiveWebServer:
             return jsonify({
                 "qr_data": asdict(self.current_qr_data),
                 "qr_image": f"data:image/png;base64,{image_b64}",
-                "timestamp": datetime.now(timezone.utc).isoformat()
+                "timestamp": datetime.now(UTC).isoformat()
             })
 
         @self.app.route('/api/status')
@@ -477,14 +478,14 @@ class QRLiveWebServer:
 
                 verifier = self._get_verifier()
                 verification_result = verifier.verify_qr_data(validated_qr_data)
-                verification_result["timestamp"] = datetime.now(timezone.utc).isoformat()
+                verification_result["timestamp"] = datetime.now(UTC).isoformat()
                 verification_result["data_length"] = len(validated_qr_data)
 
                 return jsonify(verification_result)
 
             except BadRequest as e:
                 return jsonify({"error": str(e)}), 400
-            except Exception as e:
+            except Exception:
                 return jsonify({"error": "Internal server error"}), 500
 
         @self.app.route('/viewer')
@@ -524,7 +525,7 @@ class QRLiveWebServer:
                 return jsonify({
                     "success": False,
                     "error": str(e),
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "timestamp": datetime.now(UTC).isoformat(),
                 }), 500
 
         @self.app.route('/api/user-data', methods=['POST'])
@@ -548,12 +549,12 @@ class QRLiveWebServer:
                     "success": True,
                     "message": "User data updated successfully",
                     "user_data": self.user_input_data,
-                    "timestamp": datetime.now(timezone.utc).isoformat()
+                    "timestamp": datetime.now(UTC).isoformat()
                 })
 
             except BadRequest as e:
                 return jsonify({"error": str(e)}), 400
-            except Exception as e:
+            except Exception:
                 return jsonify({"error": "Internal server error"}), 500
 
         @self.app.route('/api/user-data', methods=['GET'])
@@ -607,7 +608,7 @@ class QRLiveWebServer:
                 # Broadcast update to all clients
                 self.socketio.emit('user_data_updated', {
                     "user_data": self.user_input_data,
-                    "timestamp": datetime.now(timezone.utc).isoformat()
+                    "timestamp": datetime.now(UTC).isoformat()
                 })
 
             except Exception as e:
@@ -623,7 +624,7 @@ class QRLiveWebServer:
         update_data = {
             "qr_data": asdict(self.current_qr_data),
             "qr_image": f"data:image/png;base64,{image_b64}",
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(UTC).isoformat()
         }
 
         # Broadcast to all clients
@@ -639,10 +640,69 @@ class QRLiveWebServer:
         update_data = {
             "qr_data": asdict(self.current_qr_data),
             "qr_image": f"data:image/png;base64,{image_b64}",
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(UTC).isoformat()
         }
 
         emit('qr_update', update_data)
+
+    def _build_qr_update_payload(self) -> dict | None:
+        """Build the QR update payload (data + base64 image) without emitting."""
+        if not self.current_qr_data or not self.current_qr_image:
+            return None
+        image_b64 = base64.b64encode(self.current_qr_image).decode('utf-8')
+        return {
+            "qr_data": asdict(self.current_qr_data),
+            "qr_image": f"data:image/png;base64,{image_b64}",
+            "timestamp": datetime.now(UTC).isoformat(),
+        }
+
+    def benchmark_websocket_throughput(self, iterations: int = 100) -> dict:
+        """
+        Benchmark WebSocket QR-update throughput (payload build + encode cost).
+
+        Measures the per-update latency of building the broadcast payload for
+        ``iterations`` simulated socket clients and reports the aggregate
+        throughput. Runs entirely in-process (no network transport required).
+
+        Args:
+            iterations: Number of simulated client updates to benchmark.
+
+        Returns:
+            A dict with latency/throughput statistics.
+        """
+        if iterations < 1:
+            raise ValueError("iterations must be at least 1")
+        if self.current_qr_data is None or self.current_qr_image is None:
+            raise RuntimeError(
+                "No current QR data; generate a QR before benchmarking"
+            )
+
+        import time as _time
+
+        latencies = []
+        start = _time.perf_counter()
+        for _ in range(iterations):
+            t0 = _time.perf_counter()
+            payload = self._build_qr_update_payload()
+            latencies.append(_time.perf_counter() - t0)
+            if payload is None:
+                raise RuntimeError("QR payload was empty during benchmark")
+        total = _time.perf_counter() - start
+
+        latencies.sort()
+        n = len(latencies)
+        return {
+            "iterations": n,
+            "total_seconds": total,
+            "avg_ms": (sum(latencies) / n) * 1000,
+            "p50_ms": latencies[n // 2] * 1000,
+            "p95_ms": latencies[int(n * 0.95) - 1] * 1000,
+            "updates_per_second": n / total if total > 0 else 0.0,
+            "payload_bytes": len(
+                json.dumps(self._build_qr_update_payload(), default=str)
+            ),
+            "simulated_clients": 1,
+        }
 
     def _run_server(self) -> None:
         """Run the Flask server."""
@@ -705,8 +765,8 @@ class QRLiveWebServer:
     def _get_verifier(self):
         """Return configured verifier, creating a local default if needed."""
         if self.verifier is None:
-            from .core import QRLiveProtocol
             from .config import QRLPConfig
+            from .core import QRLiveProtocol
 
             config = QRLPConfig()
             config.blockchain_settings.enabled_chains = set()
@@ -714,7 +774,7 @@ class QRLiveWebServer:
             self.verifier = QRLiveProtocol(config)
         return self.verifier
 
-    def _get_improvement_status(self) -> Dict[str, Any]:
+    def _get_improvement_status(self) -> dict[str, Any]:
         """Return dashboard-ready implementation and readiness status."""
         verifier = self._get_verifier()
         verifier_stats = verifier.get_statistics() if hasattr(verifier, "get_statistics") else {}
@@ -763,7 +823,7 @@ class QRLiveWebServer:
         current_qr = asdict(self.current_qr_data) if self.current_qr_data else None
 
         return {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "server": self.get_statistics(),
             "readiness": {
                 "passed": passed,
@@ -789,7 +849,7 @@ class QRLiveWebServer:
             "verifier": verifier_stats,
         }
 
-    def _run_improvement_smoke_test(self) -> Dict[str, Any]:
+    def _run_improvement_smoke_test(self) -> dict[str, Any]:
         """Run a deterministic local smoke test for dashboard controls."""
         from .config import QRLPConfig
         from .core import QRLiveProtocol
@@ -827,7 +887,7 @@ class QRLiveWebServer:
 
             return {
                 "success": bool(verification.get("valid")) and chunk_ok and len(qr_image) > 0,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
                 "signed_round_trip": {
                     "valid": verification.get("valid"),
                     "trust_mode": verification.get("trust_mode"),
@@ -845,7 +905,7 @@ class QRLiveWebServer:
             }
 
     @staticmethod
-    def _feature_status(name: str, ok: bool, severity: str) -> Dict[str, Any]:
+    def _feature_status(name: str, ok: bool, severity: str) -> dict[str, Any]:
         return {
             "name": name,
             "ok": ok,
@@ -864,7 +924,7 @@ class QRLiveWebServer:
         # Constant-time comparison prevents timing-based token disclosure.
         return hmac.compare_digest(token, self.settings.admin_token)
 
-    def _authorized_socket(self, data: Optional[Dict[str, Any]]) -> bool:
+    def _authorized_socket(self, data: dict[str, Any] | None) -> bool:
         if not self.settings.admin_token:
             return True
         supplied = (data or {}).get("admin_token")

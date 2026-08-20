@@ -5,7 +5,7 @@ Covers the single os.getenv call optimization and all env var mappings.
 """
 
 import os
-import pytest
+
 from src.config import QRLPConfig
 
 

@@ -7,14 +7,14 @@ Provides cryptographic proof of QR code origin and integrity.
 
 import hashlib
 import json
-from typing import Dict, Tuple, Any, Optional
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import rsa, ec, padding
+from typing import Any
+
 from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import ec, padding
 
-from .key_manager import KeyManager
 from .exceptions import SignatureError
-
+from .key_manager import KeyManager
 
 SUPPORTED_SIGNATURE_ALGORITHMS = {"rsa", "ecdsa"}
 SIGNATURE_FIELDS = {"digital_signature", "signing_key_id", "signature_algorithm"}
@@ -29,7 +29,7 @@ def _validate_signature_algorithm(algorithm: str) -> str:
     return normalized
 
 
-def canonicalize_qr_payload_for_signature(qr_data: Any) -> Dict[str, Any]:
+def canonicalize_qr_payload_for_signature(qr_data: Any) -> dict[str, Any]:
     """Return the stable payload that signatures cover."""
     if hasattr(qr_data, "__dict__"):
         data = qr_data.__dict__.copy()
@@ -266,7 +266,7 @@ class QRSignatureManager:
         """
         self.key_manager = key_manager
 
-    def sign_qr_with_key(self, qr_data: Any, key_id: str) -> Tuple[bytes, str]:
+    def sign_qr_with_key(self, qr_data: Any, key_id: str) -> tuple[bytes, str]:
         """
         Sign QR data using specified key.
 
@@ -291,8 +291,8 @@ class QRSignatureManager:
         qr_data: Any,
         signature: bytes,
         key_id: str,
-        public_key_pem: Optional[bytes] = None,
-        algorithm: Optional[str] = None,
+        public_key_pem: bytes | None = None,
+        algorithm: str | None = None,
     ) -> bool:
         """
         Verify QR data signature using specified key.
@@ -321,7 +321,7 @@ class QRSignatureManager:
         except SignatureError:
             return False
 
-    def create_signed_qr_data(self, qr_data: Any, signing_key_id: str) -> Dict[str, Any]:
+    def create_signed_qr_data(self, qr_data: Any, signing_key_id: str) -> dict[str, Any]:
         """
         Create QR data with embedded signature.
 
@@ -348,9 +348,9 @@ class QRSignatureManager:
 
     def verify_signed_qr_data(
         self,
-        signed_qr_data: Dict[str, Any],
-        public_key_pem: Optional[bytes] = None,
-        algorithm: Optional[str] = None,
+        signed_qr_data: dict[str, Any],
+        public_key_pem: bytes | None = None,
+        algorithm: str | None = None,
     ) -> bool:
         """
         Verify QR data with embedded signature.

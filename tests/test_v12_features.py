@@ -4,13 +4,14 @@ config-validate, status --json, CSP headers, connection pooling.
 """
 
 import json
+
 import pytest
 from click.testing import CliRunner
 
 from src.cli import cli
 from src.config import QRLPConfig, WebSettings
-from src.core import QRData, VerificationResult, QRLiveProtocol
-from src.web_server import QRLiveWebServer, SecurityValidator
+from src.core import QRData, QRLiveProtocol, VerificationResult
+from src.web_server import QRLiveWebServer
 
 
 @pytest.fixture

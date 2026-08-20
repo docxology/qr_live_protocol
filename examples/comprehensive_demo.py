@@ -13,21 +13,19 @@ This example shows real-world usage patterns for:
 - Security best practices
 """
 
+import json
 import sys
 import time
-import json
-import base64
-import secrets
-from pathlib import Path
 from datetime import datetime
-from typing import Dict, Any
+from pathlib import Path
+from typing import Any
 
 # Add project root to path for imports
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
+
 from src import QRLiveProtocol, QRLPConfig
-from src.crypto import KeyManager, DataEncryptor, HMACManager, QRSignatureManager
 
 
 class QRLPDemo:
@@ -153,7 +151,7 @@ class QRLPDemo:
         qr_json = qr_data.to_json()
         verification = self.qrlp.verify_qr_data(qr_json)
 
-        print(f"✅ Verification Results:")
+        print("✅ Verification Results:")
         print(f"   Valid JSON: {verification['valid_json']}")
         print(f"   HMAC Verified: {verification['hmac_verified']}")
         print(f"   Identity Verified: {verification['identity_verified']}")
@@ -229,7 +227,7 @@ class QRLPDemo:
         qr_json = json.dumps(qr_data.__dict__, separators=(',', ':'))
         verification = self.qrlp.verify_qr_data(qr_json)
 
-        print(f"✅ Signature Verification:")
+        print("✅ Signature Verification:")
         print(f"   Signature Verified: {verification['signature_verified']}")
         print(f"   HMAC Verified: {verification['hmac_verified']}")
 
@@ -279,7 +277,7 @@ class QRLPDemo:
         qr_json = json.dumps(qr_data.__dict__, separators=(',', ':'))
         verification = self.qrlp.verify_qr_data(qr_json)
 
-        print(f"✅ Encryption Verification:")
+        print("✅ Encryption Verification:")
         print(f"   Encrypted: {verification['encrypted']}")
         print(f"   HMAC Verified: {verification['hmac_verified']}")
 
@@ -337,7 +335,7 @@ class QRLPDemo:
         qr_json = qr_data1.to_json()
         verification = verifier.verify_qr_data(qr_json)
 
-        print(f"✅ Cross-Instance Verification Results:")
+        print("✅ Cross-Instance Verification Results:")
         print(f"   Valid JSON: {verification['valid_json']}")
         print(f"   HMAC Verified: {verification['hmac_verified']}")
         print(f"   Identity Verified: {verification['identity_verified']}")
@@ -392,7 +390,7 @@ class QRLPDemo:
                 print(f"   Exception: {type(e).__name__}: {e}")
                 self.demo_stats['errors_handled'] += 1
 
-    def _create_tampered_qr_data(self) -> Dict[str, Any]:
+    def _create_tampered_qr_data(self) -> dict[str, Any]:
         """Create tampered QR data for testing."""
         # Generate valid QR first
         qr_data, _ = self.qrlp.generate_single_qr({"test": "tamper_test"})
@@ -403,7 +401,7 @@ class QRLPDemo:
 
         return tampered
 
-    def _create_unsigned_qr_data(self) -> Dict[str, Any]:
+    def _create_unsigned_qr_data(self) -> dict[str, Any]:
         """Create QR data without signature for testing."""
         # Generate basic QR data without cryptographic enhancements
         qr_data, _ = self.qrlp.generate_single_qr(sign_data=False)

@@ -4,12 +4,10 @@ Unit tests for QRLiveProtocol core functionality.
 Tests QR generation, verification, and integration with cryptographic components.
 """
 
-import pytest
 import json
-import time
 
-from src import QRLiveProtocol, QRLPConfig, QRData
-from src.crypto import KeyManager, DataEncryptor, HMACManager
+from src import QRData, QRLiveProtocol
+from src.crypto import KeyManager
 
 
 class TestQRLiveProtocol:

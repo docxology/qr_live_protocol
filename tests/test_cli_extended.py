@@ -5,13 +5,12 @@ Tests all CLI commands, helper functions, and error paths.
 """
 
 import json
-import os
-import pytest
-import tempfile
 from pathlib import Path
+
+import pytest
 from click.testing import CliRunner
 
-from src.cli import cli, _parse_user_data, _load_qr_data_argument, _write_bytes
+from src.cli import _load_qr_data_argument, _parse_user_data, _write_bytes, cli
 
 
 @pytest.fixture

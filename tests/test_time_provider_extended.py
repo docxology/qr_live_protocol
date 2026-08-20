@@ -5,12 +5,11 @@ All network calls are mocked.
 """
 
 import time
-import pytest
-from datetime import datetime, timezone
-from unittest.mock import patch, MagicMock
+from datetime import UTC, datetime
+from unittest.mock import MagicMock, patch
 
-from src.time_provider import TimeProvider, TimeServerResponse
 from src.config import TimeSettings
+from src.time_provider import TimeProvider
 
 
 def make_mock_ntp_response():
@@ -32,7 +31,7 @@ class TestGetCurrentTime:
         provider = TimeProvider(settings)
         provider.time_offsets = {"s1": 0.1, "s2": 0.2, "s3": 0.3}
         result = provider.get_current_time()
-        assert result.tzinfo == timezone.utc
+        assert result.tzinfo == UTC
 
     def test_without_offsets(self):
         """Falls back to local time when no offsets."""
@@ -40,7 +39,7 @@ class TestGetCurrentTime:
         provider = TimeProvider(settings)
         provider.time_offsets = {}
         result = provider.get_current_time()
-        assert result.tzinfo == timezone.utc
+        assert result.tzinfo == UTC
 
     def test_even_number_offsets_median(self):
         """Median of even number of offsets uses average of middle two."""
@@ -48,7 +47,7 @@ class TestGetCurrentTime:
         provider = TimeProvider(settings)
         provider.time_offsets = {"s1": 0.0, "s2": 0.2, "s3": 0.4, "s4": 0.6}
         result = provider.get_current_time()
-        assert result.tzinfo == timezone.utc
+        assert result.tzinfo == UTC
 
 
 class TestGetTimeServerVerification:
@@ -79,7 +78,7 @@ class TestVerifyTimestamp:
     def test_valid_timestamp(self):
         settings = TimeSettings(time_servers=[])
         provider = TimeProvider(settings)
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         result = provider.verify_timestamp(now, tolerance=30.0)
         assert result["valid"] is True
         assert "time_difference" in result
@@ -130,7 +129,7 @@ class TestGetHttpTime:
         mock_response.status_code = 200
         mock_response.raise_for_status = MagicMock()
         mock_response.json.return_value = {
-            "datetime": datetime.now(timezone.utc).isoformat(),
+            "datetime": datetime.now(UTC).isoformat(),
         }
         with patch('requests.get', return_value=mock_response):
             result = provider.get_http_time("http://worldtimeapi.org/api/timezone/UTC")

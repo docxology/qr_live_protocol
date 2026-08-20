@@ -5,17 +5,16 @@ Handles user identity creation, management, and cryptographic hashing
 for QR code verification and authenticity.
 """
 
+import hashlib
+import json
 import logging
 import os
-import hashlib
 import platform
-import uuid
-import json
 import time
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Dict, Optional, Any
-from dataclasses import dataclass, asdict
+import uuid
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
+from typing import Any
 
 from .config import IdentitySettings
 
@@ -28,9 +27,9 @@ class IdentityInfo:
     """Identity information structure."""
     identity_hash: str
     creation_time: datetime
-    system_info: Dict[str, Any]
-    file_hashes: Dict[str, str]
-    custom_data: Dict[str, Any]
+    system_info: dict[str, Any]
+    file_hashes: dict[str, str]
+    custom_data: dict[str, Any]
     version: str = "1.0"
 
 
@@ -41,7 +40,7 @@ class IdentityManager:
     Creates and manages user identity hashes based on files, system information,
     and custom data to provide unique identification for QR codes.
     """
-    
+
     def __init__(self, settings: IdentitySettings):
         """
         Initialize identity manager with settings.
@@ -50,18 +49,18 @@ class IdentityManager:
             settings: IdentitySettings configuration object
         """
         self.settings = settings
-        self.identity_info: Optional[IdentityInfo] = None
-        self.cached_hash: Optional[str] = None
+        self.identity_info: IdentityInfo | None = None
+        self.cached_hash: str | None = None
         self.last_hash_time = 0
-        
+
         # Statistics
         self.hash_generations = 0
         self.file_reads = 0
         self.system_info_queries = 0
-        
+
         # Initialize identity
         self._initialize_identity()
-    
+
     def get_identity_hash(self) -> str:
         """
         Get current identity hash.
@@ -71,22 +70,22 @@ class IdentityManager:
         """
         # Return cached hash if recent and no settings require updates
         current_time = time.time()
-        if (self.cached_hash and 
+        if (self.cached_hash and
             current_time - self.last_hash_time < 60 and  # Cache for 1 minute
             not self._identity_changed()):
             return self.cached_hash
-        
+
         # Generate new hash
         self.cached_hash = self._generate_identity_hash()
         self.last_hash_time = current_time
         self.hash_generations += 1
-        
+
         return self.cached_hash
-    
-    def get_identity_info(self) -> Optional[IdentityInfo]:
+
+    def get_identity_info(self) -> IdentityInfo | None:
         """Get complete identity information."""
         return self.identity_info
-    
+
     def update_custom_data(self, key: str, value: Any) -> None:
         """
         Update custom data in identity.
@@ -97,13 +96,13 @@ class IdentityManager:
         """
         if not self.identity_info:
             self._initialize_identity()
-        
+
         if self.identity_info:
             self.identity_info.custom_data[key] = value
             # Invalidate cached hash
             self.cached_hash = None
-    
-    def add_file_to_identity(self, file_path: str, alias: Optional[str] = None) -> bool:
+
+    def add_file_to_identity(self, file_path: str, alias: str | None = None) -> bool:
         """
         Add a file hash to the identity.
         
@@ -117,26 +116,26 @@ class IdentityManager:
         try:
             if not os.path.exists(file_path):
                 return False
-            
+
             file_hash = self._calculate_file_hash(file_path)
             key = alias or os.path.basename(file_path)
-            
+
             if not self.identity_info:
                 self._initialize_identity()
-            
+
             if self.identity_info:
                 self.identity_info.file_hashes[key] = file_hash
                 # Invalidate cached hash
                 self.cached_hash = None
                 self.file_reads += 1
                 return True
-            
+
             return False
-            
+
         except Exception as e:
             _logger.error(f"Error adding file to identity: {e}")
             return False
-    
+
     def remove_file_from_identity(self, file_key: str) -> bool:
         """
         Remove a file from identity.
@@ -152,7 +151,7 @@ class IdentityManager:
             self.cached_hash = None
             return True
         return False
-    
+
     def export_identity(self, file_path: str) -> bool:
         """
         Export identity information to file.
@@ -166,20 +165,20 @@ class IdentityManager:
         try:
             if not self.identity_info:
                 return False
-            
+
             # Convert to JSON-serializable format
             export_data = asdict(self.identity_info)
             export_data['creation_time'] = self.identity_info.creation_time.isoformat()
-            
+
             with open(file_path, 'w') as f:
                 json.dump(export_data, f, indent=2)
-            
+
             return True
-            
+
         except Exception as e:
             _logger.error(f"Error exporting identity: {e}")
             return False
-    
+
     def import_identity(self, file_path: str) -> bool:
         """
         Import identity information from file.
@@ -193,10 +192,10 @@ class IdentityManager:
         try:
             if not os.path.exists(file_path):
                 return False
-            
-            with open(file_path, 'r') as f:
+
+            with open(file_path) as f:
                 data = json.load(f)
-            
+
             # Reconstruct identity info
             self.identity_info = IdentityInfo(
                 identity_hash=data['identity_hash'],
@@ -206,16 +205,16 @@ class IdentityManager:
                 custom_data=data['custom_data'],
                 version=data.get('version', '1.0')
             )
-            
+
             # Invalidate cached hash
             self.cached_hash = None
             return True
-            
+
         except Exception as e:
             _logger.error(f"Error importing identity: {e}")
             return False
-    
-    def get_statistics(self) -> Dict:
+
+    def get_statistics(self) -> dict:
         """Get identity manager statistics."""
         return {
             "hash_generations": self.hash_generations,
@@ -226,64 +225,64 @@ class IdentityManager:
             "last_hash_time": self.last_hash_time,
             "file_count": len(self.identity_info.file_hashes) if self.identity_info else 0
         }
-    
+
     def _initialize_identity(self) -> None:
         """Initialize identity information."""
         # Try to load from file if specified
-        if (self.settings.identity_file and 
+        if (self.settings.identity_file and
             os.path.exists(self.settings.identity_file)):
             if self.import_identity(self.settings.identity_file):
                 return
-        
+
         # Create new identity if auto-generate is enabled
         if self.settings.auto_generate:
             self._create_new_identity()
         else:
             self.identity_info = None
-    
+
     def _create_new_identity(self) -> None:
         """Create a new identity."""
         system_info = {}
         file_hashes = {}
-        
+
         # Collect system information if enabled
         if self.settings.include_system_info:
             system_info = self._collect_system_info()
-        
+
         # Include identity file hash if specified
-        if (self.settings.include_file_hash and 
-            self.settings.identity_file and 
+        if (self.settings.include_file_hash and
+            self.settings.identity_file and
             os.path.exists(self.settings.identity_file)):
             file_hashes['identity_file'] = self._calculate_file_hash(self.settings.identity_file)
-        
+
         # Create identity info
         self.identity_info = IdentityInfo(
             identity_hash="",  # Will be calculated
-            creation_time=datetime.now(timezone.utc),
+            creation_time=datetime.now(UTC),
             system_info=system_info,
             file_hashes=file_hashes,
             custom_data={}
         )
-        
+
         # Generate the actual hash
         self.cached_hash = self._generate_identity_hash()
         self.identity_info.identity_hash = self.cached_hash
         self.last_hash_time = time.time()
         self.hash_generations += 1
-    
+
     def _generate_identity_hash(self) -> str:
         """Generate cryptographic hash of identity."""
         if not self.identity_info:
             return ""
-        
+
         # Collect all identity components
         components = []
-        
+
         # Add system info
         if self.identity_info.system_info:
             system_str = json.dumps(self.identity_info.system_info, sort_keys=True)
             components.append(f"system:{system_str}")
-        
+
         # Add current file hashes (recalculate from actual files)
         if self.identity_info.file_hashes:
             current_file_hashes = {}
@@ -292,9 +291,7 @@ class IdentityManager:
                 file_path = None
                 if (filename == 'identity_file' and
                     self.settings.identity_file and
-                    os.path.exists(self.settings.identity_file)):
-                    file_path = self.settings.identity_file
-                elif (self.settings.identity_file and
+                    os.path.exists(self.settings.identity_file)) or (self.settings.identity_file and
                       filename == os.path.basename(self.settings.identity_file)):
                     file_path = self.settings.identity_file
                 elif os.path.exists(filename):
@@ -307,18 +304,18 @@ class IdentityManager:
 
             files_str = json.dumps(current_file_hashes, sort_keys=True)
             components.append(f"files:{files_str}")
-        
+
         # Add custom data
         if self.identity_info.custom_data:
             custom_str = json.dumps(self.identity_info.custom_data, sort_keys=True)
             components.append(f"custom:{custom_str}")
-        
+
         # Add creation time
         components.append(f"created:{self.identity_info.creation_time.isoformat()}")
-        
+
         # Combine and hash
         combined = "|".join(components)
-        
+
         if self.settings.hash_algorithm == "sha256":
             return hashlib.sha256(combined.encode('utf-8')).hexdigest()
         elif self.settings.hash_algorithm == "sha512":
@@ -326,11 +323,11 @@ class IdentityManager:
         else:
             # Default to SHA-256; reject insecure algorithms like md5
             return hashlib.sha256(combined.encode('utf-8')).hexdigest()
-    
-    def _collect_system_info(self) -> Dict[str, Any]:
+
+    def _collect_system_info(self) -> dict[str, Any]:
         """Collect system information for identity."""
         self.system_info_queries += 1
-        
+
         try:
             info = {
                 "platform": platform.platform(),
@@ -340,39 +337,39 @@ class IdentityManager:
                 "python_version": platform.python_version(),
                 "hostname": platform.node(),
                 "username": os.getenv('USER') or os.getenv('USERNAME') or 'unknown',
-                "mac_address": ':'.join(['{:02x}'.format((uuid.getnode() >> ele) & 0xff) 
+                "mac_address": ':'.join([f'{(uuid.getnode() >> ele) & 0xff:02x}'
                                        for ele in range(0,8*6,8)][::-1])
             }
-            
+
             # Add working directory
             info["working_directory"] = os.getcwd()
-            
+
             # Add environment variables (selective)
             env_vars = ['PATH', 'HOME', 'USERPROFILE', 'COMPUTERNAME', 'HOSTNAME']
             info["environment"] = {
                 var: os.getenv(var, '') for var in env_vars if os.getenv(var)
             }
-            
+
             return info
-            
+
         except Exception as e:
             return {"error": str(e)}
-    
+
     def _calculate_file_hash(self, file_path: str) -> str:
         """Calculate hash of a file."""
         try:
             hash_obj = hashlib.new(self.settings.hash_algorithm)
-            
+
             with open(file_path, 'rb') as f:
                 # Read file in chunks to handle large files
                 for chunk in iter(lambda: f.read(8192), b""):
                     hash_obj.update(chunk)
-            
+
             return hash_obj.hexdigest()
-            
+
         except Exception as e:
-            return f"error:{str(e)}"
-    
+            return f"error:{e!s}"
+
     def _identity_changed(self) -> bool:
         """Check if identity components have changed."""
         if not self.identity_info:
@@ -386,10 +383,7 @@ class IdentityManager:
             # If it's the identity_file from settings
             if (filename == 'identity_file' and
                 self.settings.identity_file and
-                os.path.exists(self.settings.identity_file)):
-                file_path = self.settings.identity_file
-            # If it's an alias that matches the identity file basename
-            elif (self.settings.identity_file and
+                os.path.exists(self.settings.identity_file)) or (self.settings.identity_file and
                   filename == os.path.basename(self.settings.identity_file)):
                 file_path = self.settings.identity_file
             # If the filename itself is a valid path
@@ -401,4 +395,4 @@ class IdentityManager:
                 if current_hash != stored_hash:
                     return True
 
-        return False 
+        return False

@@ -6,13 +6,13 @@ accurate timestamp verification for QR codes.
 """
 
 import logging
-import time
 import threading
-from datetime import datetime, timezone
-from typing import Dict, List, Optional
-import requests
-import ntplib
+import time
 from dataclasses import dataclass
+from datetime import UTC, datetime
+
+import ntplib
+import requests
 
 from .config import TimeSettings
 
@@ -29,7 +29,7 @@ class TimeServerResponse:
     delay: float
     stratum: int
     success: bool
-    error: Optional[str] = None
+    error: str | None = None
 
 
 class TimeProvider:
@@ -48,7 +48,7 @@ class TimeProvider:
             settings: TimeSettings configuration object
         """
         self.settings = settings
-        self.time_offsets: Dict[str, float] = {}
+        self.time_offsets: dict[str, float] = {}
         self.last_sync_time = 0
         self.sync_lock = threading.Lock()
         self.ntp_client = ntplib.NTPClient()
@@ -86,9 +86,9 @@ class TimeProvider:
             # Fall back to local time if no servers available
             adjusted_time = current_time
 
-        return datetime.fromtimestamp(adjusted_time, timezone.utc)
+        return datetime.fromtimestamp(adjusted_time, UTC)
 
-    def get_time_server_verification(self) -> Dict[str, str]:
+    def get_time_server_verification(self) -> dict[str, str]:
         """
         Get verification data from time servers.
 
@@ -105,14 +105,14 @@ class TimeProvider:
         for server, offset in self.time_offsets.items():
             server_time = current_time + offset
             verification[server] = {
-                "timestamp": datetime.fromtimestamp(server_time, timezone.utc).isoformat(),
+                "timestamp": datetime.fromtimestamp(server_time, UTC).isoformat(),
                 "offset": offset,
                 "last_sync": self.last_sync_time
             }
 
         return verification
 
-    def verify_timestamp(self, timestamp_str: str, tolerance: float = 30.0) -> Dict[str, bool]:
+    def verify_timestamp(self, timestamp_str: str, tolerance: float = 30.0) -> dict[str, bool]:
         """
         Verify if a timestamp is within acceptable range of current time.
 
@@ -143,7 +143,7 @@ class TimeProvider:
                 "error": str(e)
             }
 
-    def get_ntp_time(self, server: str) -> Optional[TimeServerResponse]:
+    def get_ntp_time(self, server: str) -> TimeServerResponse | None:
         """
         Get time from specific NTP server.
 
@@ -176,7 +176,7 @@ class TimeProvider:
                 error=str(e)
             )
 
-    def get_http_time(self, url: str = "http://worldtimeapi.org/api/timezone/UTC") -> Optional[TimeServerResponse]:
+    def get_http_time(self, url: str = "http://worldtimeapi.org/api/timezone/UTC") -> TimeServerResponse | None:
         """
         Get time from HTTP time API.
 
@@ -216,7 +216,7 @@ class TimeProvider:
                 error=str(e)
             )
 
-    def sync_all_servers(self) -> List[TimeServerResponse]:
+    def sync_all_servers(self) -> list[TimeServerResponse]:
         """
         Synchronize with all configured time servers.
 
@@ -247,7 +247,7 @@ class TimeProvider:
 
         return responses
 
-    def get_statistics(self) -> Dict:
+    def get_statistics(self) -> dict:
         """Get time provider statistics."""
         return {
             "total_syncs": self.total_syncs,

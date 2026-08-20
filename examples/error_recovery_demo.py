@@ -16,24 +16,24 @@ This example shows real-world error scenarios and how QRLP handles them:
 
 import sys
 import time
-import json
-import asyncio
 from pathlib import Path
-from typing import Dict, Any, List
-from unittest.mock import patch, MagicMock
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from src import QRLiveProtocol, QRLPConfig
-from src.error_recovery import (
-    CircuitBreaker, CircuitBreakerConfig, RetryStrategy,
-    ResilientOperation, ResilienceManager,
-    resilient_qr_generation, resilient_verification,
-    CircuitBreakerOpenError
-)
 from src.crypto.exceptions import CryptoError
+from src.error_recovery import (
+    CircuitBreaker,
+    CircuitBreakerConfig,
+    CircuitBreakerOpenError,
+    ResilienceManager,
+    ResilientOperation,
+    RetryStrategy,
+    resilient_qr_generation,
+    resilient_verification,
+)
 
 
 class ErrorRecoveryDemo:
@@ -115,8 +115,8 @@ class ErrorRecoveryDemo:
             except Exception as e:
                 print(f"   Call {i+1}: {type(e).__name__}: {e}")
 
-        print("
-⏳ Waiting for circuit breaker recovery..."        time.sleep(6)  # Wait longer than recovery timeout
+        print("⏳ Waiting for circuit breaker recovery...")
+        time.sleep(6)  # Wait longer than recovery timeout
 
         print("🔄 Testing circuit breaker recovery...")
 
@@ -128,7 +128,7 @@ class ErrorRecoveryDemo:
         except Exception as e:
             print(f"❌ Recovery failed: {e}")
 
-        print(f"\n📊 Circuit Breaker Stats:")
+        print("\n📊 Circuit Breaker Stats:")
         print(f"   Total Requests: {blockchain_cb.stats.total_requests}")
         print(f"   Failed Requests: {blockchain_cb.stats.failed_requests}")
         print(f"   State Changes: {blockchain_cb.stats.state_changes}")
@@ -186,8 +186,8 @@ class ErrorRecoveryDemo:
             self.demo_stats['errors_handled'] += 1
 
         # Show graceful degradation to basic functionality
-        print("
-🔄 Falling back to basic QR generation..."        try:
+        print("🔄 Falling back to basic QR generation...")
+        try:
             qr_data, qr_image = basic_qr_generation()
             print(f"✅ Fallback successful: QR #{qr_data.sequence_number}")
             self.demo_stats['degraded_operations'] += 1
@@ -233,8 +233,8 @@ class ErrorRecoveryDemo:
             self.demo_stats['errors_handled'] += 1
 
         # Show resource monitoring and cleanup
-        print("
-📊 Resource monitoring:"        try:
+        print("📊 Resource monitoring:")
+        try:
             import psutil
             process = psutil.Process()
             memory_mb = process.memory_info().rss / 1024 / 1024
@@ -280,7 +280,8 @@ class ErrorRecoveryDemo:
 
             # Try to import non-existent module
             try:
-                import nonexistent_module
+                import importlib
+                importlib.import_module("nonexistent_module")
                 return False
             except ImportError as e:
                 return str(e)
@@ -374,8 +375,8 @@ class ErrorRecoveryDemo:
         self.demonstrate_qr_generation_resilience()
 
         # Show resilience manager health
-        print("
-🏥 Resilience Manager Health:"        health_status = self.resilience_manager.get_health_status()
+        print("🏥 Resilience Manager Health:")
+        health_status = self.resilience_manager.get_health_status()
         print(f"   Overall Health: {health_status['health']}")
         print(f"   Message: {health_status['message']}")
         print(f"   Open Circuits: {health_status['open_circuits']}")
@@ -556,15 +557,15 @@ class ErrorRecoveryDemo:
 
         # Show resilience manager status
         health = self.resilience_manager.get_health_status()
-        print("
-🏥 System Resilience Status:"        print(f"   Overall Health: {health['health']}")
+        print("🏥 System Resilience Status:")
+        print(f"   Overall Health: {health['health']}")
         print(f"   Active Operations: {health['active_operations']}")
 
         if health['open_circuits']:
             print(f"   ⚠️  Open Circuits: {', '.join(health['open_circuits'])}")
 
-        print("
-✨ Resilience Features Demonstrated:"        features = [
+        print("✨ Resilience Features Demonstrated:")
+        features = [
             "✅ Circuit breaker pattern for cascading failure prevention",
             "✅ Retry logic with exponential backoff",
             "✅ Graceful degradation to reduced functionality",
@@ -578,8 +579,8 @@ class ErrorRecoveryDemo:
         for feature in features:
             print(f"   {feature}")
 
-        print("
-🎉 Error recovery demo completed successfully!"        print("=" * 80)
+        print("🎉 Error recovery demo completed successfully!")
+        print("=" * 80)
 
 
 def demonstrate_resilient_qr_operations():

@@ -5,25 +5,28 @@ This module provides the main QRLiveProtocol class that coordinates all
 components to generate live, verifiable QR codes with time and identity information.
 """
 
-import json
-import time
-import hashlib
-import threading
-import secrets
-import logging
-from datetime import datetime, timezone, timedelta
-from pathlib import Path
-from typing import Dict, List, Optional, Callable, Any
-from dataclasses import dataclass, asdict, fields
+from __future__ import annotations
 
+import hashlib
+import json
+import logging
+import secrets
+import threading
+import time
+from collections.abc import Callable
+from dataclasses import asdict, dataclass, fields
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from typing import Any
+
+from .blockchain_verifier import BlockchainVerifier
+from .config import QRLPConfig
+from .crypto import DataEncryptor, HMACManager, KeyManager, QRSignatureManager
+from .identity_manager import IdentityManager
 from .qr_generator import QRGenerator
 from .time_provider import TimeProvider
-from .blockchain_verifier import BlockchainVerifier
-from .identity_manager import IdentityManager
-from .config import QRLPConfig
-from .crypto import KeyManager, QRSignatureManager, DataEncryptor, HMACManager
-from .trust import TrustStore
 from .time_stamper import TimeStamper
+from .trust import TrustStore
 
 _logger = logging.getLogger("qrlp.core")
 
@@ -34,35 +37,35 @@ class QRData:
     """Structure for QR code data payload."""
     timestamp: str
     identity_hash: str
-    blockchain_hashes: Dict[str, str]
-    time_server_verification: Dict[str, str]
-    user_data: Optional[Dict] = None
+    blockchain_hashes: dict[str, str]
+    time_server_verification: dict[str, str]
+    user_data: dict | None = None
     sequence_number: int = 0
-    issuer_id: Optional[str] = None
-    event_id: Optional[str] = None
-    content_hash: Optional[str] = None
-    expires_at: Optional[str] = None
-    nonce: Optional[str] = None
+    issuer_id: str | None = None
+    event_id: str | None = None
+    content_hash: str | None = None
+    expires_at: str | None = None
+    nonce: str | None = None
 
     # Cryptographic enhancement fields
-    digital_signature: Optional[str] = None
-    signing_key_id: Optional[str] = None
-    signature_algorithm: Optional[str] = None
-    _hmac: Optional[str] = None
-    _hmac_key_id: Optional[str] = None
-    _hmac_algorithm: Optional[str] = None
-    _integrity_checked_at: Optional[str] = None
-    _encrypted_fields: Optional[List[str]] = None
-    _encryption_key_id: Optional[str] = None
-    _data_key_id: Optional[str] = None
-    _encrypted_at: Optional[str] = None
+    digital_signature: str | None = None
+    signing_key_id: str | None = None
+    signature_algorithm: str | None = None
+    _hmac: str | None = None
+    _hmac_key_id: str | None = None
+    _hmac_algorithm: str | None = None
+    _integrity_checked_at: str | None = None
+    _encrypted_fields: list[str] | None = None
+    _encryption_key_id: str | None = None
+    _data_key_id: str | None = None
+    _encrypted_at: str | None = None
 
     # OpenTimestamps (OTS) proof — additive, optional, backwards compatible.
     # Populated when OTS stamping is enabled in TimeSettings. Old QR payloads
     # without these fields still verify unchanged.
-    ots_proof_path: Optional[str] = None
-    ots_verified: Optional[bool] = None
-    ots_timestamp: Optional[str] = None
+    ots_proof_path: str | None = None
+    ots_verified: bool | None = None
+    ots_timestamp: str | None = None
 
     def to_json(self) -> str:
         """Convert to JSON string for QR encoding."""
@@ -72,7 +75,7 @@ class QRData:
         filtered_dict = {k: v for k, v in data_dict.items() if v is not None}
         return json.dumps(filtered_dict, separators=(',', ':'))
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary, filtering out None values.
 
         Unlike ``asdict()``, this returns a clean dict without None
@@ -91,7 +94,7 @@ class QRData:
         return self.__repr__()
 
     @classmethod
-    def from_json(cls, json_str: str) -> 'QRData':
+    def from_json(cls, json_str: str) -> QRData:
         """Create QRData from JSON string.
 
         Unknown fields are silently ignored so that forward-compatible
@@ -103,7 +106,7 @@ class QRData:
         return cls(**filtered)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'QRData':
+    def from_dict(cls, data: dict[str, Any]) -> QRData:
         """Create QRData from a dictionary.
 
         Inverse of ``to_dict()``. Unknown fields are silently ignored
@@ -131,9 +134,9 @@ class VerificationResult:
     encrypted: bool = False
     valid: bool = False
     trust_mode: str = "none"
-    error: Optional[str] = None
+    error: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {k: v for k, v in asdict(self).items() if v is not None}
 
@@ -148,13 +151,13 @@ class QRLiveProtocol:
 
     def __init__(
         self,
-        config: Optional[QRLPConfig] = None,
-        key_manager: Optional[KeyManager] = None,
-        signature_manager: Optional[QRSignatureManager] = None,
-        encryptor: Optional[DataEncryptor] = None,
-        hmac_manager: Optional[HMACManager] = None,
-        trust_store: Optional[TrustStore] = None,
-        issuer_id: Optional[str] = None,
+        config: QRLPConfig | None = None,
+        key_manager: KeyManager | None = None,
+        signature_manager: QRSignatureManager | None = None,
+        encryptor: DataEncryptor | None = None,
+        hmac_manager: HMACManager | None = None,
+        trust_store: TrustStore | None = None,
+        issuer_id: str | None = None,
     ):
         """
         Initialize QRLP with configuration.
@@ -182,7 +185,7 @@ class QRLiveProtocol:
         )
 
         # Initialize cryptographic components
-        self._key_manager: Optional[KeyManager] = None
+        self._key_manager: KeyManager | None = None
         self.key_manager = key_manager or KeyManager(self.config.security_settings.key_dir)
         self.signature_manager = signature_manager or QRSignatureManager(self.key_manager)
         self.signature_manager.key_manager = self.key_manager
@@ -193,21 +196,21 @@ class QRLiveProtocol:
 
         # State management
         self._running = False
-        self._current_qr_data: Optional[QRData] = None
+        self._current_qr_data: QRData | None = None
         self._sequence_number = 0
         self._state_lock = threading.Lock()
-        self._update_thread: Optional[threading.Thread] = None
-        self._callbacks: List[Callable[[QRData, bytes], None]] = []
+        self._update_thread: threading.Thread | None = None
+        self._callbacks: list[Callable[[QRData, bytes], None]] = []
 
         # User data callback for external input
-        self._user_data_callback: Optional[Callable[[], Optional[str]]] = None
+        self._user_data_callback: Callable[[], str | None] | None = None
 
         # Expiry notification callback
-        self._expiry_callback: Optional[Callable[[QRData], None]] = None
+        self._expiry_callback: Callable[[QRData], None] | None = None
 
         # Replay-protection state: nonce -> timestamp of first sighting, pruned
         # on each use. Only consulted when replay protection is enabled.
-        self._seen_nonces: Dict[str, float] = {}
+        self._seen_nonces: dict[str, float] = {}
 
         # Performance tracking
         self._last_update_time = 0
@@ -246,7 +249,7 @@ class QRLiveProtocol:
         """
         self._expiry_callback = callback
 
-    def set_user_data_callback(self, callback: Callable[[], Optional[str]]) -> None:
+    def set_user_data_callback(self, callback: Callable[[], str | None]) -> None:
         """
         Set callback function to get user data for QR generation.
 
@@ -274,10 +277,10 @@ class QRLiveProtocol:
         if self._update_thread and self._update_thread.is_alive():
             self._update_thread.join(timeout=1.0)
 
-    def generate_single_qr(self, user_data: Optional[Dict] = None,
-                          sign_data: Optional[bool] = None, encrypt_data: bool = False,
-                          signing_key_id: Optional[str] = None,
-                          encryption_key_id: Optional[str] = None) -> tuple[QRData, bytes]:
+    def generate_single_qr(self, user_data: dict | None = None,
+                          sign_data: bool | None = None, encrypt_data: bool = False,
+                          signing_key_id: str | None = None,
+                          encryption_key_id: str | None = None) -> tuple[QRData, bytes]:
         """
         Generate a single QR code with current time and verification data.
 
@@ -360,8 +363,8 @@ class QRLiveProtocol:
         self._notify_callbacks(qr_data_enhanced, qr_image)
         return qr_data_enhanced, qr_image
 
-    def generate_signed_qr(self, user_data: Optional[Dict] = None,
-                          signing_key_id: str = None) -> tuple[QRData, bytes]:
+    def generate_signed_qr(self, user_data: dict | None = None,
+                          signing_key_id: str | None = None) -> tuple[QRData, bytes]:
         """
         Generate a QR code with digital signature.
 
@@ -379,8 +382,8 @@ class QRLiveProtocol:
             signing_key_id=signing_key_id,
         )
 
-    def generate_encrypted_qr(self, user_data: Optional[Dict] = None,
-                             encryption_key_id: str = None) -> tuple[QRData, bytes]:
+    def generate_encrypted_qr(self, user_data: dict | None = None,
+                             encryption_key_id: str | None = None) -> tuple[QRData, bytes]:
         """
         Generate a QR code with encrypted sensitive data.
 
@@ -401,8 +404,8 @@ class QRLiveProtocol:
     def _apply_cryptographic_enhancements(self, qr_data: QRData,
                                         sign_data: bool = True,
                                         encrypt_data: bool = False,
-                                        signing_key_id: Optional[str] = None,
-                                        encryption_key_id: Optional[str] = None) -> Dict[str, Any]:
+                                        signing_key_id: str | None = None,
+                                        encryption_key_id: str | None = None) -> dict[str, Any]:
         """
         Apply cryptographic enhancements to QR data.
 
@@ -422,8 +425,8 @@ class QRLiveProtocol:
 
         # Step 1: Add digital signature if requested (before HMAC so signature is covered)
         if sign_data:
-            signing_key_id = self._ensure_signing_key(signing_key_id)
-            qr_dict = self.signature_manager.create_signed_qr_data(qr_dict, signing_key_id)
+            key_id_to_use = self._ensure_signing_key(signing_key_id)
+            qr_dict = self.signature_manager.create_signed_qr_data(qr_dict, key_id_to_use)
 
         # Step 2: Add HMAC for integrity checking (always applied, covers signature if present)
         hmac_qr_data = self.hmac_manager.create_integrity_checked_qr(qr_dict)
@@ -448,11 +451,11 @@ class QRLiveProtocol:
 
         return hmac_qr_data
 
-    def get_current_qr_data(self) -> Optional[QRData]:
+    def get_current_qr_data(self) -> QRData | None:
         """Get the most recently generated QR data."""
         return self._current_qr_data
 
-    def get_statistics(self) -> Dict:
+    def get_statistics(self) -> dict:
         """Get performance and usage statistics."""
         return {
             "running": self._running,
@@ -471,7 +474,7 @@ class QRLiveProtocol:
             }
         }
 
-    def verify_qr_data(self, qr_json: str) -> Dict[str, bool]:
+    def verify_qr_data(self, qr_json: str) -> dict[str, bool]:
         """
         Verify a QR code's data integrity and authenticity.
 
@@ -487,7 +490,7 @@ class QRLiveProtocol:
                 raise ValueError("QR data must be a JSON object")
 
             # Check if data is encrypted
-            if '_encrypted_fields' in raw_data and raw_data['_encrypted_fields']:
+            if raw_data.get('_encrypted_fields'):
                 try:
                     decrypted_data = self.encryptor.decrypt_qr_payload(raw_data)
                     qr_data_dict = decrypted_data
@@ -565,8 +568,8 @@ class QRLiveProtocol:
             # Verify time is reasonable (within acceptable window)
             qr_time = datetime.fromisoformat(qr_data.timestamp.replace('Z', '+00:00'))
             if qr_time.tzinfo is None:
-                qr_time = qr_time.replace(tzinfo=timezone.utc)
-            now = datetime.now(timezone.utc)
+                qr_time = qr_time.replace(tzinfo=UTC)
+            now = datetime.now(UTC)
             time_diff = abs((now - qr_time).total_seconds())
             time_verified = time_diff <= self.config.verification_settings.max_time_drift
             if self.config.verification_settings.require_time_server and not qr_data.time_server_verification:
@@ -574,7 +577,7 @@ class QRLiveProtocol:
             if qr_data.expires_at:
                 expires_at = datetime.fromisoformat(qr_data.expires_at.replace('Z', '+00:00'))
                 if expires_at.tzinfo is None:
-                    expires_at = expires_at.replace(tzinfo=timezone.utc)
+                    expires_at = expires_at.replace(tzinfo=UTC)
                 time_verified = time_verified and now <= expires_at
             results["time_verified"] = time_verified
 
@@ -634,8 +637,8 @@ class QRLiveProtocol:
                                 self._current_qr_data.expires_at.replace('Z', '+00:00')
                             )
                             if expires.tzinfo is None:
-                                expires = expires.replace(tzinfo=timezone.utc)
-                            if datetime.now(timezone.utc) >= expires:
+                                expires = expires.replace(tzinfo=UTC)
+                            if datetime.now(UTC) >= expires:
                                 self._expiry_callback(self._current_qr_data)
                         except Exception:
                             pass  # Don't crash loop on expiry check errors
@@ -662,7 +665,7 @@ class QRLiveProtocol:
         """Context manager exit."""
         self.stop_live_generation()
 
-    def _resolve_user_data(self, user_data: Optional[Dict]) -> Optional[Dict]:
+    def _resolve_user_data(self, user_data: dict | None) -> dict | None:
         if user_data is not None or not self._user_data_callback:
             return user_data
 
@@ -681,11 +684,11 @@ class QRLiveProtocol:
     def _resolve_issuer_id(self, identity_hash: str) -> str:
         return self.issuer_id or identity_hash
 
-    def _content_hash(self, user_data: Optional[Dict]) -> str:
+    def _content_hash(self, user_data: dict | None) -> str:
         canonical = json.dumps(user_data or {}, sort_keys=True, separators=(',', ':'))
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
-    def _check_and_record_replay(self, qr_data: "QRData") -> bool:
+    def _check_and_record_replay(self, qr_data: QRData) -> bool:
         """Return ``True`` if ``qr_data`` is a replay within the window.
 
         A QR is identified by its ``nonce`` (scoped by issuer to avoid
@@ -720,28 +723,29 @@ class QRLiveProtocol:
             ttl = int(self.config.verification_settings.max_time_drift)
         return (issued_at + timedelta(seconds=ttl)).isoformat()
 
-    def _ensure_signing_key(self, signing_key_id: Optional[str] = None) -> str:
+    def _ensure_signing_key(self, signing_key_id: str | None = None) -> str:
         candidate = signing_key_id or self.config.security_settings.signing_key_id
         if candidate:
             if self.key_manager.get_keypair(candidate):
                 return candidate
             raise ValueError(f"Signing key not found: {candidate}")
 
-        keys = self.key_manager.list_keys()
-        for key_id, key_info in keys.items():
-            if key_info.purpose == "qr_signing":
-                return key_id
-        if keys:
-            return next(iter(keys))
+        with self._state_lock:
+            keys = self.key_manager.list_keys()
+            for key_id, key_info in keys.items():
+                if key_info.purpose == "qr_signing":
+                    return key_id
+            if keys:
+                return next(iter(keys))
 
-        self.key_manager.generate_keypair(
-            algorithm=self.config.security_settings.signature_algorithm
-            if hasattr(self.config.security_settings, "signature_algorithm")
-            else "rsa",
-            key_size=2048,
-            purpose="qr_signing"
-        )
-        return next(iter(self.key_manager.list_keys()))
+            self.key_manager.generate_keypair(
+                algorithm=self.config.security_settings.signature_algorithm
+                if hasattr(self.config.security_settings, "signature_algorithm")
+                else "rsa",
+                key_size=2048,
+                purpose="qr_signing"
+            )
+            return next(iter(self.key_manager.list_keys()))
 
     def _notify_callbacks(self, qr_data: QRData, qr_image: bytes) -> None:
         for callback in list(self._callbacks):

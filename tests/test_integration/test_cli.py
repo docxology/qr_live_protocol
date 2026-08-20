@@ -176,3 +176,43 @@ def test_cli_keys_and_trust_commands_round_trip():
         assert trust_list_result.exit_code == 0, trust_list_result.output
         assert "issuer-cli" in trust_list_result.output
         assert key_id in trust_list_result.output
+
+
+def test_cli_simulate_live_json_output():
+    """`qrlp simulate-live --json-output` should emit a well-formed report."""
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "simulate-live",
+            "--frames",
+            "50",
+            "--drop-rate",
+            "0.1",
+            "--seed",
+            "42",
+            "--json-output",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.output)
+    assert data["frames_produced"] == 50
+    assert data["frames_dropped"] > 0
+    assert data["recovery_rate"] <= 1.0
+
+
+def test_cli_simulate_live_text_summary():
+    """`qrlp simulate-live` (no flags) should print a human-readable summary."""
+    runner = CliRunner()
+    result = runner.invoke(cli, ["simulate-live", "--frames", "30"])
+    assert result.exit_code == 0, result.output
+    assert "Live streaming simulation report" in result.output
+    assert "Recovery rate" in result.output
+
+
+def test_cli_simulate_live_invalid_drop_rate():
+    """An out-of-range drop rate should fail with a clean CLI error."""
+    runner = CliRunner()
+    result = runner.invoke(cli, ["simulate-live", "--drop-rate", "1.5"])
+    assert result.exit_code != 0
+    assert "drop_rate" in result.output

@@ -93,6 +93,34 @@ src = [
 line-length = 100
 target-version = ['py39', 'py310', 'py311', 'py312', 'py313']
 
+[tool.ruff]
+line-length = 120
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "RUF"]
+ignore = [
+    "E402",   # Module level import not at top of file (used in demos/tests for sys.path)
+    "E501",   # Line length (handled by formatter / legacy long strings)
+    "RUF059", # Unpacked variable is never used
+    "RUF015", # Prefer next(iter(...))
+    "F841",   # Local variable assigned but never used
+    "B007",   # Loop control variable not used
+    "SIM108", # Use ternary operator
+    "SIM105", # Use contextlib.suppress
+    "SIM102", # Single if statement instead of nested
+    "SIM103", # Return condition directly
+    "B904",   # raise ... from err
+    "RUF012", # Mutable default value for class attribute
+    "RUF043", # Pattern passed to match= contains metacharacters
+    "B017",   # Do not assert blind exception
+    "UP007",  # Use X | Y for type annotations
+    "RUF013", # PEP 484 prohibits implicit Optional
+    "RUF003", # Ambiguous characters in comments
+    "RUF005", # Iterable unpacking vs concat
+    "W293",   # Blank line contains whitespace
+]
+
 [tool.isort]
 profile = "black"
 line_length = 100

@@ -5,14 +5,14 @@ Provides async/await patterns for non-blocking QR generation, verification,
 and cryptographic operations with improved performance and scalability.
 """
 
-import logging
 import asyncio
-import json
-import time
-from datetime import datetime, timezone
-from typing import Dict, List, Optional, Callable, Any, Tuple
-import aiohttp
 import concurrent.futures
+import logging
+import time
+from collections.abc import Callable
+from typing import Any
+
+import aiohttp
 
 _logger = logging.getLogger("qrlp.async_core")
 
@@ -22,9 +22,8 @@ try:
 except ImportError:
     aiofiles = None  # type: ignore[assignment]
 
-from .core import QRLiveProtocol, QRData
 from .config import QRLPConfig
-from .crypto import HMACManager
+from .core import QRData, QRLiveProtocol
 
 
 class AsyncQRLiveProtocol:
@@ -39,7 +38,7 @@ class AsyncQRLiveProtocol:
     - Connection pooling and resource management
     """
 
-    def __init__(self, config: Optional[QRLPConfig] = None):
+    def __init__(self, config: QRLPConfig | None = None):
         """
         Initialize async QRLiveProtocol.
 
@@ -51,11 +50,11 @@ class AsyncQRLiveProtocol:
 
         # Async components
         self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
-        self._session_pool: List[aiohttp.ClientSession] = []
+        self._session_pool: list[aiohttp.ClientSession] = []
         self._semaphore = asyncio.Semaphore(10)  # Limit concurrent operations
 
         # Performance tracking
-        self._operation_times: Dict[str, List[float]] = {}
+        self._operation_times: dict[str, list[float]] = {}
         self._cache_hits = 0
         self._cache_misses = 0
 
@@ -86,9 +85,9 @@ class AsyncQRLiveProtocol:
         # Shutdown executor
         self._executor.shutdown(wait=True)
 
-    async def generate_single_qr_async(self, user_data: Optional[Dict] = None,
+    async def generate_single_qr_async(self, user_data: dict | None = None,
                                       sign_data: bool = True,
-                                      encrypt_data: bool = False) -> Tuple[QRData, bytes]:
+                                      encrypt_data: bool = False) -> tuple[QRData, bytes]:
         """
         Generate a single QR code asynchronously.
 
@@ -108,8 +107,8 @@ class AsyncQRLiveProtocol:
                 user_data, sign_data, encrypt_data
             )
 
-    async def generate_signed_qr_async(self, user_data: Optional[Dict] = None,
-                                      signing_key_id: str = None) -> Tuple[QRData, bytes]:
+    async def generate_signed_qr_async(self, user_data: dict | None = None,
+                                      signing_key_id: str | None = None) -> tuple[QRData, bytes]:
         """
         Generate a cryptographically signed QR code asynchronously.
 
@@ -128,8 +127,8 @@ class AsyncQRLiveProtocol:
                 user_data, signing_key_id
             )
 
-    async def generate_encrypted_qr_async(self, user_data: Optional[Dict] = None,
-                                         encryption_key_id: str = None) -> Tuple[QRData, bytes]:
+    async def generate_encrypted_qr_async(self, user_data: dict | None = None,
+                                         encryption_key_id: str | None = None) -> tuple[QRData, bytes]:
         """
         Generate an encrypted QR code asynchronously.
 
@@ -148,7 +147,7 @@ class AsyncQRLiveProtocol:
                 user_data, encryption_key_id
             )
 
-    async def verify_qr_data_async(self, qr_json: str) -> Dict[str, bool]:
+    async def verify_qr_data_async(self, qr_json: str) -> dict[str, bool]:
         """
         Verify QR code data asynchronously.
 
@@ -166,9 +165,9 @@ class AsyncQRLiveProtocol:
                 qr_json
             )
 
-    async def batch_generate_qr_async(self, items: List[Dict[str, Any]],
+    async def batch_generate_qr_async(self, items: list[dict[str, Any]],
                                      sign_data: bool = True,
-                                     encrypt_data: bool = False) -> List[Tuple[QRData, bytes]]:
+                                     encrypt_data: bool = False) -> list[tuple[QRData, bytes]]:
         """
         Generate multiple QR codes asynchronously in parallel.
 
@@ -200,8 +199,8 @@ class AsyncQRLiveProtocol:
         return successful_results
 
     async def generate_qr_stream_async(self, interval: float = 1.0,
-                                      max_qrs: Optional[int] = None,
-                                      callback: Optional[Callable] = None) -> List[Tuple[QRData, bytes]]:
+                                      max_qrs: int | None = None,
+                                      callback: Callable | None = None) -> list[tuple[QRData, bytes]]:
         """
         Generate a stream of QR codes asynchronously.
 
@@ -239,7 +238,7 @@ class AsyncQRLiveProtocol:
             _logger.error(f"Stream generation error: {e}")
         return generated_qrs
 
-    async def get_blockchain_data_async(self) -> Dict[str, str]:
+    async def get_blockchain_data_async(self) -> dict[str, str]:
         """
         Get blockchain data asynchronously with connection pooling.
 
@@ -265,7 +264,7 @@ class AsyncQRLiveProtocol:
 
             return blockchain_hashes
 
-    async def _get_chain_data_async(self, chain: str) -> Dict[str, str]:
+    async def _get_chain_data_async(self, chain: str) -> dict[str, str]:
         """Get blockchain data for a specific chain asynchronously."""
         if not self._session_pool:
             await self._initialize_async_resources()
@@ -303,7 +302,7 @@ class AsyncQRLiveProtocol:
             _logger.error(f"Blockchain API exception for {chain}: {e}")
             return {}
 
-    async def get_time_data_async(self) -> Dict[str, Any]:
+    async def get_time_data_async(self) -> dict[str, Any]:
         """
         Get time synchronization data asynchronously.
 
@@ -329,7 +328,7 @@ class AsyncQRLiveProtocol:
 
             return time_verification
 
-    async def _get_time_from_server_async(self, server: str) -> Dict[str, Dict[str, str]]:
+    async def _get_time_from_server_async(self, server: str) -> dict[str, dict[str, str]]:
         """Get time from a specific server asynchronously."""
         if not self._session_pool:
             await self._initialize_async_resources()
@@ -356,7 +355,7 @@ class AsyncQRLiveProtocol:
             _logger.error(f"Time server error for {server}: {e}")
         return {}
 
-    async def start_live_generation_async(self, callback: Optional[Callable] = None) -> None:
+    async def start_live_generation_async(self, callback: Callable | None = None) -> None:
         """
         Start continuous QR generation asynchronously.
 
@@ -391,7 +390,7 @@ class AsyncQRLiveProtocol:
             except asyncio.CancelledError:
                 pass
 
-    async def get_performance_stats_async(self) -> Dict[str, Any]:
+    async def get_performance_stats_async(self) -> dict[str, Any]:
         """
         Get comprehensive performance statistics asynchronously.
 
@@ -424,7 +423,7 @@ class AsyncQRLiveProtocol:
             }
         }
 
-    def _get_memory_usage(self) -> Dict[str, float]:
+    def _get_memory_usage(self) -> dict[str, float]:
         """Get memory usage statistics."""
         try:
             import psutil
@@ -468,7 +467,7 @@ class AsyncQRLiveProtocol:
         # For now, just track cache statistics
         self._cache_hits += 1
 
-    async def get_cached_qr_async(self, cache_key: str) -> Optional[bytes]:
+    async def get_cached_qr_async(self, cache_key: str) -> bytes | None:
         """
         Get cached QR image asynchronously.
 
@@ -485,14 +484,14 @@ class AsyncQRLiveProtocol:
             cache_key
         )
 
-    def _get_cached_qr_sync(self, cache_key: str) -> Optional[bytes]:
+    def _get_cached_qr_sync(self, cache_key: str) -> bytes | None:
         """Synchronous cache lookup (thread-safe)."""
         # This would check the actual cache
         # For now, simulate cache miss
         self._cache_misses += 1
         return None
 
-    async def optimize_performance_async(self) -> Dict[str, Any]:
+    async def optimize_performance_async(self) -> dict[str, Any]:
         """
         Analyze and optimize performance asynchronously.
 
@@ -550,7 +549,7 @@ class AsyncQRLiveProtocol:
             'optimization_applied': len(recommendations) == 0
         }
 
-    async def apply_optimizations_async(self, auto_optimize: bool = True) -> Dict[str, Any]:
+    async def apply_optimizations_async(self, auto_optimize: bool = True) -> dict[str, Any]:
         """
         Apply performance optimizations asynchronously.
 
@@ -589,16 +588,16 @@ class AsyncQRLiveProtocol:
         }
 
     # Synchronous compatibility methods
-    def generate_single_qr(self, user_data: Optional[Dict] = None,
-                          sign_data: bool = True, encrypt_data: bool = False) -> Tuple[QRData, bytes]:
+    def generate_single_qr(self, user_data: dict | None = None,
+                          sign_data: bool = True, encrypt_data: bool = False) -> tuple[QRData, bytes]:
         """Synchronous wrapper for async QR generation."""
         return asyncio.run(self.generate_single_qr_async(user_data, sign_data, encrypt_data))
 
-    def verify_qr_data(self, qr_json: str) -> Dict[str, bool]:
+    def verify_qr_data(self, qr_json: str) -> dict[str, bool]:
         """Synchronous wrapper for async verification."""
         return asyncio.run(self.verify_qr_data_async(qr_json))
 
-    def get_statistics(self) -> Dict:
+    def get_statistics(self) -> dict:
         """Get combined sync and async statistics."""
         sync_stats = self.sync_qrlp.get_statistics()
         async_stats = asyncio.run(self.get_performance_stats_async())

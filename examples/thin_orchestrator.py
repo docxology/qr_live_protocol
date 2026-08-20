@@ -9,18 +9,18 @@ These examples show "thin orchestrator" patterns - minimal code that
 accomplishes specific goals with maximum efficiency and clarity.
 """
 
-import sys
 import json
+import sys
 import time
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from src import QRLiveProtocol, QRLPConfig
-from src.crypto import KeyManager, QRSignatureManager
+from src.crypto import KeyManager
 
 
 class ThinOrchestrator:
@@ -50,7 +50,7 @@ class ThinOrchestrator:
         """
         return self.qrlp.generate_single_qr({"data": data})[1]
 
-    def signed_qr_minimal(self, document_id: str, content: str) -> Dict[str, Any]:
+    def signed_qr_minimal(self, document_id: str, content: str) -> dict[str, Any]:
         """
         THIN: Generate cryptographically signed QR with minimal code.
 
@@ -107,7 +107,7 @@ class ThinOrchestrator:
         return [self.qrlp.generate_single_qr({"item": item, "index": i})[1]
                 for i, item in enumerate(items)]
 
-    def live_stream_overlay(self, stream_info: Dict[str, Any]) -> bytes:
+    def live_stream_overlay(self, stream_info: dict[str, Any]) -> bytes:
         """
         THIN: Generate live stream QR overlay.
 
@@ -124,7 +124,7 @@ class ThinOrchestrator:
         })
         return qr_image
 
-    def document_authentication(self, document_path: str, metadata: Dict[str, Any]) -> Dict[str, Any]:
+    def document_authentication(self, document_path: str, metadata: dict[str, Any]) -> dict[str, Any]:
         """
         THIN: Authenticate document with QR code.
 
@@ -151,7 +151,7 @@ class ThinOrchestrator:
             "document_hash": self._get_file_hash(document_path)
         }
 
-    def api_endpoint_wrapper(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+    def api_endpoint_wrapper(self, request_data: dict[str, Any]) -> dict[str, Any]:
         """
         THIN: Wrap QRLP for API endpoint.
 
@@ -236,7 +236,7 @@ class ThinOrchestrator:
 
         return config
 
-    def health_check(self) -> Dict[str, Any]:
+    def health_check(self) -> dict[str, Any]:
         """
         THIN: System health check.
 
@@ -396,7 +396,8 @@ def demonstrate_api_patterns():
         response = orchestrator.api_endpoint_wrapper(request_data)
 
         if response['success']:
-            print("✅ Response: Success"            print(f"   QR Data Size: {len(str(response['qr_data']))} chars")
+            print("✅ Response: Success")
+            print(f"   QR Data Size: {len(str(response['qr_data']))} chars")
             print(f"   Image Size: {len(response['qr_image_base64'])} chars")
         else:
             print(f"❌ Response: Error - {response['error']}")

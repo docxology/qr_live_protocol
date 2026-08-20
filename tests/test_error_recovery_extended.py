@@ -6,15 +6,22 @@ Covers all state transitions, async paths, decorators, and managers.
 
 import asyncio
 import time
+
 import pytest
 
+from src.core import QRData, QRLiveProtocol
 from src.error_recovery import (
-    CircuitBreaker, CircuitBreakerConfig, CircuitBreakerState,
-    CircuitBreakerStats, RetryStrategy, ResilientOperation,
-    CircuitBreakerManager, ResilienceManager, CircuitBreakerOpenError,
-    resilience_manager, resilient_qr_generation, resilient_verification,
+    CircuitBreaker,
+    CircuitBreakerConfig,
+    CircuitBreakerManager,
+    CircuitBreakerOpenError,
+    CircuitBreakerState,
+    ResilienceManager,
+    ResilientOperation,
+    RetryStrategy,
+    resilient_qr_generation,
+    resilient_verification,
 )
-from src.core import QRLiveProtocol, QRData
 
 
 class TestCircuitBreakerConfig:

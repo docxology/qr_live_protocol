@@ -5,11 +5,10 @@ Covers file I/O, edge cases, and all public methods.
 """
 
 import json
-import pytest
-import tempfile
-from pathlib import Path
 
-from src.trust import TrustStore, TrustedPublicKey
+import pytest
+
+from src.trust import TrustedPublicKey, TrustStore
 
 
 class TestTrustedPublicKey:

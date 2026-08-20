@@ -5,11 +5,10 @@ All network calls are mocked.
 """
 
 import time
-import pytest
-from datetime import datetime, timezone
-from unittest.mock import patch, MagicMock
+from datetime import UTC, datetime
+from unittest.mock import MagicMock, patch
 
-from src.blockchain_verifier import BlockchainVerifier, BlockchainInfo
+from src.blockchain_verifier import BlockchainInfo, BlockchainVerifier
 from src.config import BlockchainSettings
 
 
@@ -202,7 +201,7 @@ class TestUpdateAllChainsSafe:
         verifier._updating = True
         mock_info = BlockchainInfo(
             chain="bitcoin", block_number=1, block_hash="a",
-            timestamp=datetime.now(timezone.utc), retrieved_at=time.time(),
+            timestamp=datetime.now(UTC), retrieved_at=time.time(),
         )
         verifier.chain_handlers["bitcoin"] = MagicMock(return_value=mock_info)
         verifier._update_all_chains_safe()

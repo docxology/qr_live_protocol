@@ -5,9 +5,8 @@ Comprehensive testing framework for QR Live Protocol including unit tests,
 integration tests, performance tests, and security tests.
 """
 
-import pytest
-import sys
 import os
+import sys
 from pathlib import Path
 
 # Add src to path for testing

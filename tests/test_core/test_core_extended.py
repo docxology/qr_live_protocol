@@ -7,14 +7,13 @@ update loop, context manager, callbacks, and statistics.
 
 import json
 import time
-import pytest
-import tempfile
-import threading
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 
-from src.core import QRLiveProtocol, QRData
+import pytest
+
 from src.config import QRLPConfig
-from src.crypto import KeyManager, HMACManager, DataEncryptor, QRSignatureManager
+from src.core import QRLiveProtocol
+from src.crypto import KeyManager
 from src.trust import TrustStore
 
 
@@ -234,7 +233,7 @@ class TestVerification:
         qr_json = qr_data.to_json()
         tampered = json.loads(qr_json)
         # Set expiry in the past
-        past = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+        past = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
         tampered["expires_at"] = past
         results = qrlp_instance.verify_qr_data(json.dumps(tampered))
         assert results["time_verified"] is False
@@ -331,7 +330,7 @@ class TestResolveMethods:
     def test_expires_at_with_ttl(self, qrlp_instance):
         """_expires_at uses qr_ttl_seconds when set."""
         qrlp_instance.config.security_settings.qr_ttl_seconds = 60
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         result = qrlp_instance._expires_at(now)
         expires = datetime.fromisoformat(result)
         assert (expires - now).total_seconds() == 60
@@ -340,7 +339,7 @@ class TestResolveMethods:
         """_expires_at falls back to max_time_drift."""
         qrlp_instance.config.security_settings.qr_ttl_seconds = None
         qrlp_instance.config.verification_settings.max_time_drift = 45.0
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         result = qrlp_instance._expires_at(now)
         expires = datetime.fromisoformat(result)
         assert int((expires - now).total_seconds()) == 45

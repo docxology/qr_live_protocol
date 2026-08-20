@@ -10,11 +10,13 @@ import inspect
 import logging
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
+from collections.abc import Awaitable, Callable
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeoutError
 from dataclasses import dataclass
 from enum import Enum
 from functools import wraps
-from typing import Any, Awaitable, Callable, Dict, Optional, TypeVar, cast
+from typing import Any, TypeVar, cast
 
 
 class CircuitBreakerState(Enum):
@@ -49,8 +51,8 @@ class CircuitBreakerStats:
     successful_requests: int = 0
     failed_requests: int = 0
     state_changes: int = 0
-    last_failure_time: Optional[float] = None
-    last_success_time: Optional[float] = None
+    last_failure_time: float | None = None
+    last_success_time: float | None = None
 
 
 ResultT = TypeVar("ResultT")
@@ -64,7 +66,7 @@ class CircuitBreaker:
     requests to failing services and allowing recovery testing.
     """
 
-    def __init__(self, name: str, config: Optional[CircuitBreakerConfig] = None):
+    def __init__(self, name: str, config: CircuitBreakerConfig | None = None):
         """
         Initialize circuit breaker.
 
@@ -224,7 +226,7 @@ class CircuitBreaker:
 
         try:
             return await asyncio.wait_for(typed_awaitable, timeout=self.config.timeout)
-        except asyncio.TimeoutError as exc:
+        except TimeoutError as exc:
             raise TimeoutError(
                 f"Operation {self.name} timed out after {self.config.timeout:.3f}s"
             ) from exc
@@ -355,8 +357,8 @@ class ResilientOperation:
     def __init__(
         self,
         name: str,
-        retry_strategy: Optional[RetryStrategy] = None,
-        circuit_breaker: Optional[CircuitBreaker] = None,
+        retry_strategy: RetryStrategy | None = None,
+        circuit_breaker: CircuitBreaker | None = None,
     ):
         """
         Initialize resilient operation.
@@ -487,13 +489,13 @@ class CircuitBreakerManager:
 
     def __init__(self):
         """Initialize circuit breaker manager."""
-        self.circuit_breakers: Dict[str, CircuitBreaker] = {}
+        self.circuit_breakers: dict[str, CircuitBreaker] = {}
         self._logger = logging.getLogger("circuit_breaker_manager")
 
     def get_circuit_breaker(
         self,
         name: str,
-        config: Optional[CircuitBreakerConfig] = None,
+        config: CircuitBreakerConfig | None = None,
     ) -> CircuitBreaker:
         """
         Get or create circuit breaker for operation.
@@ -511,7 +513,7 @@ class CircuitBreakerManager:
 
         return self.circuit_breakers[name]
 
-    def get_all_stats(self) -> Dict[str, CircuitBreakerStats]:
+    def get_all_stats(self) -> dict[str, CircuitBreakerStats]:
         """Get statistics for all circuit breakers."""
         return {
             name: cb.get_stats()
@@ -536,8 +538,8 @@ class ResilienceManager:
     def __init__(self):
         """Initialize resilience manager."""
         self.circuit_breaker_manager = CircuitBreakerManager()
-        self.retry_strategies: Dict[str, RetryStrategy] = {}
-        self.resilient_operations: Dict[str, ResilientOperation] = {}
+        self.retry_strategies: dict[str, RetryStrategy] = {}
+        self.resilient_operations: dict[str, ResilientOperation] = {}
         self._logger = logging.getLogger("resilience_manager")
 
         # Setup default circuit breakers
@@ -597,7 +599,7 @@ class ResilienceManager:
 
     def create_resilient_operation(self, name: str,
                                   retry_strategy: str = "network",
-                                  circuit_breaker: Optional[str] = None) -> ResilientOperation:
+                                  circuit_breaker: str | None = None) -> ResilientOperation:
         """
         Create resilient operation with specified strategies.
 
@@ -620,11 +622,11 @@ class ResilienceManager:
 
         return resilient_op
 
-    def get_resilient_operation(self, name: str) -> Optional[ResilientOperation]:
+    def get_resilient_operation(self, name: str) -> ResilientOperation | None:
         """Get existing resilient operation."""
         return self.resilient_operations.get(name)
 
-    def get_health_status(self) -> Dict[str, Any]:
+    def get_health_status(self) -> dict[str, Any]:
         """Get overall resilience health status."""
         cb_stats = self.circuit_breaker_manager.get_all_stats()
 
@@ -674,7 +676,7 @@ class CircuitBreakerOpenError(Exception):
 resilience_manager = ResilienceManager()
 
 
-def resilient_qr_generation(qrlp_instance, user_data: Optional[Dict] = None,
+def resilient_qr_generation(qrlp_instance, user_data: dict | None = None,
                           sign_data: bool = True, encrypt_data: bool = False):
     """
     Resilient QR generation with automatic retry and circuit breaker protection.
@@ -698,7 +700,7 @@ def resilient_qr_generation(qrlp_instance, user_data: Optional[Dict] = None,
     )
 
 
-async def resilient_qr_generation_async(qrlp_instance, user_data: Optional[Dict] = None,
+async def resilient_qr_generation_async(qrlp_instance, user_data: dict | None = None,
                                        sign_data: bool = True, encrypt_data: bool = False):
     """
     Async resilient QR generation.
@@ -722,7 +724,7 @@ async def resilient_qr_generation_async(qrlp_instance, user_data: Optional[Dict]
     )
 
 
-def resilient_verification(qrlp_instance, qr_json: str) -> Dict[str, bool]:
+def resilient_verification(qrlp_instance, qr_json: str) -> dict[str, bool]:
     """
     Resilient QR verification with automatic retry.
 
@@ -740,7 +742,7 @@ def resilient_verification(qrlp_instance, qr_json: str) -> Dict[str, bool]:
     return operation.execute(qrlp_instance.verify_qr_data, qr_json)
 
 
-async def resilient_verification_async(qrlp_instance, qr_json: str) -> Dict[str, bool]:
+async def resilient_verification_async(qrlp_instance, qr_json: str) -> dict[str, bool]:
     """
     Async resilient QR verification.
 

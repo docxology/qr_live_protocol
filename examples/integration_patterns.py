@@ -14,22 +14,22 @@ These patterns demonstrate practical usage in:
 - Microservice architectures
 """
 
-import sys
-import json
-import time
-import base64
 import asyncio
-from pathlib import Path
-from typing import Dict, Any, Optional, List
+import base64
+import json
+import sys
+import time
 from datetime import datetime
+from pathlib import Path
+from typing import Any
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from src import QRLiveProtocol, QRLPConfig
-from src.crypto import KeyManager
+from src import QRLiveProtocol
 from src.async_core import AsyncQRLiveProtocol
+from src.crypto import KeyManager
 
 
 class IntegrationPatterns:
@@ -108,7 +108,8 @@ class IntegrationPatterns:
         })
 
         if response['success']:
-            print("✅ QR generated successfully"            print(f"   Verification: {response['verification_info']['signature_verified']}")
+            print("✅ QR generated successfully")
+            print(f"   Verification: {response['verification_info']['signature_verified']}")
         else:
             print(f"❌ Generation failed: {response['error']}")
 
@@ -133,7 +134,7 @@ class IntegrationPatterns:
             def __init__(self):
                 self.async_qrlp = AsyncQRLiveProtocol()
 
-            async def generate_qr_async(self, user_data: Dict[str, Any],
+            async def generate_qr_async(self, user_data: dict[str, Any],
                                        sign: bool = False, encrypt: bool = False):
                 """Async QR generation endpoint."""
                 try:
@@ -153,7 +154,7 @@ class IntegrationPatterns:
                 except Exception as e:
                     return {'success': False, 'error': str(e)}
 
-            async def batch_generate_qr(self, items: List[Dict[str, Any]]):
+            async def batch_generate_qr(self, items: list[dict[str, Any]]):
                 """Async batch QR generation."""
                 try:
                     results = await self.async_qrlp.batch_generate_qr_async(items, sign_data=True)
@@ -182,7 +183,8 @@ class IntegrationPatterns:
                 'async_generated': True
             }, sign=True)
 
-            print("✅ Async QR generated"            print(f"   Timestamp: {response['timestamp']}")
+            print("✅ Async QR generated")
+            print(f"   Timestamp: {response['timestamp']}")
 
             # Batch generation
             items = [
@@ -220,7 +222,7 @@ class IntegrationPatterns:
                     'update_interval': 2.0
                 }
 
-            def generate_stream_overlay(self, stream_info: Dict[str, Any]) -> bytes:
+            def generate_stream_overlay(self, stream_info: dict[str, Any]) -> bytes:
                 """Generate QR overlay for OBS browser source."""
                 # Create QR with stream info
                 qr_data, qr_image = self.qrlp.generate_single_qr({
@@ -233,7 +235,7 @@ class IntegrationPatterns:
                 overlay_metadata = {
                     'qr_data': qr_data.__dict__,
                     'overlay_config': self.overlay_config,
-                    'obs_browser_source_url': f'http://localhost:8080/viewer',
+                    'obs_browser_source_url': 'http://localhost:8080/viewer',
                     'last_updated': time.time()
                 }
 
@@ -309,7 +311,7 @@ class IntegrationPatterns:
                     'qr_position': 'overlay'
                 }
 
-            def generate_youtube_overlay(self, video_metadata: Dict[str, Any]) -> bytes:
+            def generate_youtube_overlay(self, video_metadata: dict[str, Any]) -> bytes:
                 """Generate YouTube Live overlay with verification."""
                 # Create QR with YouTube-specific data
                 youtube_data = {
@@ -396,7 +398,7 @@ class IntegrationPatterns:
                 self.qrlp = QRLiveProtocol()
                 self.documents_signed = 0
 
-            def sign_document(self, document_path: str, signer_info: Dict[str, Any]) -> Dict[str, Any]:
+            def sign_document(self, document_path: str, signer_info: dict[str, Any]) -> dict[str, Any]:
                 """Sign document with QR code authentication."""
                 # Add document to identity
                 self.qrlp.identity_manager.add_file_to_identity(
@@ -442,7 +444,7 @@ class IntegrationPatterns:
 
                 return signature_record
 
-            def verify_document_signature(self, qr_json: str, document_path: str) -> Dict[str, Any]:
+            def verify_document_signature(self, qr_json: str, document_path: str) -> dict[str, Any]:
                 """Verify document signature authenticity."""
                 # Verify QR signature
                 verification = self.qrlp.verify_qr_data(qr_json)
@@ -523,7 +525,7 @@ class IntegrationPatterns:
                 self.qrlp = QRLiveProtocol()
                 self.request_count = 0
 
-            def generate_qr_service(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+            def generate_qr_service(self, request_data: dict[str, Any]) -> dict[str, Any]:
                 """QR generation microservice endpoint."""
                 self.request_count += 1
 
@@ -562,7 +564,7 @@ class IntegrationPatterns:
                         'error': str(e)
                     }
 
-            def verify_qr_service(self, qr_json: str) -> Dict[str, Any]:
+            def verify_qr_service(self, qr_json: str) -> dict[str, Any]:
                 """QR verification microservice endpoint."""
                 try:
                     verification = self.qrlp.verify_qr_data(qr_json)
@@ -579,7 +581,7 @@ class IntegrationPatterns:
                         'error': str(e)
                     }
 
-            def health_check(self) -> Dict[str, Any]:
+            def health_check(self) -> dict[str, Any]:
                 """Health check for load balancer."""
                 try:
                     # Test QR generation
@@ -621,7 +623,8 @@ class IntegrationPatterns:
             response = service.generate_qr_service(request)
 
             if response['success']:
-                print("✅ QR generated by service"                print(f"   Service ID: {response['service_id']}")
+                print("✅ QR generated by service")
+                print(f"   Service ID: {response['service_id']}")
                 print(f"   Request ID: {response['request_id']}")
 
                 # Verify the generated QR
@@ -658,7 +661,7 @@ class IntegrationPatterns:
                     'verify': 1000    # requests per minute
                 }
 
-            def generate_qr_api(self, request_data: Dict[str, Any], api_key: str) -> Dict[str, Any]:
+            def generate_qr_api(self, request_data: dict[str, Any], api_key: str) -> dict[str, Any]:
                 """API Gateway QR generation endpoint."""
                 # API key validation (simplified)
                 if not self._validate_api_key(api_key):
@@ -700,7 +703,7 @@ class IntegrationPatterns:
                 except Exception as e:
                     return {'success': False, 'error': str(e)}
 
-            def verify_qr_api(self, qr_json: str, api_key: str) -> Dict[str, Any]:
+            def verify_qr_api(self, qr_json: str, api_key: str) -> dict[str, Any]:
                 """API Gateway QR verification endpoint."""
                 # API key validation
                 if not self._validate_api_key(api_key):
@@ -764,7 +767,8 @@ class IntegrationPatterns:
             )
 
             if response['success']:
-                print("✅ QR generated via API Gateway"                print(f"   API Version: {response['api_version']}")
+                print("✅ QR generated via API Gateway")
+                print(f"   API Version: {response['api_version']}")
                 print(f"   API Key: {response['request_metadata']['api_key_prefix']}")
 
                 # Verify the generated QR
@@ -844,7 +848,7 @@ class IntegrationPatterns:
                 except ImportError:
                     return 0.0
 
-            def _check_component_health(self, stats: Dict[str, Any]) -> Dict[str, bool]:
+            def _check_component_health(self, stats: dict[str, Any]) -> dict[str, bool]:
                 """Check health of all components."""
                 return {
                     'qr_generator': stats.get('total_updates', 0) > 0,
@@ -854,7 +858,7 @@ class IntegrationPatterns:
                     'crypto_components': len(stats.get('crypto_stats', {}).get('keys_count', 0)) > 0
                 }
 
-            async def _check_alerts(self, metrics: Dict[str, Any]):
+            async def _check_alerts(self, metrics: dict[str, Any]):
                 """Check for alert conditions."""
                 alerts = []
 
@@ -884,7 +888,7 @@ class IntegrationPatterns:
                 if alerts:
                     await self._send_alerts(alerts)
 
-            async def _send_alerts(self, alerts: List[Dict[str, Any]]):
+            async def _send_alerts(self, alerts: list[dict[str, Any]]):
                 """Send alerts to configured channels."""
                 for alert in alerts:
                     for channel in self.monitoring_config['alert_channels']:
@@ -894,7 +898,7 @@ class IntegrationPatterns:
                             # Would send to webhook URL
                             print(f"📡 Webhook alert: {alert}")
 
-            def generate_monitoring_dashboard(self) -> Dict[str, Any]:
+            def generate_monitoring_dashboard(self) -> dict[str, Any]:
                 """Generate monitoring dashboard data."""
                 if not self.metrics:
                     return {'error': 'No metrics collected yet'}
@@ -929,7 +933,7 @@ class IntegrationPatterns:
 
                 return qr_diff / max(time_diff, 1.0)
 
-            def _calculate_memory_trend(self, recent_metrics: List[Dict[str, Any]]) -> str:
+            def _calculate_memory_trend(self, recent_metrics: list[dict[str, Any]]) -> str:
                 """Calculate memory usage trend."""
                 if len(recent_metrics) < 2:
                     return 'insufficient_data'
@@ -976,7 +980,8 @@ class IntegrationPatterns:
         # Generate dashboard
         dashboard = monitor.generate_monitoring_dashboard()
 
-        print("✅ Monitoring Dashboard Generated"        print(f"   Status: {dashboard['current_status']}")
+        print("✅ Monitoring Dashboard Generated")
+        print(f"   Status: {dashboard['current_status']}")
         print(f"   Metrics Collected: {dashboard['metrics_count']}")
         print(f"   QR Generation Rate: {dashboard['performance_trends']['qr_generation_rate']:.2f}/s")
         print(f"   Memory Trend: {dashboard['performance_trends']['memory_trend']}")

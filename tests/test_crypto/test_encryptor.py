@@ -4,9 +4,8 @@ Unit tests for Data Encryptor cryptographic functionality.
 Tests AES-256 encryption and decryption operations for sensitive data protection.
 """
 
+
 import pytest
-import json
-import base64
 
 from src.crypto import DataEncryptor, EncryptionKey
 from src.crypto.exceptions import EncryptionError

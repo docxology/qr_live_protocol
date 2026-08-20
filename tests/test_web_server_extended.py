@@ -5,13 +5,13 @@ Uses Flask test_client() -- no actual server thread is started.
 """
 
 import json
-import pytest
-import tempfile
 
-from src.web_server import QRLiveWebServer, SecurityValidator, security_middleware
-from src.config import WebSettings, QRLPConfig
-from src.core import QRLiveProtocol, QRData
+import pytest
 from werkzeug.exceptions import BadRequest
+
+from src.config import QRLPConfig, WebSettings
+from src.core import QRLiveProtocol
+from src.web_server import QRLiveWebServer, SecurityValidator
 
 
 class TestSecurityValidatorUserText:

@@ -5,14 +5,16 @@ AES-256 encryption and decryption for sensitive QR data and user information.
 Provides secure storage and transmission of confidential data.
 """
 
-import logging
-import json
 import base64
+import json
+import logging
 import secrets
-from typing import Dict, Optional, Any
 from dataclasses import dataclass
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from datetime import UTC
+from typing import Any
+
 from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 from .exceptions import EncryptionError
 
@@ -35,7 +37,7 @@ class DataEncryptor:
     and other sensitive content with authenticated encryption.
     """
 
-    def __init__(self, master_key: Optional[bytes] = None):
+    def __init__(self, master_key: bytes | None = None):
         """
         Initialize data encryptor.
 
@@ -44,9 +46,9 @@ class DataEncryptor:
         """
         self.master_key = master_key or secrets.token_bytes(32)
         self.key_id = self._generate_key_id()
-        self.key_store: Dict[str, bytes] = {}
+        self.key_store: dict[str, bytes] = {}
 
-    def encrypt_sensitive_data(self, data: Any, additional_data: Optional[str] = None) -> bytes:
+    def encrypt_sensitive_data(self, data: Any, additional_data: str | None = None) -> bytes:
         """
         Encrypt sensitive data using AES-256-GCM.
 
@@ -92,7 +94,7 @@ class DataEncryptor:
 
         return base64.b64encode(encrypted_data)
 
-    def decrypt_sensitive_data(self, encrypted_data_b64: bytes, additional_data: Optional[str] = None) -> Any:
+    def decrypt_sensitive_data(self, encrypted_data_b64: bytes, additional_data: str | None = None) -> Any:
         """
         Decrypt data encrypted with encrypt_sensitive_data.
 
@@ -138,7 +140,7 @@ class DataEncryptor:
         except Exception as e:
             raise EncryptionError(f"Decryption failed: {e}")
 
-    def encrypt_qr_payload(self, qr_data: Dict[str, Any]) -> Dict[str, Any]:
+    def encrypt_qr_payload(self, qr_data: dict[str, Any]) -> dict[str, Any]:
         """
         Encrypt sensitive fields in QR data payload.
 
@@ -167,7 +169,7 @@ class DataEncryptor:
 
         return encrypted_qr
 
-    def decrypt_qr_payload(self, encrypted_qr_data: Dict[str, Any]) -> Dict[str, Any]:
+    def decrypt_qr_payload(self, encrypted_qr_data: dict[str, Any]) -> dict[str, Any]:
         """
         Decrypt sensitive fields in QR data payload.
 
@@ -229,7 +231,7 @@ class DataEncryptor:
         self.key_store[key_id] = key_data
         return key
 
-    def create_encrypted_qr_data(self, qr_data: Dict[str, Any], key_id: str) -> Dict[str, Any]:
+    def create_encrypted_qr_data(self, qr_data: dict[str, Any], key_id: str) -> dict[str, Any]:
         """
         Create QR data with encrypted sensitive information.
 
@@ -257,7 +259,7 @@ class DataEncryptor:
             # Restore original key
             self.master_key = original_key
 
-    def decrypt_encrypted_qr_data(self, encrypted_qr_data: Dict[str, Any]) -> Dict[str, Any]:
+    def decrypt_encrypted_qr_data(self, encrypted_qr_data: dict[str, Any]) -> dict[str, Any]:
         """
         Decrypt QR data with encrypted sensitive information.
 
@@ -292,8 +294,8 @@ class DataEncryptor:
 
     def _get_timestamp(self) -> str:
         """Get current timestamp in ISO format."""
-        from datetime import datetime, timezone
-        return datetime.now(timezone.utc).isoformat()
+        from datetime import datetime
+        return datetime.now(UTC).isoformat()
 
     def _get_key_by_id(self, key_id: str) -> EncryptionKey:
         """Get encryption key by ID.

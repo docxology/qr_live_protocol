@@ -14,6 +14,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+
 from src.time_stamper import TimeStamper
 
 
@@ -242,8 +243,8 @@ class TestVerification:
         against a proof they manufactured offline. ``verify()`` must therefore
         reject proofs whose timestamp carries no attestation.
         """
-        from opentimestamps.core.timestamp import DetachedTimestampFile, Timestamp
         from opentimestamps.core.op import OpSHA256
+        from opentimestamps.core.timestamp import DetachedTimestampFile, Timestamp
 
         s = TimeStamper(enabled=True, server="https://example.test",
                         min_interval=0, proof_dir=proof_dir)

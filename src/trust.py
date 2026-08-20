@@ -1,9 +1,11 @@
 """Public-key trust model for QR Live Protocol verification."""
 
+from __future__ import annotations
+
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -20,13 +22,13 @@ class TrustStore:
     """In-memory registry of issuer public keys trusted by this verifier."""
 
     def __init__(self) -> None:
-        self._keys: Dict[str, TrustedPublicKey] = {}
+        self._keys: dict[str, TrustedPublicKey] = {}
 
     def add_public_key(
         self,
         issuer_id: str,
         key_id: str,
-        public_key_pem: Union[bytes, str],
+        public_key_pem: bytes | str,
         algorithm: str = "rsa",
     ) -> TrustedPublicKey:
         """Trust a public key for an issuer/key-id pair."""
@@ -46,14 +48,14 @@ class TrustStore:
         self,
         issuer_id: str,
         key_id: str,
-        public_key_path: Union[str, Path],
+        public_key_path: str | Path,
         algorithm: str = "rsa",
     ) -> TrustedPublicKey:
         """Load and trust a public key from a PEM file."""
         public_key_pem = Path(public_key_path).read_bytes()
         return self.add_public_key(issuer_id, key_id, public_key_pem, algorithm)
 
-    def to_dict(self) -> Dict[str, List[Dict[str, str]]]:
+    def to_dict(self) -> dict[str, list[dict[str, str]]]:
         """Serialize trusted keys to a portable JSON-compatible shape."""
         return {
             "trusted_keys": [
@@ -67,12 +69,12 @@ class TrustStore:
             ]
         }
 
-    def to_file(self, path: Union[str, Path]) -> None:
+    def to_file(self, path: str | Path) -> None:
         """Write trusted public keys to a JSON trust-store file."""
         Path(path).write_text(json.dumps(self.to_dict(), indent=2), encoding="utf-8")
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "TrustStore":
+    def from_dict(cls, data: dict[str, Any]) -> TrustStore:
         """Create a trust store from a JSON-compatible dictionary."""
         trust_store = cls()
         for item in data.get("trusted_keys", []):
@@ -85,24 +87,24 @@ class TrustStore:
         return trust_store
 
     @classmethod
-    def from_file(cls, path: Union[str, Path]) -> "TrustStore":
+    def from_file(cls, path: str | Path) -> TrustStore:
         """Load trusted public keys from a JSON trust-store file."""
         data = json.loads(Path(path).read_text(encoding="utf-8"))
         if not isinstance(data, dict):
             raise ValueError("Trust store must be a JSON object")
         return cls.from_dict(data)
 
-    def get_public_key(self, issuer_id: Optional[str], key_id: Optional[str]) -> Optional[TrustedPublicKey]:
+    def get_public_key(self, issuer_id: str | None, key_id: str | None) -> TrustedPublicKey | None:
         """Return trusted public key metadata if this issuer/key-id is trusted."""
         if not issuer_id or not key_id:
             return None
         return self._keys.get(self._lookup_key(issuer_id, key_id))
 
-    def is_trusted(self, issuer_id: Optional[str], key_id: Optional[str]) -> bool:
+    def is_trusted(self, issuer_id: str | None, key_id: str | None) -> bool:
         """Return whether the issuer/key-id pair has trusted verifier material."""
         return self.get_public_key(issuer_id, key_id) is not None
 
-    def list_public_keys(self) -> List[TrustedPublicKey]:
+    def list_public_keys(self) -> list[TrustedPublicKey]:
         """Return trusted public keys in stable order for display or export."""
         return [self._keys[key] for key in sorted(self._keys)]
 

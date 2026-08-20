@@ -5,19 +5,23 @@ Provides comprehensive CLI for QR Live Protocol operations including
 live streaming, verification, and configuration management.
 """
 
-import click
 import json
+import sys
 import threading
 import time
-import sys
 from pathlib import Path
 
-from .core import QRLiveProtocol
+import click
+
 from .config import QRLPConfig
-from .trust import TrustStore
-from .web_server import QRLiveWebServer
+from .core import QRLiveProtocol
+from .frame_recovery import FrameRecoveryConfig
+from .live_simulator import LiveSimulator, OpticalChannelModel
+from .optical_throughput import ThroughputConfig
 from .time_stamper import TimeStamper
 from .time_stamper_integration import QRLPTimeStampVerifier
+from .trust import TrustStore
+from .web_server import QRLiveWebServer
 
 
 @click.group()
@@ -319,7 +323,7 @@ def verify(
     try:
         # Batch verification mode
         if batch and input_file:
-            with open(input_file, 'r') as f:
+            with open(input_file) as f:
                 payloads = json.load(f)
             if not isinstance(payloads, list):
                 raise click.ClickException("--batch file must contain a JSON array")
@@ -455,31 +459,52 @@ def keys_export_public(ctx, key_id, output):
 @click.option('--algorithm', type=click.Choice(['rsa', 'ecdsa']), default='rsa')
 @click.option('--key-size', type=int, default=2048)
 @click.option('--public-key-output', type=click.Path(), help='Write new public key PEM')
+@click.option('--archive-dir', type=click.Path(), help='Archive directory for the old key (default: key_dir/archive)')
+@click.option('--trust-store', type=click.Path(), help='Add the old public key to this trust store for continued verification')
+@click.option('--issuer', type=str, help='Trusted issuer ID (required with --trust-store)')
 @click.pass_context
-def keys_rotate(ctx, key_id, algorithm, key_size, public_key_output):
-    """Rotate a signing key: generate a new key pair and archive the old one."""
+def keys_rotate(ctx, key_id, algorithm, key_size, public_key_output,
+                archive_dir, trust_store, issuer):
+    """Rotate a signing key: generate a new key pair and archive the old one.
+
+    The old key is archived (not destroyed) so previously signed QRs remain
+    verifiable. Use --trust-store to register the old public key for an
+    external verifier.
+    """
     qrlp = QRLiveProtocol(ctx.obj['config'])
     keypair = qrlp.key_manager.get_keypair(key_id)
     if not keypair:
         raise click.ClickException(f"Key not found: {key_id}")
 
-    # Generate new key pair
-    new_public, _ = qrlp.key_manager.generate_keypair(
+    # Generate the new key and archive the old one.
+    new_key_id, old_public = qrlp.key_manager.rotate_signing_key(
+        key_id=key_id,
         algorithm=algorithm,
         key_size=key_size,
-        purpose=keypair.purpose if hasattr(keypair, 'purpose') else 'qr_signing',
+        archive_dir=archive_dir,
     )
-    new_key_id = next(reversed(qrlp.key_manager.list_keys()))
     click.echo(f"✓ New key generated: {new_key_id}")
-    click.echo(f"  Old key archived: {key_id}")
+    click.echo(f"✓ Old key archived: {key_id}")
 
+    # Optionally write the new public key PEM.
     if public_key_output:
-        _write_bytes(public_key_output, new_public)
-        click.echo(f"✓ New public key saved to: {public_key_output}")
+        new_public = qrlp.key_manager.export_public_key(new_key_id)
+        if new_public:
+            _write_bytes(public_key_output, new_public)
+            click.echo(f"✓ New public key saved to: {public_key_output}")
 
-    # Optionally delete old key
-    qrlp.key_manager.delete_key(key_id)
-    click.echo(f"✓ Old key deleted: {key_id}")
+    # Optionally register the old public key with a trust store.
+    if trust_store:
+        if not issuer:
+            raise click.ClickException("--issuer is required with --trust-store")
+        if not old_public:
+            raise click.ClickException("Could not read old key public material")
+        store = TrustStore()
+        if Path(trust_store).exists():
+            store = TrustStore.from_file(trust_store)
+        store.add_public_key(issuer, key_id, old_public, keypair.algorithm)
+        store.to_file(trust_store)
+        click.echo(f"✓ Old public key added to trust store: {trust_store}")
 
 
 @cli.group()
@@ -582,17 +607,17 @@ def status(ctx, json_output):
         click.echo("\nComponent Statistics:")
 
         time_stats = stats.get('time_provider_stats', {})
-        click.echo(f"  Time provider:")
+        click.echo("  Time provider:")
         click.echo(f"    Success rate: {time_stats.get('success_rate', 0):.2%}")
         click.echo(f"    Active servers: {time_stats.get('active_servers', 0)}")
 
         blockchain_stats = stats.get('blockchain_stats', {})
-        click.echo(f"  Blockchain verifier:")
+        click.echo("  Blockchain verifier:")
         click.echo(f"    Success rate: {blockchain_stats.get('success_rate', 0):.2%}")
         click.echo(f"    Cached chains: {blockchain_stats.get('cached_chains', [])}")
 
         identity_stats = stats.get('identity_stats', {})
-        click.echo(f"  Identity manager:")
+        click.echo("  Identity manager:")
         click.echo(f"    Hash generations: {identity_stats.get('hash_generations', 0)}")
         click.echo(f"    File count: {identity_stats.get('file_count', 0)}")
 
@@ -671,7 +696,7 @@ def stamp(qr_json_file: str, proof_dir: str, server: str, signing_key: str, json
     The proof can later be verified with ``qrlp verify-ots``.
     """
     try:
-        with open(qr_json_file, 'r', encoding='utf-8') as f:
+        with open(qr_json_file, encoding='utf-8') as f:
             qr_json = f.read()
 
         stamper = TimeStamper(
@@ -715,7 +740,7 @@ def verify_ots(qr_json_file: str, proof_file: str, tolerance: int, json_output: 
     attested timestamp and blockchain.
     """
     try:
-        with open(qr_json_file, 'r', encoding='utf-8') as f:
+        with open(qr_json_file, encoding='utf-8') as f:
             qr_json = f.read()
 
         stamper = TimeStamper(enabled=False)
@@ -754,12 +779,12 @@ def _parse_user_data(user_data):
 
 def _load_qr_data_argument(qr_data, input_file=None) -> str:
     if input_file:
-        with open(input_file, 'r') as f:
+        with open(input_file) as f:
             return f.read()
     if not qr_data:
         raise click.ClickException("Provide QR JSON as an argument or use --file")
     if qr_data.startswith("@"):
-        with open(qr_data[1:], 'r') as f:
+        with open(qr_data[1:]) as f:
             return f.read()
     return qr_data
 
@@ -767,6 +792,70 @@ def _load_qr_data_argument(qr_data, input_file=None) -> str:
 def _write_bytes(path: str, data: bytes) -> None:
     with open(path, 'wb') as f:
         f.write(data)
+
+
+@cli.command("simulate-live")
+@click.option('--frames', '-n', type=int, default=100,
+              help='Number of frames to simulate (default: 100)')
+@click.option('--drop-rate', type=float, default=0.15,
+              help='Fraction of frames dropped by the optical channel (0..1)')
+@click.option('--reorder-rate', type=float, default=0.0,
+              help='Fraction of received frames delivered out of order (0..1)')
+@click.option('--seed', type=int, default=None,
+              help='PRNG seed for a deterministic simulation')
+@click.option('--json-output', is_flag=True,
+              help='Output the report as JSON')
+def simulate_live(frames, drop_rate, reorder_rate, seed, json_output):
+    """Run an end-to-end live streaming simulation (no hardware required)."""
+    try:
+        sim = LiveSimulator(
+            config=ThroughputConfig(),
+            recovery_config=FrameRecoveryConfig(),
+            channel=OpticalChannelModel(
+                drop_rate=drop_rate,
+                reorder_rate=reorder_rate,
+                seed=seed,
+            ),
+        )
+        report = sim.run(frames)
+        if json_output:
+            click.echo(json.dumps(report.summary_json(), indent=2))
+        else:
+            click.echo(sim.summary(frames))
+    except ValueError as e:
+        raise click.ClickException(str(e)) from e
+
+
+@cli.command("benchmark-ws")
+@click.option('--iterations', '-n', type=int, default=100,
+              help='Number of simulated WebSocket client updates (default: 100)')
+@click.option('--json-output', is_flag=True, help='Output results as JSON')
+@click.pass_context
+def benchmark_ws(ctx, iterations, json_output):
+    """Benchmark WebSocket QR-update throughput (in-process, no network)."""
+    qrlp = QRLiveProtocol(ctx.obj['config'])
+    # Generate a baseline QR so the server has data to broadcast.
+    _, qr_image = qrlp.generate_single_qr({"benchmark": True})
+    server = QRLiveWebServer(ctx.obj['config'].web_settings, verifier=qrlp)
+    server.current_qr_data = qrlp.get_current_qr_data()
+    server.current_qr_image = qr_image
+
+    try:
+        results = server.benchmark_websocket_throughput(iterations)
+    except ValueError as e:
+        raise click.ClickException(str(e)) from e
+
+    if json_output:
+        click.echo(json.dumps(results, indent=2))
+    else:
+        click.echo("WebSocket QR-update throughput benchmark")
+        click.echo("=" * 45)
+        click.echo(f"  Iterations       : {results['iterations']}")
+        click.echo(f"  Avg latency      : {results['avg_ms']:.3f} ms")
+        click.echo(f"  p50 latency      : {results['p50_ms']:.3f} ms")
+        click.echo(f"  p95 latency      : {results['p95_ms']:.3f} ms")
+        click.echo(f"  Updates / second : {results['updates_per_second']:.1f}")
+        click.echo(f"  Payload size     : {results['payload_bytes']} bytes")
 
 
 if __name__ == '__main__':

@@ -4,11 +4,10 @@ Unit tests for Digital Signature cryptographic functionality.
 Tests RSA and ECDSA digital signature creation and verification.
 """
 
-import pytest
-import json
-from datetime import datetime, timezone
 
-from src.crypto import KeyManager, DigitalSigner, SignatureVerifier, QRSignatureManager
+import pytest
+
+from src.crypto import DigitalSigner, KeyManager, QRSignatureManager, SignatureVerifier
 from src.crypto.exceptions import SignatureError
 
 

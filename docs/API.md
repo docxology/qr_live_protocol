@@ -1166,4 +1166,78 @@ except QRLPError as e:
 
 ---
 
+## Optical Delivery: Recovery, Throughput, and Simulation
+
+Three companion modules manage the end-to-end optical QR delivery loop
+(producer → unreliable camera channel → receiver).
+
+### Frame Recovery (`src/frame_recovery.py`)
+
+Receiver-side ordering and gap recovery for QR frames over a lossy channel.
+
+```python
+from src import FrameRecoveryController, FrameRecoveryConfig
+
+rec = FrameRecoveryController(FrameRecoveryConfig(
+    retransmission_window=4,   # gaps this wide are "recovered"
+    max_gap_tolerance=10,      # wider gaps are treated as a stream reset
+))
+decision = rec.feed_frame(42)             # int or an object with .frame_number
+# decision["decision"] in {"accept","duplicate","gap","gap_recovered"}
+stats = rec.get_stats()                   # recovery_rate, gaps_detected, ...
+```
+
+`RecoveryDecision` values: `ACCEPT`, `DUPLICATE`, `REORDER`, `GAP`,
+`GAP_RECOVERED`.
+
+### Optical Throughput Control (`src/optical_throughput.py`)
+
+Producer-side dynamic cadence and symbol reuse to maximise readable fps.
+
+```python
+from src import OpticalThroughputController, ThroughputConfig
+
+ctl = OpticalThroughputController(my_qr_encoder, ThroughputConfig(
+    floor_interval=0.02, ceiling_interval=1.0, initial_interval=0.2,
+))
+frame = ctl.produce(payload)          # cached re-encode for repeated payloads
+frame = ctl.produce(payload, force_reencode=True)
+ctl.adapt(reads_ok=True)              # speed / hold / slow the cadence
+print(ctl.get_performance_report())   # fps, cache hit rate, encode latency
+```
+
+### Live Simulator (`src/live_simulator.py`)
+
+End-to-end hardware-free simulation tying encoder, channel, and recovery
+together; deterministic given a seed.
+
+```python
+from src import LiveSimulator, OpticalChannelModel
+
+sim = LiveSimulator(
+    channel=OpticalChannelModel(drop_rate=0.15, reorder_rate=0.0, seed=42),
+)
+report = sim.run(200)                 # -> SimulationReport
+print(report.summary_json())          # JSON serializable
+```
+
+### Key rotation with trust continuity
+
+Rotating a signing key now archives the old key instead of destroying it, so
+previously signed QRs remain verifiable:
+
+```python
+from src.crypto import KeyManager
+
+km = KeyManager("keys")
+new_id, old_public_pem = km.rotate_signing_key(
+    key_id=old_key_id, algorithm="rsa", key_size=2048,
+)
+# old_public_pem -> add to a TrustStore for continued verification
+```
+
+See also `qrlp simulate-live` and `qrlp benchmark-ws` in the CLI section.
+
+---
+
 For more examples and advanced usage, see the [examples/](../examples/) directory.
