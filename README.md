@@ -3,8 +3,8 @@
 [![Version](https://img.shields.io/badge/version-1.5.0-blue.svg)](CHANGELOG.md)
 [![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
 [![Python Version](https://img.shields.io/badge/python-3.9+-blue.svg)](https://pypi.org/project/qr-live-protocol/)
-[![Tests](https://img.shields.io/badge/tests-624%20passing-brightgreen.svg)](#testing)
-[![Coverage](https://img.shields.io/badge/coverage-88%25-green.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-752%20passing-brightgreen.svg)](#testing)
+[![Coverage](https://img.shields.io/badge/coverage-89%25-green.svg)](#testing)
 
 A comprehensive, source-available system for generating live QR codes with local integrity checks and optional public-key authenticity verification for livestreaming, official video releases, and content verification.
 
@@ -169,7 +169,10 @@ QRLP is built with a modular, extensible architecture:
 - **BlockchainVerifier**: Retrieves current block hashes from multiple chains
 - **IdentityManager**: Creates unique fingerprints from system and file data
 - **WebServer**: Provides real-time web interface with WebSocket updates
-- **CryptoManager**: Handles HMAC integrity, digital signatures, and encryption
+- **Crypto components** (`src/crypto/`): `KeyManager`, `QRSignatureManager`,
+  `DataEncryptor`, and `HMACManager` together handle key storage, digital
+  signatures, encryption, and HMAC integrity (there is no single
+  `CryptoManager` class)
 
 ## Project Structure
 
@@ -185,13 +188,32 @@ qr_live_protocol/
 │   ├── web_server.py      # Flask web interface
 │   ├── config.py          # Configuration management
 │   ├── cli.py             # Command-line interface
+│   ├── async_core.py      # Async generation pipeline
+│   ├── error_recovery.py  # Circuit breaker / resilience helpers
+│   ├── frame_recovery.py  # Receiver-side frame re-ordering & gap recovery
+│   ├── live_simulator.py  # End-to-end optical delivery simulator
+│   ├── optical_throughput.py   # Producer-side cadence / symbol reuse
+│   ├── serializer.py      # Canonical QR payload serialization
+│   ├── time_stamper.py    # OpenTimestamps (.ots) stamping
+│   ├── time_stamper_integration.py  # OTS verification integration
+│   ├── trust.py           # Trust stores for public-key verification
+│   ├── crypto/            # Keys, signatures, encryption, HMAC
+│   ├── time_provider/     # TimeProvider module documentation
+│   ├── web_server/        # Web server module documentation
 │   └── __main__.py        # Module entry point
 ├── docs/                  # Documentation
 │   └── README.md          # Comprehensive documentation
 ├── examples/              # Example scripts
-│   └── livestream_demo.py # Full demonstration
+│   ├── comprehensive_demo.py   # Full demonstration
+│   ├── error_recovery_demo.py  # Resilience / circuit breaker demo
+│   ├── integration_patterns.py # Embedding QRLP in other apps
+│   ├── livestream_demo.py      # Livestreaming demo
+│   └── thin_orchestrator.py    # Minimal orchestration example
 ├── templates/             # Web templates
-│   └── index.html         # Main web interface
+│   ├── index.html         # Main web interface
+│   ├── viewer.html        # OBS-friendly viewer
+│   ├── admin.html         # Admin dashboard
+│   └── improve.html       # Improvement / readiness dashboard
 ├── pyproject.toml         # Modern Python project configuration
 ├── requirements.txt       # Legacy dependencies (for compatibility)
 ├── setup.py              # Legacy setup (deprecated, use pyproject.toml)
@@ -286,7 +308,7 @@ def stream_callback(qr_data, qr_image):
     requests.post('https://api.platform.com/overlay', json={
         'stream_id': 'your_stream_id',
         'qr_data': qr_data.to_json(),
-        'qr_image': qr_image.decode('latin1')  # Base64 encode if needed
+        'qr_image': qr_image.decode('latin1')  # PNG bytes; base64-encode before JSON transport
     })
 
 qrlp.add_update_callback(stream_callback)
@@ -309,11 +331,13 @@ qrlp generate \
 qrlp verify --file qr_data.json --trust-store trust.json
 
 # Output shows:
-# ✓ Valid JSON: True
-# ✓ Signature verified: True
-# ✓ Time verified: True (within 30s tolerance)
-# ✓ Trust mode: public_signature
-# ✓ Overall: VALID
+#   Valid JSON: ✓
+#   Identity verified: ✓
+#   Time verified: ✓
+#   Signature verified: ✓
+#   HMAC verified: ✓
+#   Trust mode: public_signature
+# Overall: ✓ VALID
 ```
 
 #### OpenTimestamps (OTS) — Blockchain Timestamp Attestation
@@ -456,13 +480,16 @@ qrlp live
 
 Core dependencies:
 - `qrcode[pil]` - QR code generation
-- `Flask` + `Flask-SocketIO` - Web interface
+- `Flask` + `Flask-SocketIO` + `Flask-CORS` - Web interface
 - `requests` - HTTP APIs
 - `ntplib` - NTP time synchronization
 - `click` - Command-line interface
 - `bleach` - HTML sanitization
 - `cryptography` - Cryptographic operations
 - `aiohttp` - Async HTTP for blockchain/time APIs
+- `python-dateutil` - Date/time parsing
+- `Pillow` - Image processing
+- `opentimestamps` - Optional OpenTimestamps blockchain attestation
 
 **Development Tools:**
 - `uv` - Modern Python package manager (recommended)
@@ -473,7 +500,7 @@ Core dependencies:
 
 ## Testing
 
-QRLP has a comprehensive test suite with 547 tests and 88% code coverage:
+QRLP has a comprehensive test suite with 753 tests (752 passing, 1 skipped when PyYAML is absent) and 89% code coverage:
 
 ```bash
 # Install with dev dependencies
@@ -667,12 +694,12 @@ python main.py
 **🐛 Bug Reports**: [GitHub Issues](https://github.com/docxology/qr_live_protocol/issues)
 **💡 Feature Requests**: [GitHub Discussions](https://github.com/docxology/qr_live_protocol/discussions)
 **📝 Documentation**: Improve this README or other docs
-**🔧 Code Contributions**: See [Contributing Guide](CONTRIBUTING.md)
+**🔧 Code Contributions**: See [Contributing Guide](docs/CONTRIBUTING.md)
 
 ### Getting Help
 
 - **📖 Documentation**: Complete guides in `/docs`
-- **❓ FAQ**: Common questions and troubleshooting in [FAQ.md](FAQ.md)
+- **❓ FAQ**: Common questions and troubleshooting in [FAQ.md](docs/FAQ.md)
 - **💬 Community**: Join discussions on GitHub
 - **📧 Support**: contact@qrlp.org for complex issues
 

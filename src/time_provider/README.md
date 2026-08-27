@@ -67,9 +67,10 @@ print(f"Time servers verified: {len(verification)}")
 ### Time Verification
 ```python
 from src.time_provider import TimeProvider
+from src.config import TimeSettings
 
 # Initialize time provider
-time_provider = TimeProvider()
+time_provider = TimeProvider(TimeSettings())
 
 # Verify timestamp
 timestamp_str = "2025-01-11T15:30:45.123Z"
@@ -112,15 +113,10 @@ time_settings.local_fallback = True             # Use local time if servers fail
 
 time_provider = TimeProvider(time_settings)
 
-try:
-    # Get synchronized time
-    current_time = time_provider.get_current_time()
-    print(f"Synchronized time: {current_time}")
-except Exception as e:
-    print(f"Time synchronization failed: {e}")
-    # Falls back to local time automatically
-    local_time = time_provider.get_current_time()
-    print(f"Using local time: {local_time}")
+# get_current_time() never raises for server failures: when no server is
+# reachable it falls back to local system time automatically.
+current_time = time_provider.get_current_time()
+print(f"Current time: {current_time}")
 ```
 
 ## API Reference
@@ -215,15 +211,14 @@ time_settings.timezone = "UTC"              # Target timezone
 ### Time Synchronization Errors
 ```python
 from src.time_provider import TimeProvider
+from src.config import TimeSettings
 
-time_provider = TimeProvider()
+time_provider = TimeProvider(TimeSettings())
 
-try:
-    current_time = time_provider.get_current_time()
-    print(f"Time synchronized: {current_time}")
-except Exception as e:
-    print(f"Time sync failed: {e}")
-    # Falls back to local time automatically
+# Server failures are absorbed: get_current_time() falls back to local
+# system time when no time server could be reached.
+current_time = time_provider.get_current_time()
+print(f"Time synchronized (possibly local fallback): {current_time}")
 ```
 
 ### Server Failure Handling
@@ -264,9 +259,10 @@ print(f"Time verified: {verification['time_verified']}")
 ### Custom Application Integration
 ```python
 from src.time_provider import TimeProvider
+from src.config import TimeSettings
 
 # Use in custom applications requiring time synchronization
-time_provider = TimeProvider()
+time_provider = TimeProvider(TimeSettings())
 
 # Get synchronized time for transactions
 transaction_time = time_provider.get_current_time()
@@ -282,9 +278,10 @@ else:
 ### Monitoring Integration
 ```python
 from src.time_provider import TimeProvider
+from src.config import TimeSettings
 
 # Monitor time synchronization health
-time_provider = TimeProvider()
+time_provider = TimeProvider(TimeSettings())
 stats = time_provider.get_statistics()
 
 print(f"Sync attempts: {stats['total_syncs']}")
@@ -333,7 +330,7 @@ def test_time_synchronization():
 
 def test_timestamp_verification():
     """Test timestamp verification functionality."""
-    provider = TimeProvider()
+    provider = TimeProvider(TimeSettings())
 
     # Test current timestamp (should be valid)
     current_time = provider.get_current_time()
@@ -359,7 +356,7 @@ def test_timestamp_verification():
 **Time Synchronization Fails**
 ```python
 # Check time server connectivity
-provider = TimeProvider()
+provider = TimeProvider(TimeSettings())
 provider.force_sync()
 
 # Check which servers are working
@@ -374,7 +371,7 @@ print(f"Success rate: {stats['success_rate']:.1%}")
 **Large Time Drift Detected**
 ```python
 # Check time server offsets
-provider = TimeProvider()
+provider = TimeProvider(TimeSettings())
 offsets = provider.time_offsets
 
 for server, offset in offsets.items():
@@ -394,7 +391,7 @@ if drift > 5.0:  # More than 5 seconds
 **Performance Issues**
 ```python
 # Monitor synchronization performance
-provider = TimeProvider()
+provider = TimeProvider(TimeSettings())
 stats = provider.get_statistics()
 
 print(f"Sync attempts: {stats['total_syncs']}")
@@ -438,15 +435,17 @@ print(f"Precision: {microseconds} microseconds")
 
 ### Time Zone Handling
 ```python
-# Configure for specific time zones
+# Note: get_current_time() always returns a timezone-aware UTC datetime.
+# The `timezone` setting is metadata; convert explicitly where needed.
 settings = TimeSettings()
-settings.timezone = "America/New_York"  # Eastern Time
+settings.timezone = "America/New_York"  # Eastern Time (informational)
 settings.time_servers = ["time.nist.gov"]  # Use reliable source
 
 provider = TimeProvider(settings)
 
-# Get time in configured timezone
-local_time = provider.get_current_time()
+utc_time = provider.get_current_time()
+local_time = utc_time.astimezone()  # Convert to the machine's local zone
+print(f"UTC time: {utc_time}")
 print(f"Local time: {local_time}")
 ```
 
@@ -455,7 +454,7 @@ print(f"Local time: {local_time}")
 ### Time-Based Attacks
 ```python
 # Prevent replay attacks with strict time validation
-provider = TimeProvider()
+provider = TimeProvider(TimeSettings())
 
 # Very strict tolerance for high-security applications
 result = provider.verify_timestamp(timestamp, tolerance=5.0)  # 5 second tolerance

@@ -134,7 +134,12 @@ qrlp keys           # Manage signing keys
 qrlp trust          # Manage verifier trust stores
 qrlp status         # Show current status and statistics
 qrlp config-init    # Create configuration file
+qrlp config-validate  # Validate a configuration file
 qrlp add-file       # Add file to identity
+qrlp stamp          # Stamp a QR JSON file with OpenTimestamps
+qrlp verify-ots     # Verify a QR payload against an OpenTimestamps proof
+qrlp simulate-live  # End-to-end optical delivery simulation (no hardware)
+qrlp benchmark-ws   # Benchmark WebSocket QR-update throughput
 
 # Global options
 --config, -c        # Configuration file path
@@ -313,7 +318,8 @@ print(f"Blockchain verified: {results['blockchain_verified']}")
 ### Integration with Flask App
 
 ```python
-from flask import Flask
+import base64
+from flask import Flask, request
 from src import QRLiveProtocol
 
 app = Flask(__name__)
@@ -323,7 +329,7 @@ qrlp = QRLiveProtocol()
 def get_current_qr():
     qr_data, qr_image = qrlp.generate_single_qr()
     return {
-        'data': qr_data.__dict__,
+        'data': qr_data.to_dict(),
         'image': base64.b64encode(qr_image).decode()
     }
 
@@ -363,6 +369,14 @@ class QRData:
     time_server_verification: Dict  # Server verification data
     user_data: Dict = None     # Optional user data
     sequence_number: int = 0    # Sequential number
+    issuer_id: str = None       # Optional issuer identifier
+    event_id: str = None        # Optional event identifier
+    expires_at: str = None      # Optional expiry timestamp (ISO format)
+    digital_signature: str = None   # Detached signature (base64) when signed
+    signing_key_id: str = None  # ID of the signing key used
+    signature_algorithm: str = None  # 'rsa' or 'ecdsa'
+    ots_proof_path: str = None  # Path to OpenTimestamps proof when stamped
+    # plus integrity/encryption metadata fields (_hmac, _encrypted_fields, ...)
 ```
 
 ## FAQ
@@ -373,7 +387,7 @@ A: By default, every 5 seconds. Configurable via `update_interval` setting.
 
 ### Q: What blockchain networks are supported?
 
-A: Bitcoin, Ethereum, Litecoin, and Dogecoin. Configurable via `blockchain_settings.enabled_chains`.
+A: Bitcoin, Ethereum, and Litecoin. Configurable via `blockchain_settings.enabled_chains`.
 
 ### Q: Can I use custom time servers?
 
@@ -427,5 +441,5 @@ CC BY-NC-SA 4.0 - see [LICENSE](../LICENSE) file for details.
 ## Support
 
 - GitHub Issues: [Report bugs](https://github.com/docxology/qr_live_protocol/issues)
-- Documentation: [Full docs](https://qrlp.readthedocs.io/)
+- Documentation: Guides in the [docs/](.) directory
 - Email: contact@qrlp.org

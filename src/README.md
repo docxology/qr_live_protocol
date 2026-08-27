@@ -70,7 +70,7 @@ assert verification['hmac_verified'] == True  # HMAC always verified
 
 ### Cryptographically Enhanced QR
 ```python
-# Generate key for signing
+# Generate key for signing (optional — generate_signed_qr() creates one if none exists)
 public_key, private_key = qrlp.key_manager.generate_keypair(
     algorithm="rsa", key_size=2048, purpose="qr_signing"
 )
@@ -128,11 +128,13 @@ qr_data, qr_image = qrlp1.generate_single_qr({"test": "cross_instance"})
 
 # Verify with second instance (simulates external verification)
 qrlp2 = QRLiveProtocol()
-qrlp2.key_manager = qrlp1.key_manager  # Share key manager
+qrlp2.key_manager = qrlp1.key_manager      # Share signing keys
+qrlp2.hmac_manager = qrlp1.hmac_manager    # Share the HMAC master key
+# Note: identity hashes differ across instances by default, so
+# identity_verified only passes when both instances share the same identity.
 
 verification = qrlp2.verify_qr_data(qr_data.to_json())
 assert verification['hmac_verified'] == True
-assert verification['identity_verified'] == True
 ```
 
 ## Configuration
@@ -246,20 +248,23 @@ The `verify_qr_data()` method returns a dictionary with verification status:
 
 ### Exception Hierarchy
 ```python
-QRLiveProtocolError(Exception)
-├── ConfigurationError(ValueError)     # Invalid configuration
-├── CryptoError(Exception)            # Cryptographic operation failed
-│   ├── KeyError(CryptoError)         # Key management error
-│   ├── SignatureError(CryptoError)   # Signature operation error
-│   └── EncryptionError(CryptoError)  # Encryption operation error
-└── ValidationError(ValueError)        # Input validation error
+CryptoError(Exception)                 # Cryptographic operation failed (src/crypto/exceptions.py)
+├── KeyManagementError(CryptoError)    # Key management error
+├── SignatureError(CryptoError)        # Signature operation error
+├── EncryptionError(CryptoError)       # Encryption operation error
+└── HMACError(CryptoError)             # HMAC operation error
 ```
+Other modules raise standard exceptions (`ValueError` for invalid configuration,
+`QRDataTooLargeError(ValueError)` for oversized QR payloads).
 
 ### Error Handling Patterns
 ```python
 try:
+    issues = qrlp.config.validate()
+    if issues:
+        raise ValueError(f"Invalid configuration: {issues}")
     qr_data, qr_image = qrlp.generate_single_qr(user_data)
-except ConfigurationError as e:
+except ValueError as e:
     print(f"Configuration issue: {e}")
     # Fix configuration and retry
 except CryptoError as e:
@@ -281,10 +286,9 @@ except Exception as e:
 
 ### Optimization Strategies
 ```python
-# Caching for performance
+# QRGenerator caches rendered images keyed by payload + style + EC level
 qrlp = QRLiveProtocol()
-qrlp._qr_cache_ttl = 60      # Cache QR images for 1 minute
-qrlp._max_cache_size = 1000  # Limit cache size
+qrlp.qr_generator.cache.clear()  # Drop cached QR images if memory is tight
 
 # Reduce update frequency for better performance
 config = QRLPConfig()
@@ -300,7 +304,8 @@ memory_mb = process.memory_info().rss / 1024 / 1024
 
 # Clean caches if memory usage is high
 if memory_mb > 200:  # 200MB threshold
-    qrlp._cleanup_expired_caches()
+    qrlp.qr_generator.cache.clear()
+    qrlp.blockchain_verifier.cached_blocks.clear()  # Drop cached block hashes
 ```
 
 ## Security Best Practices
@@ -310,15 +315,12 @@ if memory_mb > 200:  # 200MB threshold
 # Generate keys for different purposes
 key_manager = qrlp.key_manager
 
-# Signing key for QR authenticity
-signing_key_id = key_manager.generate_keypair(
+# generate_keypair() returns a (public_key_bytes, private_key_bytes) tuple
+public_pem, private_pem = key_manager.generate_keypair(
     algorithm="rsa", key_size=2048, purpose="qr_signing"
-)[1]  # Returns (public, private) tuple
-
-# Encryption key for sensitive data
-encryption_key_id = key_manager.generate_keypair(
-    algorithm="rsa", key_size=2048, purpose="qr_encryption"
-)[1]
+)
+# The new key's ID is the latest entry in the key metadata
+signing_key_id = list(key_manager.list_keys().keys())[-1]
 
 # List and manage keys
 keys = key_manager.list_keys()
@@ -367,7 +369,8 @@ qrlp = QRLiveProtocol(config)
 
 ### Flask Web Application
 ```python
-from flask import Flask, jsonify
+import base64
+from flask import Flask, jsonify, request
 from src import QRLiveProtocol
 
 app = Flask(__name__)
@@ -378,7 +381,7 @@ def get_current_qr():
     """Get current QR code data and image."""
     qr_data, qr_image = qrlp.generate_single_qr()
     return jsonify({
-        'data': qr_data.__dict__,
+        'data': qr_data.to_dict(),
         'image_base64': base64.b64encode(qr_image).decode()
     })
 
@@ -443,8 +446,11 @@ pytest tests/test_integration/ -v
 # Run with coverage
 pytest --cov=src tests/
 
-# Run performance tests
-pytest tests/test_performance/ -v
+# Run error-recovery tests
+pytest tests/test_error_recovery/ -v
+
+# Run frame-recovery / optical-throughput tests
+pytest tests/test_frame_recovery.py tests/test_optical_throughput.py -v
 ```
 
 ### Test Structure
@@ -456,12 +462,15 @@ tests/test_crypto/test_signer.py
 
 # Integration tests for component interaction
 tests/test_integration/test_full_workflow.py
+tests/test_integration/test_web_server.py
 
-# Performance tests
-tests/test_performance/test_load.py
+# Optical-delivery tests (v1.6.0)
+tests/test_frame_recovery.py
+tests/test_optical_throughput.py
+tests/test_live_simulator.py
 
-# Security tests
-tests/test_security/test_crypto_security.py
+# Key-rotation tests (v1.6.0)
+tests/test_key_rotation.py
 ```
 
 ## Troubleshooting

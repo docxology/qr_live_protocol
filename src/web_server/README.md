@@ -64,8 +64,8 @@ from src import QRLiveProtocol, QRLiveWebServer
 # Initialize QRLP
 qrlp = QRLiveProtocol()
 
-# Initialize web server
-web_server = QRLiveWebServer()
+# Initialize web server with a QRLP-backed verifier
+web_server = QRLiveWebServer(qrlp.config.web_settings, verifier=qrlp)
 
 # Connect QR updates to web server
 qrlp.add_update_callback(web_server.update_qr_display)
@@ -79,12 +79,14 @@ qrlp.start_live_generation()
 
 ### Custom API Integration
 ```python
+import base64
 from flask import Flask, jsonify
+from src.config import WebSettings
 from src.web_server import QRLiveWebServer
 
 # Create custom Flask app
 app = Flask(__name__)
-web_server = QRLiveWebServer()
+web_server = QRLiveWebServer(WebSettings())
 
 # Add custom routes
 @app.route('/api/custom-qr')
@@ -96,7 +98,7 @@ def get_custom_qr():
         return jsonify({"error": "No QR data available"}), 404
 
     return jsonify({
-        "qr_data": qr_data.__dict__,
+        "qr_data": qr_data.to_dict(),
         "qr_image_base64": base64.b64encode(qr_image).decode(),
         "custom_field": "custom_value"
     })
@@ -265,7 +267,7 @@ Response:
 **`user_data_error`**
 ```json
 {
-  "error": "User data too long (max 500 characters)"
+  "error": "User text too long (max 1000 characters)"
 }
 ```
 
@@ -305,8 +307,8 @@ def add_security_headers(response):
 
 ### OBS Studio Integration
 ```python
-# For OBS Studio browser source
-web_server = QRLiveWebServer()
+from src.config import WebSettings
+from src.web_server import QRLiveWebServer
 
 # Configure for OBS
 web_config = WebSettings()
@@ -463,18 +465,19 @@ app.logger.setLevel(logging.INFO)
 ### Web Server Testing
 ```python
 import pytest
+from src.config import WebSettings
 from src.web_server import QRLiveWebServer
 
 def test_web_server_initialization():
     """Test web server initializes correctly."""
-    server = QRLiveWebServer()
+    server = QRLiveWebServer(WebSettings())
     assert server.app is not None
     assert server.socketio is not None
     assert server.settings is not None
 
 def test_qr_display_update():
     """Test QR display update functionality."""
-    server = QRLiveWebServer()
+    server = QRLiveWebServer(WebSettings())
 
     # Mock QR data
     mock_qr_data = type('MockQR', (), {
@@ -496,11 +499,12 @@ def test_qr_display_update():
 ### Integration Testing
 ```python
 import requests
+from src.config import WebSettings
 from src.web_server import QRLiveWebServer
 
 def test_web_api_integration():
     """Test web API endpoints."""
-    server = QRLiveWebServer()
+    server = QRLiveWebServer(WebSettings())
     server.start_server(threaded=True)
 
     try:
@@ -529,8 +533,11 @@ def test_web_api_integration():
 
 **WebSocket Connection Fails**
 ```python
+from src.config import WebSettings
+from src.web_server import QRLiveWebServer
+
 # Check SocketIO configuration
-server = QRLiveWebServer()
+server = QRLiveWebServer(WebSettings())
 print(f"SocketIO configured: {server.socketio is not None}")
 
 # Check CORS settings
@@ -541,8 +548,10 @@ if server.settings.cors_enabled:
 **QR Updates Not Displaying**
 ```python
 # Check callback registration
+from src import QRLiveProtocol
+
 qrlp = QRLiveProtocol()
-web_server = QRLiveWebServer()
+web_server = QRLiveWebServer(qrlp.config.web_settings, verifier=qrlp)
 
 # Ensure callback is registered
 qrlp.add_update_callback(web_server.update_qr_display)

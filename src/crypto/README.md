@@ -198,19 +198,22 @@ assert is_valid == True
 
 ### Scalability
 - **Concurrent operations**: Thread-safe with proper locking
-- **Connection pooling**: HTTP session reuse for API calls
-- **Caching**: Intelligent caching for expensive operations
+- **Key store**: In-memory key metadata registry with encrypted private-key storage
+- **Key rotation**: `KeyManager.rotate_signing_key()` and per-manager `rotate_key()` on encryptor/HMAC
 
 ## Error Handling
 
 ### Exception Hierarchy
 ```python
 CryptoError(Exception)
-├── KeyError(CryptoError)           # Key management errors
-├── SignatureError(CryptoError)     # Signature operation errors
-├── EncryptionError(CryptoError)    # Encryption operation errors
-└── HMACError(CryptoError)          # HMAC operation errors
+├── KeyManagementError(CryptoError)  # Key management errors
+├── SignatureError(CryptoError)      # Signature operation errors
+├── EncryptionError(CryptoError)     # Encryption operation errors
+└── HMACError(CryptoError)           # HMAC operation errors
 ```
+
+Note: `KeyManagementError` was originally named `KeyError` and was renamed in
+v1.1.0 to avoid shadowing Python's builtin.
 
 ### Error Recovery Patterns
 ```python
@@ -237,9 +240,8 @@ from src.crypto import KeyManager, QRSignatureManager
 # Initialize QRLP with cryptographic features
 qrlp = QRLiveProtocol()
 
-# Generate key for signing
-key_manager = KeyManager()
-public_key, private_key = key_manager.generate_keypair("rsa", 2048)
+# Generate key for signing inside QRLP's key manager
+key_id = list(qrlp.key_manager.list_keys().keys())[-1]
 
 # Generate signed QR
 qr_data, qr_image = qrlp.generate_signed_qr(
@@ -274,8 +276,9 @@ def sign_document():
         if not key_id:
             return jsonify({'error': 'No signing key available'}), 400
 
-        # Generate signed QR
-        signer = DigitalSigner(key_manager.get_keypair(key_id)[1], "rsa")
+        # Sign the document data
+        keypair = key_manager.get_keypair(key_id)
+        signer = DigitalSigner(keypair.private_key, "rsa")
         signature = signer.sign_qr_data(document_data)
 
         return jsonify({
@@ -375,19 +378,21 @@ config = QRLPConfig()
 config.verification_settings.require_blockchain = True
 config.verification_settings.require_time_server = True
 
-# Strong key requirements
-config.security_settings.min_key_size = 2048
-config.security_settings.allowed_algorithms = ["rsa", "ecdsa"]
+# Signature algorithm ('rsa' or 'ecdsa')
+config.security_settings.signature_algorithm = "rsa"
 
-# Secure key storage
-config.security_settings.key_storage_encrypted = True
-config.security_settings.key_backup_enabled = True
+# Key storage: private keys are AES-256-GCM encrypted at rest by KeyManager.
+# Store key material outside the repo and point key_dir at a protected path.
+config.security_settings.key_dir = "/secure/path/keys"
 ```
 
 ### Input Validation
 ```python
 # Validate all cryptographic inputs
 from src.crypto.exceptions import CryptoError
+from src.config import QRSettings
+
+MAX_QR_SIZE = QRSettings().max_data_size  # 2000 bytes by default
 
 def secure_sign_qr_data(signer, qr_data):
     """Sign QR data with comprehensive validation."""

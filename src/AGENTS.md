@@ -13,12 +13,18 @@
 ### Core QRLiveProtocol Class
 
 ```python
-# Real implementation pattern
+# Real implementation pattern (see src/core.py)
 class QRLiveProtocol:
     """Main coordinator for QR Live Protocol operations."""
 
-    def __init__(self, config: QRLPConfig = None):
-        """Initialize QRLP with optional configuration."""
+    def __init__(self, config: QRLPConfig | None = None,
+                 key_manager: KeyManager | None = None,
+                 signature_manager: QRSignatureManager | None = None,
+                 encryptor: DataEncryptor | None = None,
+                 hmac_manager: HMACManager | None = None,
+                 trust_store: TrustStore | None = None,
+                 issuer_id: str | None = None):
+        """Initialize QRLP with optional configuration and components."""
         self.config = config or QRLPConfig()
 
         # Initialize all components
@@ -27,11 +33,20 @@ class QRLiveProtocol:
         self.blockchain_verifier = BlockchainVerifier(self.config.blockchain_settings)
         self.identity_manager = IdentityManager(self.config.identity_settings)
 
-        # Cryptographic components
-        self.key_manager = KeyManager()
-        self.signature_manager = QRSignatureManager(self.key_manager)
-        self.encryptor = DataEncryptor()
-        self.hmac_manager = HMACManager()
+        # OpenTimestamps stamper (additive layer, disabled by default)
+        self.time_stamper = TimeStamper(
+            enabled=self.config.time_settings.ots_enabled,
+            server=self.config.time_settings.ots_server,
+            min_interval=self.config.time_settings.ots_min_interval,
+            proof_dir=Path(self.config.time_settings.ots_proof_dir),
+        )
+
+        # Cryptographic components (key_manager is a read/write property)
+        self.key_manager = key_manager or KeyManager(self.config.security_settings.key_dir)
+        self.signature_manager = signature_manager or QRSignatureManager(self.key_manager)
+        self.encryptor = encryptor or DataEncryptor()
+        self.hmac_manager = hmac_manager or HMACManager()
+        self.trust_store = trust_store or TrustStore()
 
     def generate_single_qr(self, user_data: Optional[Dict] = None,
                           sign_data: bool = True, encrypt_data: bool = False) -> tuple[QRData, bytes]:
@@ -79,7 +94,7 @@ class QRLiveProtocol:
             signature_verified = self.signature_manager.verify_signed_qr_data(qr_data_dict)
 
         # Verify identity and time
-        qr_data = QRData(**qr_data_dict)
+        qr_data = QRData.from_dict(qr_data_dict)  # drops unknown fields
         identity_verified = qr_data.identity_hash == self.identity_manager.get_identity_hash()
 
         qr_time = datetime.fromisoformat(qr_data.timestamp.replace('Z', '+00:00'))
@@ -116,29 +131,21 @@ class QRLiveProtocol:
 
 ### 2. Error Handling
 ```python
-# Real error handling pattern
-def generate_single_qr(self, user_data=None, sign_data=True, encrypt_data=False):
-    """Generate QR with comprehensive error handling."""
-    try:
-        # Core generation logic
-        qr_data, qr_image = self._generate_qr_core(user_data, sign_data, encrypt_data)
-
-        # Update statistics and callbacks
-        self._update_generation_stats()
-
-        return qr_data, qr_image
-
-    except CryptoError as e:
-        # Log cryptographic errors
-        self._log_error("crypto_error", e)
-        # Continue with reduced functionality
-        return self._generate_basic_qr(user_data)
-
-    except Exception as e:
-        # Log unexpected errors
-        self._log_error("generation_error", e)
-        raise QRLiveProtocolError(f"QR generation failed: {e}")
+# Real error handling pattern (generation errors propagate; the update loop
+# logs and continues, see QRLiveProtocol._update_loop in src/core.py)
+def _update_loop(self) -> None:
+    while self._running:
+        try:
+            self.generate_single_qr()
+            time.sleep(self.config.update_interval)
+        except Exception as e:
+            _logger.error(f"Update loop error: {e}")
+            time.sleep(1.0)  # Prevent tight error loops
 ```
+
+There is no `QRLiveProtocolError`, `_generate_basic_qr`, or `_log_error`
+symbol in this codebase — errors are standard exceptions; generation
+failures raise (e.g. `QRDataTooLargeError` for oversized payloads).
 
 ### 3. Testing Requirements
 - Unit tests for all public methods
@@ -148,19 +155,18 @@ def generate_single_qr(self, user_data=None, sign_data=True, encrypt_data=False)
 
 ### 4. Configuration Management
 ```python
-# Real configuration pattern
-class QRLiveProtocol:
-    def __init__(self, config: QRLPConfig = None):
-        self.config = config or QRLPConfig()
+# Real configuration pattern: validate() is a QRLPConfig method that returns
+# a list of issue strings; call it explicitly before construction if needed.
+config = QRLPConfig()
+issues = config.validate()
+if issues:
+    raise ValueError(f"Invalid configuration: {issues}")
 
-        # Validate configuration
-        issues = self.config.validate()
-        if issues:
-            raise ConfigurationError(f"Invalid configuration: {issues}")
-
-        # Initialize with validated config
-        self._initialize_components()
+qrlp = QRLiveProtocol(config)
 ```
+
+There is no `ConfigurationError` exception in this codebase; `validate()`
+returns issues rather than raising.
 
 ## Component Interaction Patterns
 
@@ -181,27 +187,22 @@ def start_live_generation(self):
     self._update_thread.start()
 
 def _update_loop(self):
-    """Real update loop with proper error handling."""
+    """Real update loop (simplified from src/core.py)."""
     while self._running:
         try:
-            # Generate QR with all features
-            qr_data, qr_image = self.generate_single_qr(
-                sign_data=self.config.verification_settings.require_blockchain,
-                encrypt_data=self.config.security_settings.encrypt_qr_data
-            )
+            start_time = time.time()
 
-            # Notify all callbacks
-            for callback in self._callbacks:
-                try:
-                    callback(qr_data, qr_image)
-                except Exception as e:
-                    self._log_error("callback_error", e)
+            # Generate new QR (signing/encryption come from config defaults)
+            qr_data, qr_image = self.generate_single_qr()
+            # Callbacks are notified inside generate_single_qr via _notify_callbacks()
 
-            # Sleep for configured interval
-            time.sleep(self.config.update_interval)
+            # Sleep for the remaining interval time
+            elapsed = time.time() - start_time
+            sleep_time = max(0, self.config.update_interval - elapsed)
+            time.sleep(sleep_time)
 
         except Exception as e:
-            self._log_error("update_loop_error", e)
+            _logger.error(f"Update loop error: {e}")
             time.sleep(1.0)  # Prevent tight error loops
 ```
 
@@ -236,7 +237,7 @@ def verify_qr_data(self, qr_json: str) -> Dict[str, bool]:
             results['signature_verified'] = self.signature_manager.verify_signed_qr_data(verification_data)
 
         # Identity verification
-        qr_data = QRData(**verification_data)
+        qr_data = QRData.from_dict(verification_data)  # drops unknown fields
         results['identity_verified'] = qr_data.identity_hash == self.identity_manager.get_identity_hash()
 
         # Time verification
@@ -339,55 +340,51 @@ qr_data, qr_image = qrlp.generate_single_qr(
 
 ### Input Validation
 ```python
-# Real validation pattern
-@validator
+# Real validation pattern: there is no @validator decorator or ValidationError
+# class in this codebase. The web layer uses SecurityValidator (src/web_server.py);
+# plain code should raise ValueError.
+from src.config import QRSettings
+
+MAX_QR_SIZE = QRSettings().max_data_size  # 2000 bytes by default
+
 def validate_qr_data_input(data: str) -> str:
     """Validate QR data input with security checks."""
     if not isinstance(data, str):
-        raise ValidationError("QR data must be string")
+        raise ValueError("QR data must be string")
 
     if len(data) > MAX_QR_SIZE:
-        raise ValidationError("QR data too large")
+        raise ValueError("QR data too large")
 
     # Parse and validate JSON structure
     try:
         parsed = json.loads(data)
         if not isinstance(parsed, dict):
-            raise ValidationError("QR data must be JSON object")
+            raise ValueError("QR data must be JSON object")
     except json.JSONDecodeError as e:
-        raise ValidationError(f"Invalid QR data JSON: {e}")
+        raise ValueError(f"Invalid QR data JSON: {e}")
 
     return data
 ```
 
 ### Error Handling
 ```python
-# Real error handling pattern
-def secure_qr_generation(self, user_data: Optional[Dict] = None) -> tuple[QRData, bytes]:
+# Error handling pattern (there is no _log_security_event or
+# QRLiveProtocolError in this codebase — use logging and standard exceptions)
+import logging
+
+_logger = logging.getLogger(__name__)
+
+def secure_qr_generation(qrlp: QRLiveProtocol, user_data: dict | None = None) -> tuple[QRData, bytes]:
     """Generate QR with comprehensive error handling."""
     try:
-        # Validate inputs
-        if user_data:
-            validate_user_data(user_data)
-
-        # Generate with all security features
-        return self.generate_single_qr(user_data, sign_data=True, encrypt_data=True)
-
-    except ValidationError as e:
-        # Log validation errors
-        self._log_security_event("validation_error", e)
-        raise
-
+        return qrlp.generate_single_qr(user_data, sign_data=True, encrypt_data=True)
     except CryptoError as e:
-        # Log cryptographic errors
-        self._log_security_event("crypto_error", e)
+        _logger.error(f"Crypto error: {e}")
         # Continue with reduced functionality
-        return self.generate_single_qr(user_data, sign_data=False, encrypt_data=False)
-
+        return qrlp.generate_single_qr(user_data, sign_data=False, encrypt_data=False)
     except Exception as e:
-        # Log unexpected errors
-        self._log_security_event("unexpected_error", e)
-        raise QRLiveProtocolError(f"QR generation failed: {e}")
+        _logger.error(f"QR generation failed: {e}")
+        raise
 ```
 
 ## Testing Strategy
@@ -398,9 +395,8 @@ def secure_qr_generation(self, user_data: Optional[Dict] = None) -> tuple[QRData
 def test_qr_generation_with_cryptography():
     """Test QR generation with all cryptographic features."""
     qrlp = QRLiveProtocol()
-
-    # Generate key for testing
-    public_key, private_key = qrlp.key_manager.generate_keypair("rsa", 2048)
+    # Encryption inflates the payload — lower EC level to leave QR headroom
+    qrlp.config.qr_settings.error_correction_level = "L"
 
     # Generate cryptographically enhanced QR
     qr_data, qr_image = qrlp.generate_single_qr(
@@ -410,7 +406,7 @@ def test_qr_generation_with_cryptography():
     )
 
     # Verify cryptographic features are applied
-    qr_dict = qr_data.__dict__
+    qr_dict = qr_data.to_dict()
     assert '_hmac' in qr_dict
     assert 'digital_signature' in qr_dict
     assert '_encrypted_fields' in qr_dict
@@ -456,67 +452,24 @@ def test_full_qr_lifecycle():
 
 ## Performance Optimization
 
-### Caching Strategy
+### Caching
 ```python
-# Real caching pattern
-class QRLiveProtocol:
-    def __init__(self, config):
-        self.config = config
+# Real caching: QRGenerator keeps a bounded dict of rendered images keyed by
+# payload hash + style + error-correction level (see src/qr_generator.py).
+qrlp = QRLiveProtocol()
 
-        # Initialize caches
-        self._qr_cache = {}
-        self._crypto_cache = {}
+# Inspect / clear the QR image cache
+print(len(qrlp.qr_generator.cache))
+qrlp.qr_generator.cache.clear()
 
-        # Cache settings
-        self._cache_ttl = 60  # 1 minute
-        self._max_cache_size = 1000
-
-    def _get_cached_qr(self, cache_key: str) -> Optional[bytes]:
-        """Get cached QR image if still valid."""
-        if cache_key in self._qr_cache:
-            cached_time, qr_image = self._qr_cache[cache_key]
-            if time.time() - cached_time < self._cache_ttl:
-                return qr_image
-
-            # Remove expired cache entry
-            del self._qr_cache[cache_key]
-
-        return None
-
-    def _cache_qr(self, cache_key: str, qr_image: bytes):
-        """Cache QR image for future use."""
-        if len(self._qr_cache) >= self._max_cache_size:
-            # Remove oldest entries (simple LRU)
-            oldest_key = min(self._qr_cache.keys(),
-                           key=lambda k: self._qr_cache[k][0])
-            del self._qr_cache[oldest_key]
-
-        self._qr_cache[cache_key] = (time.time(), qr_image)
+# BlockchainVerifier caches per-chain block info in cached_blocks
+print(qrlp.blockchain_verifier.cached_blocks.keys())
+qrlp.blockchain_verifier.cached_blocks.clear()
 ```
 
-### Memory Management
-```python
-# Real memory management pattern
-def _cleanup_expired_caches(self):
-    """Clean up expired cache entries."""
-    current_time = time.time()
-
-    # Clean QR cache
-    expired_keys = [
-        key for key, (cached_time, _) in self._qr_cache.items()
-        if current_time - cached_time > self._cache_ttl
-    ]
-    for key in expired_keys:
-        del self._qr_cache[key]
-
-    # Clean crypto cache
-    expired_crypto = [
-        key for key, (cached_time, _) in self._crypto_cache.items()
-        if current_time - cached_time > self._crypto_cache_ttl
-    ]
-    for key in expired_crypto:
-        del self._crypto_cache[key]
-```
+There is no `_qr_cache`, `_crypto_cache`, `_cache_ttl`, or
+`_cleanup_expired_caches` on `QRLiveProtocol` in this codebase — caching lives
+in `QRGenerator.cache` and `BlockchainVerifier.cached_blocks`.
 
 ## Future Enhancements
 
@@ -538,6 +491,11 @@ This document provides concrete, implementable patterns for developing the QRLiv
 
 ## Actual Implemented Crypto Pipeline (v1.2.0)
 
+`verify_qr_data()` returns the keys shown above plus `replayed`, `valid`, and
+`trust_mode` (`none`, `local_signature`, or `public_signature`). The `valid`
+flag requires valid JSON, time within drift tolerance, blockchain OK (when
+required), HMAC or signature authenticity, and a non-replayed nonce.
+
 The cryptographic enhancement pipeline in `QRLiveProtocol._apply_cryptographic_enhancements` follows this order:
 
 1. **Sign** — `QRSignatureManager.create_signed_qr_data()` adds `digital_signature`, `signing_key_id`, `signature_algorithm`
@@ -549,8 +507,8 @@ The HMAC covers the signature (applied after signing). Encryption covers the HMA
 ### New Types (v1.2.0)
 - `VerificationResult` dataclass — typed replacement for the verification dict
 - `QRData.to_dict()` — returns clean dict without None entries
-- `QRData.__repr__` / `__QRData.__str__` — debugging output
-- `QRData.from_json()` — ignores unknown fields for forward compatibility
+- `QRData.__repr__` / `QRData.__str__` — debugging output
+- `QRData.from_json()` / `QRData.from_dict()` — ignore unknown fields for forward compatibility
 
 ### Exception Renaming (v1.1.0)
 - `KeyError` was renamed to `KeyManagementError` in `crypto/exceptions.py` to avoid shadowing Python's builtin
