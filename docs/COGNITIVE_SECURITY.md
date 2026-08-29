@@ -751,7 +751,7 @@ The integration of temporal intelligence, blockchain verification, and real-time
 ---
 
 **For more information about QRLP's cognitive security capabilities, see:**
-- [Security Policy](SECURITY.md)
+- [Security Policy](../SECURITY.md)
 - [API Reference](API.md)
 - [Implementation Guide](INSTALLATION.md)
 - [Streaming Integration](STREAMING.md) 

@@ -33,7 +33,7 @@ Welcome to the QR Live Protocol (QRLP) documentation! This index will help you f
 |----------|-------------|----------|
 | **[Streaming Guide](STREAMING.md)** | OBS Studio and streaming integration | Content creators, streamers |
 | **[FAQ](FAQ.md)** | Common questions and troubleshooting | All users |
-| **[Security Policy](SECURITY.md)** | Security measures and best practices | Security-conscious users |
+| **[Security Policy](../SECURITY.md)** | Security measures and best practices | Security-conscious users |
 
 ## 👥 Community & Development
 
@@ -63,7 +63,7 @@ Welcome to the QR Live Protocol (QRLP) documentation! This index will help you f
 - **[Example Configurations](CONFIGURATION.md#configuration-examples)** - Pre-built configs
 
 ### Advanced Topics
-- **[Security Architecture](SECURITY.md#security-measures)** - Cryptographic verification
+- **[Security Architecture](../SECURITY.md#security-measures)** - Cryptographic verification
 - **[Performance Optimization](API.md#performance-considerations)** - Tuning for production
 - **[Blockchain Integration](README.md#blockchain-verification)** - How verification works
 - **[Identity Management](README.md#identity-manager)** - System identification
@@ -91,15 +91,15 @@ Welcome to the QR Live Protocol (QRLP) documentation! This index will help you f
 ## 🛡️ Security & Compliance
 
 ### Security Information
-- **[Threat Model](SECURITY.md#threat-model)** - Security analysis
-- **[Best Practices](SECURITY.md#best-practices)** - Secure deployment
-- **[Vulnerability Reporting](SECURITY.md#reporting-security-vulnerabilities)** - Responsible disclosure
-- **[Data Privacy](SECURITY.md#data-protection)** - What data is collected
+- **[Threat Model](../SECURITY.md#threat-model)** - Security analysis
+- **[Best Practices](../SECURITY.md#best-practices)** - Secure deployment
+- **[Vulnerability Reporting](../SECURITY.md#reporting-security-vulnerabilities)** - Responsible disclosure
+- **[Data Privacy](../SECURITY.md#data-protection)** - What data is collected
 
 ### Compliance
 - **[Source-Available License](../LICENSE)** - CC BY-NC-SA 4.0 terms
 - **[Dependencies](../requirements.txt)** - Third-party licenses
-- **[Export Control](SECURITY.md#contact)** - International usage
+- **[Export Control](../SECURITY.md#contact)** - International usage
 
 ## 🚀 Examples & Templates
 
@@ -140,7 +140,7 @@ Welcome to the QR Live Protocol (QRLP) documentation! This index will help you f
 - **[Hardware Requirements](INSTALLATION.md#system-requirements)** - Recommended specs
 - **[Professional Broadcasting](STREAMING.md#professional-broadcasting)** - Enterprise setup
 - **[Backup and Redundancy](STREAMING.md#backup-and-redundancy)** - High availability
-- **[Monitoring](SECURITY.md#contact)** - Production monitoring
+- **[Monitoring](../SECURITY.md#contact)** - Production monitoring
 
 ## 🌟 Community
 
@@ -148,7 +148,7 @@ Welcome to the QR Live Protocol (QRLP) documentation! This index will help you f
 - **[GitHub Issues](https://github.com/docxology/qr_live_protocol/issues)** - Bug reports and support
 - **[GitHub Discussions](https://github.com/docxology/qr_live_protocol/discussions)** - Community Q&A
 - **[Feature Requests](FEATURE_REQUESTS.md)** - Suggest improvements
-- **[Contact Information](SECURITY.md#contact)** - Direct contact
+- **[Contact Information](../SECURITY.md#contact)** - Direct contact
 
 ### Contributing
 - **[How to Contribute](CONTRIBUTING.md#quick-start)** - Getting started
@@ -218,11 +218,11 @@ setup.py                       # Legacy setup (deprecated, use pyproject.toml)
 1. Read [API Reference](API.md)
 2. Review [Contributing Guide](CONTRIBUTING.md)
 3. Study [examples/](../examples/)
-4. Check [Security Policy](SECURITY.md)
+4. Check [Security Policy](../SECURITY.md)
 5. Join [GitHub Discussions](https://github.com/docxology/qr_live_protocol/discussions)
 
 ### For System Administrators
-1. Review [Security Policy](SECURITY.md)
+1. Review [Security Policy](../SECURITY.md)
 2. Study [Configuration Guide](CONFIGURATION.md)
 3. Read [Professional Broadcasting](STREAMING.md#professional-broadcasting)
 4. Check [Performance Considerations](API.md#performance-considerations)
