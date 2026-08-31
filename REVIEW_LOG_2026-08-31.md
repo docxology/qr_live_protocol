@@ -71,3 +71,18 @@ list. No source, CI, or version-bump changes.
 ## Phase 4 — Verify & close
 
 Recorded below after verification.
+
+## Phase 4 — Verify & close (completed 2026-08-31)
+
+- Link check: all relative links in touched docs resolve on disk (0 broken).
+- ruff: not installed in this repo's venv; `uvx ruff check` on the touched
+  markdown files: no issues. (Repo's own ruff gate unverifiable here —
+  `python -m ruff` missing; human check: `uv run ruff check .`.)
+- Backlog: all Phase-3 items marked [x] in TODO.md; deferred items carry one-line reasons.
+- Fast gate: none declared under 2min; full pytest too slow on this drive (see Deferred).
+- Commit 361dd6c pushed to origin/main (cc159f7..361dd6c); `git status -sb`
+  shows main...origin/main in sync. Only the 8 path-scoped files were staged;
+  the 33 pre-existing untracked files were untouched. AGENTS.md (pre-existing
+  untracked file, edited in Phase 3) intentionally NOT committed — it was not
+  authored by this lane and the shared frame forbids sweeping pre-existing
+  dirty files into the commit.
