@@ -500,7 +500,7 @@ Core dependencies:
 
 ## Testing
 
-QRLP has a comprehensive test suite with 753 tests (752 passing, 1 skipped when PyYAML is absent) and 89% code coverage:
+QRLP has a comprehensive test suite (last verified at v1.5.0: 753 tests — 752 passing, 1 skipped when PyYAML is absent — and 89% coverage; re-verify on the current tree with `python -m pytest tests/ --no-cov -q | tail -1`):
 
 ```bash
 # Install with dev dependencies
@@ -518,7 +518,7 @@ python -m pytest tests/test_crypto/ --no-cov -q
 python -m pytest tests/test_async_core.py --no-cov -q
 ```
 
-All tests use mocked network calls -- no external API dependencies required.
+Network-dependent tests use local test doubles or injected fakes for time/blockchain endpoints, so no external API dependencies are required (a few test files import `unittest.mock` for internal seams).
 
 ## 🎯 Use Cases
 

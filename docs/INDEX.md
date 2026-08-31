@@ -163,45 +163,14 @@ Welcome to the QR Live Protocol (QRLP) documentation! This index will help you f
 
 ## 📋 Quick Reference
 
-### Command Quick Reference
-```bash
-# Installation and setup
-python main.py                    # One-command setup and start
-qrlp live                          # Start live QR generation
-qrlp generate --output qr.png      # Generate single QR code
-qrlp status                        # Check system status
+### Command / URL / File Quick Reference
 
-# Configuration
-qrlp config-init                   # Create default config
-qrlp --config custom.json live     # Use custom configuration
-qrlp live --port 8081              # Use different port
+Canonical copies live in the root README (Quick Start and Usage sections) —
+this index deliberately does not duplicate them (copy-rot). See:
 
-# Development
-pytest                             # Run tests
-black src/                         # Format code
-qrlp --debug                       # Enable debug logging
-```
-
-### URL Quick Reference
-```
-http://localhost:8080              # Main web interface
-http://localhost:8080/viewer       # OBS Studio browser source
-http://localhost:8080/admin        # Admin dashboard
-http://localhost:8080/api/status   # System status API
-http://localhost:8080/api/qr/current  # Current QR data API
-```
-
-### File Quick Reference
-```
-main.py                           # Entry point
-src/                             # Core source code
-examples/livestream_demo.py      # Complete demo
-templates/                       # Web interface templates
-docs/                           # Documentation
-requirements.txt                # Dependencies
-pyproject.toml                 # Modern Python project configuration
-setup.py                       # Legacy setup (deprecated, use pyproject.toml)
-```
+- [README Quick Start](../README.md#-quick-start) — install + first commands
+- [README Usage Examples](../README.md#-usage-examples) — CLI, ports, config
+- [Configuration Reference](CONFIGURATION.md) — config file, env vars, CLI flags
 
 ---
 
@@ -230,8 +199,8 @@ setup.py                       # Legacy setup (deprecated, use pyproject.toml)
 
 ---
 
-**Documentation Version**: 1.5.0
-**Last Updated**: January 2025
+**Documentation Version**: tracked to pyproject.toml (1.5.0 as of 2026-08-31; check: `grep '^version' pyproject.toml`)
+**Last Updated**: 2026-08-31 (agent-ergonomics pass; see ../REVIEW_LOG_2026-08-31.md)
 **Maintained by**: QRLP Team
 
 For documentation issues or suggestions, please [open an issue](https://github.com/docxology/qr_live_protocol/issues) or [start a discussion](https://github.com/docxology/qr_live_protocol/discussions).

@@ -1,5 +1,7 @@
 # QRLiveProtocol - Implementation Summary
 
+> **HISTORICAL SNAPSHOT (2026-07 or earlier).** Describes a past improvement pass, not the current tree. For current state see README.md badges + CHANGELOG.md; for next actions see TODO.md. For current test counts re-run: `python -m pytest tests/ --no-cov -q | tail -1`.
+
 ## Session Objective
 
 Transform QRLiveProtocol (QRLP) into a production-ready, enterprise-grade QR code

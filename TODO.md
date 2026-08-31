@@ -1,9 +1,8 @@
 # QRLP TODO — Upcoming Improvements
 
-Last updated: 2026-08-19
-Current version: 1.5.0
-Test suite: 752 tests, 0 failures (1 skipped: PyYAML optional)
-Coverage: 89%
+Last updated: 2026-08-31
+Current version: from pyproject.toml (`grep '^version' pyproject.toml` -> 1.5.0 as of 2026-08-31; note the v1.6.0 section below describes completed in-tree work not yet released — CHANGELOG has no 1.6.0 entry)
+Test suite / coverage: NOT restated here — canonical source is a live run (`python -m pytest tests/ --no-cov -q | tail -1`); README badge states last-verified numbers
 
 ---
 
@@ -123,3 +122,40 @@ Coverage: 89%
 ## Security Backlog
 - [ ] Add SECURITY.md and Dependabot + CodeQL/Snyk scanning.
 - [ ] Add QR revocation + decentralized identity (DIDs / verifiable credentials).
+
+---
+## Agent-ergonomics pass (2026-08-31) — findings from cold-start audit
+
+Log: `REVIEW_LOG_2026-08-31.md`. All items below were implemented in this pass
+(doc-only) unless marked deferred.
+
+### Medium
+- [x] **Version ambiguity** — TODO claimed "completed v1.6.0" work while
+  pyproject/CHANGELOG say 1.5.0; header now points to pyproject as canonical and
+  flags the unreleased-v1.6.0 state. Remaining decision (release cut or
+  CHANGELOG entry) is a maintainer call, not a doc fix. Files: `TODO.md`,
+  `pyproject.toml`, `CHANGELOG.md`.
+- [x] **Test-count/coverage fact-class duplicated** (README badge, README prose,
+  TODO header, AGENTS.md) — TODO/AGENTS now link to a live-run command;
+  README prose carries the "last verified at v1.5.0" dating. Files: `README.md`,
+  `TODO.md`, `AGENTS.md`.
+- [x] **Transient root summaries unmarked** — IMPROVEMENTS_SUMMARY.md,
+  IMPLEMENTATION_SUMMARY.md, ASSESSMENT.md, RELEASE_NOTES_v1.5.0.txt now carry
+  historical-snapshot headers; entry docs never linked them (verified).
+
+### Minor
+- [x] `docs/INDEX.md` stale "Last Updated: January 2025" — dated 2026-08-31 with
+  verification path; duplicated command/URL/file quick-reference blocks replaced
+  with links to canonical README sections. Files: `docs/INDEX.md`.
+- [x] README Testing prose "All tests use mocked network calls" blanket claim —
+  softened to scoped, accurate statement. Files: `README.md`.
+- [x] AGENTS.md verify line lacked dating/verification path — fixed.
+  Files: `AGENTS.md`. (Note: AGENTS.md was untracked at dispatch — pre-existing
+  local state, not committed by this pass.)
+
+### Deferred
+- [ ] **Add CI lint job** (pre-existing TODO entry, out of scope this pass: CI
+  config edits are excluded by the shared frame).
+- [ ] **Full fresh pytest verification of badge counts** — deferred: full-suite
+  run on the external drive exceeded the lane time budget (collection alone
+  >280s). Human check: `python -m pytest tests/ --no-cov -q | tail -1`.
