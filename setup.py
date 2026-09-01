@@ -54,7 +54,7 @@ else:
 
 setup(
     name="qr-live-protocol",
-    version="1.5.0",
+    version="1.6.0",
     author="QRLP Development Team",
     author_email="contact@qrlp.org",
     description="Generate live, verifiable QR codes for streaming and official video releases",

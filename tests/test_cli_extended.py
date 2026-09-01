@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
+from src import __version__
 from src.cli import _load_qr_data_argument, _parse_user_data, _write_bytes, cli
 
 
@@ -37,7 +38,7 @@ class TestCLIHelp:
     def test_version(self, runner):
         result = runner.invoke(cli, ['--version'])
         assert result.exit_code == 0
-        assert "1.5.0" in result.output
+        assert __version__ in result.output
 
     def test_help(self, runner):
         result = runner.invoke(cli, ['--help'])
