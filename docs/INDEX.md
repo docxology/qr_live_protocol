@@ -200,7 +200,7 @@ this index deliberately does not duplicate them (copy-rot). See:
 ---
 
 **Documentation Version**: tracked to pyproject.toml (1.6.0 as of 2026-10-25; check: `grep '^version' pyproject.toml`)
-**Last Updated**: 2026-08-31 (agent-ergonomics pass; see ../REVIEW_LOG_2026-08-31.md)
+**Last Updated**: 2026-10-25 (v1.6.0 metadata and link sync)
 **Maintained by**: QRLP Team
 
 For documentation issues or suggestions, please [open an issue](https://github.com/docxology/qr_live_protocol/issues).

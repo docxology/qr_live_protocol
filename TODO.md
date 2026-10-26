@@ -126,8 +126,8 @@ Test suite / coverage: NOT restated here — canonical source is a live run (`py
 ---
 ## Agent-ergonomics pass (2026-08-31) — findings from cold-start audit
 
-Log: `REVIEW_LOG_2026-08-31.md`. All items below were implemented in this pass
-(doc-only) unless marked deferred.
+All items below were implemented in that pass (doc-only) unless marked deferred.
+(The dated session log was removed in `e1aa401`; its content is in git history.)
 
 ### Medium
 - [x] **Version ambiguity** — resolved 2026-10-25: pyproject.toml, `src.__version__`,

@@ -75,10 +75,10 @@ Each QR code contains JSON data with:
     "bitcoin": "00000000000000000008a...",
     "ethereum": "0x1234567890abcdef..."
   },
-  "time_server_verification": [
-    {"server": "pool.ntp.org", "offset": 0.002},
-    {"server": "time.google.com", "offset": 0.001}
-  ]
+  "time_server_verification": {
+    "pool.ntp.org": {"timestamp": "2025-01-11T15:30:45.122Z", "offset": 0.002},
+    "time.google.com": {"timestamp": "2025-01-11T15:30:45.123Z", "offset": 0.001}
+  }
 }
 ```
 
