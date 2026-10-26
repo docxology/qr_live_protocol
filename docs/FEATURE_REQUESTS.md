@@ -283,7 +283,7 @@ A: Yes! Contact us at enterprise@qrlp.org for sponsored development options.
 - 🐛 **Report Bugs**: [GitHub Issues](https://github.com/docxology/qr_live_protocol/issues)
 - 💡 **Request Features**: [New Feature Request](https://github.com/docxology/qr_live_protocol/issues/new?template=feature_request.md)
 - 🤝 **Contribute Code**: [Contributing Guide](CONTRIBUTING.md)
-- 💬 **Join Discussion**: [GitHub Discussions](https://github.com/docxology/qr_live_protocol/discussions)
+- 💬 **Join Discussion**: [GitHub Issues](https://github.com/docxology/qr_live_protocol/issues)
 - 📧 **Contact Team**: contact@qrlp.org
 
 **Together, let's make QRLP the best QR Live Protocol system possible!** 🚀 

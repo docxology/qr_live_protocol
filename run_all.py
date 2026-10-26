@@ -896,8 +896,8 @@ class QRLPComprehensiveRunner:
             print(f"{i:2}. {doc_name.replace('_', ' ').title()}")
 
         print("\n🌐 Online Documentation:")
-        print("   • GitHub: https://github.com/your-org/qr_live_protocol")
-        print("   • API Docs: https://qrlp.readthedocs.io/")
+        print("   • GitHub: https://github.com/docxology/qr_live_protocol")
+        print("   • API Docs: https://github.com/docxology/qr_live_protocol/blob/main/docs/INDEX.md")
 
         print("\n📖 Quick Reference:")
         print("   • API.md - Complete API reference")

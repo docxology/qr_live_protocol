@@ -5,6 +5,42 @@ All notable changes to QR Live Protocol (QRLP) will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-08-19
+
+### Features
+- Optical-delivery hardening: `src/optical_throughput.py` (dynamic frame cadence with
+  floor/ceiling adaptation, per-payload symbol reuse, batch pre-encode with bounded FIFO
+  drain, latency averaging) and `src/frame_recovery.py` (receiver-side re-ordering, gap
+  detection, gap recovery within a retransmission window, stream reset on unrecoverable gaps)
+- End-to-end live simulator: `src/live_simulator.py` with a deterministic optical channel
+  model (drop/reorder) wired to the throughput controller and frame recovery; CLI
+  `qrlp simulate-live`
+- Key-rotation continuity — `KeyManager.archive_key` / `KeyManager.rotate_signing_key`
+  archive rotated keys instead of destroying them, and
+  `qrlp keys rotate --archive-dir --trust-store --issuer` keeps previously signed QRs verifiable
+- WebSocket throughput benchmark — `QRLiveWebServer.benchmark_websocket_throughput`
+  (in-process, no network) and CLI `qrlp benchmark-ws --iterations N [--json-output]`
+
+### Changed
+- Typing and lint: `from __future__ import annotations` plus forward references in
+  `core.py` / `async_core.py`; `ruff` configuration added to `pyproject.toml` and the
+  tree cleaned to pass `uv run ruff check`
+
+### Tests
+- Added `tests/test_live_simulator.py`, `tests/test_optical_throughput.py`,
+  `tests/test_frame_recovery.py`, `tests/test_async_core_resilience.py`, and CLI
+  integration coverage for `simulate-live` / `benchmark-ws`
+
+## [1.5.0] - 2026-07-30
+
+### Features
+- OpenTimestamps (OTS) integration — optional, opt-in attestation of QR payloads on
+  Bitcoin: `qrlp stamp <payload.json> [--proof-dir DIR]` writes a `.ots` proof and
+  `qrlp verify-ots <payload.json> <proof.ots>` verifies it independently
+- Automatic periodic stamping during live generation via the `ots_enabled`, `ots_server`,
+  `ots_min_interval`, and `ots_proof_dir` fields in `TimeSettings`; QR payloads gain
+  additive `ots_*` fields, so payloads without them verify unchanged
+
 ## [1.4.0] - 2026-07-23
 
 ### Architecture

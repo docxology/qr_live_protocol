@@ -129,6 +129,6 @@ setup(
     project_urls={
         "Bug Reports": "https://github.com/docxology/qr_live_protocol/issues",
         "Source": "https://github.com/docxology/qr_live_protocol",
-        "Documentation": "https://qrlp.readthedocs.io/",
+        "Documentation": "https://github.com/docxology/qr_live_protocol/blob/main/docs/INDEX.md",
     }
 )

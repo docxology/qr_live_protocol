@@ -78,8 +78,7 @@ Each QR code contains JSON data with:
   "time_server_verification": [
     {"server": "pool.ntp.org", "offset": 0.002},
     {"server": "time.google.com", "offset": 0.001}
-  ],
-  "format_version": "1.4.0"
+  ]
 }
 ```
 

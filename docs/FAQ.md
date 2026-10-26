@@ -339,7 +339,7 @@ We're not aware of any relevant patents, but we can't provide legal advice. Cons
 
 ### Is there a community forum?
 
-Yes! Use [GitHub Discussions](https://github.com/docxology/qr_live_protocol/discussions) for:
+Yes! Use [GitHub Issues](https://github.com/docxology/qr_live_protocol/issues) for:
 - General questions
 - Usage tips
 - Feature discussions

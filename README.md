@@ -1,6 +1,6 @@
 # QR Live Protocol (QRLP)
 
-[![Version](https://img.shields.io/badge/version-1.5.0-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.6.0-blue.svg)](CHANGELOG.md)
 [![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
 [![Python Version](https://img.shields.io/badge/python-3.9+-blue.svg)](https://pypi.org/project/qr-live-protocol/)
 [![Tests](https://img.shields.io/badge/tests-752%20passing-brightgreen.svg)](#testing)
@@ -692,7 +692,7 @@ python main.py
 ### Ways to Contribute
 
 **🐛 Bug Reports**: [GitHub Issues](https://github.com/docxology/qr_live_protocol/issues)
-**💡 Feature Requests**: [GitHub Discussions](https://github.com/docxology/qr_live_protocol/discussions)
+**💡 Feature Requests**: [GitHub Issues](https://github.com/docxology/qr_live_protocol/issues)
 **📝 Documentation**: Improve this README or other docs
 **🔧 Code Contributions**: See [Contributing Guide](docs/CONTRIBUTING.md)
 
@@ -737,9 +737,9 @@ Contact us at **enterprise@qrlp.org** for:
 
 ## 🌟 Project Status
 
-**Current Version**: 1.5.0 (Stable)
+**Current Version**: 1.6.0 (Stable)
 **Active Development**: ✅ Yes
-**Community Support**: ✅ GitHub Issues & Discussions
+**Community Support**: ✅ GitHub Issues
 **Professional Support**: ✅ Available for enterprise users
 
 ### What's Next
@@ -768,9 +768,8 @@ QRLP builds on the work of:
 
 **📧 General Inquiries**: contact@qrlp.org
 **🐛 Bug Reports**: [GitHub Issues](https://github.com/docxology/qr_live_protocol/issues)
-**💬 Community**: [GitHub Discussions](https://github.com/docxology/qr_live_protocol/discussions)
+**💬 Community**: [GitHub Issues](https://github.com/docxology/qr_live_protocol/issues)
 **🏢 Enterprise**: enterprise@qrlp.org
-**🐦 Social**: [@QRLiveProtocol](https://twitter.com/qrliveprotocol)
 
 ---
 

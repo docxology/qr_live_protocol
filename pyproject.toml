@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "qr-live-protocol"
-version = "1.5.0"
+version = "1.6.0"
 description = "Generate live, verifiable QR codes for streaming and official video releases"
 authors = [
     {name = "QRLP Development Team", email = "contact@qrlp.org"},
@@ -70,7 +70,7 @@ full = [
 Homepage = "https://github.com/docxology/qr_live_protocol"
 "Bug Reports" = "https://github.com/docxology/qr_live_protocol/issues"
 Source = "https://github.com/docxology/qr_live_protocol"
-Documentation = "https://qrlp.readthedocs.io/"
+Documentation = "https://github.com/docxology/qr_live_protocol/blob/main/docs/INDEX.md"
 
 [project.scripts]
 qrlp = "src.cli:cli"

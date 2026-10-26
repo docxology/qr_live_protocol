@@ -146,7 +146,7 @@ Welcome to the QR Live Protocol (QRLP) documentation! This index will help you f
 
 ### Getting Help
 - **[GitHub Issues](https://github.com/docxology/qr_live_protocol/issues)** - Bug reports and support
-- **[GitHub Discussions](https://github.com/docxology/qr_live_protocol/discussions)** - Community Q&A
+- **[GitHub Issues](https://github.com/docxology/qr_live_protocol/issues)** - Community Q&A
 - **[Feature Requests](FEATURE_REQUESTS.md)** - Suggest improvements
 - **[Contact Information](../SECURITY.md#contact)** - Direct contact
 
@@ -188,7 +188,7 @@ this index deliberately does not duplicate them (copy-rot). See:
 2. Review [Contributing Guide](CONTRIBUTING.md)
 3. Study [examples/](../examples/)
 4. Check [Security Policy](../SECURITY.md)
-5. Join [GitHub Discussions](https://github.com/docxology/qr_live_protocol/discussions)
+5. Join [GitHub Issues](https://github.com/docxology/qr_live_protocol/issues)
 
 ### For System Administrators
 1. Review [Security Policy](../SECURITY.md)
@@ -199,8 +199,8 @@ this index deliberately does not duplicate them (copy-rot). See:
 
 ---
 
-**Documentation Version**: tracked to pyproject.toml (1.5.0 as of 2026-08-31; check: `grep '^version' pyproject.toml`)
+**Documentation Version**: tracked to pyproject.toml (1.6.0 as of 2026-10-25; check: `grep '^version' pyproject.toml`)
 **Last Updated**: 2026-08-31 (agent-ergonomics pass; see ../REVIEW_LOG_2026-08-31.md)
 **Maintained by**: QRLP Team
 
-For documentation issues or suggestions, please [open an issue](https://github.com/docxology/qr_live_protocol/issues) or [start a discussion](https://github.com/docxology/qr_live_protocol/discussions).
+For documentation issues or suggestions, please [open an issue](https://github.com/docxology/qr_live_protocol/issues).

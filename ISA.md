@@ -60,7 +60,7 @@ Implement a defensible public-verification path for QRLP: generated signed QR pa
 - [x] ISC-27: `/api/improve/status` returns structured readiness, feature, key, trust, configuration, current QR, and verifier status.
 - [x] ISC-28: `/api/improve/smoke-test` performs a local signed-QR trust round trip and chunk-recovery test without external services.
 - [x] ISC-29: CLI `qrlp dashboard --no-browser` starts and stops the dashboard lifecycle without opening a browser.
-- [x] ISC-30: Package version metadata is synchronized at `1.4.0` across pyproject, setup.py, and `src.__version__`.
+- [x] ISC-30: Package version metadata is synchronized at `1.6.0` across pyproject, setup.py, and `src.__version__`.
 - [x] ISC-31: Package metadata points to the public `docxology/qr_live_protocol` repository and does not publish stale MIT/Python 3.8 classifiers.
 - [x] ISC-32: Wheel builds include top-level Flask templates required by the dashboard and live web UI.
 - [x] Anti-20: A syntactically valid but unsigned JSON payload is not reported as authentic.

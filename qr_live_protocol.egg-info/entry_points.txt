@@ -1,3 +1,0 @@
-[console_scripts]
-qr-live-protocol = src.cli:cli
-qrlp = src.cli:cli

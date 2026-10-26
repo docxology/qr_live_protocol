@@ -1,7 +1,7 @@
 # QRLP TODO — Upcoming Improvements
 
-Last updated: 2026-08-31
-Current version: from pyproject.toml (`grep '^version' pyproject.toml` -> 1.5.0 as of 2026-08-31; note the v1.6.0 section below describes completed in-tree work not yet released — CHANGELOG has no 1.6.0 entry)
+Last updated: 2026-10-25
+Current version: from pyproject.toml (`grep '^version' pyproject.toml` -> 1.6.0; CHANGELOG.md carries 1.5.0 and 1.6.0 entries)
 Test suite / coverage: NOT restated here — canonical source is a live run (`python -m pytest tests/ --no-cov -q | tail -1`); README badge states last-verified numbers
 
 ---
@@ -130,10 +130,9 @@ Log: `REVIEW_LOG_2026-08-31.md`. All items below were implemented in this pass
 (doc-only) unless marked deferred.
 
 ### Medium
-- [x] **Version ambiguity** — TODO claimed "completed v1.6.0" work while
-  pyproject/CHANGELOG say 1.5.0; header now points to pyproject as canonical and
-  flags the unreleased-v1.6.0 state. Remaining decision (release cut or
-  CHANGELOG entry) is a maintainer call, not a doc fix. Files: `TODO.md`,
+- [x] **Version ambiguity** — resolved 2026-10-25: pyproject.toml, `src.__version__`,
+  the `qrlp --version` option, setup.py, README, and docs/INDEX.md all report 1.6.0,
+  and CHANGELOG.md now carries 1.5.0 and 1.6.0 entries. Files: `TODO.md`,
   `pyproject.toml`, `CHANGELOG.md`.
 - [x] **Test-count/coverage fact-class duplicated** (README badge, README prose,
   TODO header, AGENTS.md) — TODO/AGENTS now link to a live-run command;
