@@ -3,8 +3,7 @@
 [![Version](https://img.shields.io/badge/version-1.6.0-blue.svg)](CHANGELOG.md)
 [![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
 [![Python Version](https://img.shields.io/badge/python-3.9+-blue.svg)](https://pypi.org/project/qr-live-protocol/)
-[![Tests](https://img.shields.io/badge/tests-752%20passing-brightgreen.svg)](#testing)
-[![Coverage](https://img.shields.io/badge/coverage-89%25-green.svg)](#testing)
+**Tests:** 752 passing · **Coverage:** 89% (snapshot figures; this repository runs no CI workflow) — see [Testing](#testing).
 
 A comprehensive, source-available system for generating live QR codes with local integrity checks and optional public-key authenticity verification for livestreaming, official video releases, and content verification.
 
