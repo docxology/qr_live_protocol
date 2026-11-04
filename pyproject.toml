@@ -20,8 +20,6 @@ classifiers = [
     "Topic :: Security :: Cryptography",
     "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -34,7 +32,8 @@ keywords = [
 
 dependencies = [
     "qrcode[pil]>=7.4.2",
-    "Pillow>=10.0.0",
+    # 13.0.0 is the first Pillow release with no open advisory: 12.3.0 carries 130 critical and 598 high alerts in this repository. Do not lower this floor.
+    "pillow>=13.0.0",
     "Flask>=3.0.0",
     "Flask-CORS>=4.0.0",
     "Flask-SocketIO>=5.3.6",
