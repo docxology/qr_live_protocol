@@ -6,7 +6,7 @@ Pillow>=10.0.0
 
 # Web framework and real-time communication
 Flask==3.0.0
-Flask-CORS==4.0.0
+Flask-CORS==6.0.0
 Flask-SocketIO==5.3.6
 
 # Command line interface
