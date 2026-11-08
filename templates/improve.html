@@ -243,8 +243,8 @@
             <div class="button-row">
                 <button id="refreshButton" type="button">Refresh</button>
                 <button id="smokeButton" type="button" class="secondary">Run Smoke Test</button>
-                <a class="link-button secondary" href="/">Live Display</a>
-                <a class="link-button secondary" href="/admin">Admin</a>
+                <a class="link-button secondary" href="{{ url_for('index') }}">Live Display</a>
+                <a class="link-button secondary" href="{{ url_for('admin') }}">Admin</a>
             </div>
             <div class="subtle" id="serverUrl">{{ server_url }}</div>
         </div>
@@ -290,15 +290,19 @@
 
             <div class="panel full">
                 <div class="metric-label">Smoke Test Result</div>
+                {% if requires_admin_token %}
+                <label for="smokeToken">Admin token</label>
+                <input id="smokeToken" type="password" autocomplete="off">
+                {% endif %}
                 <pre id="smokeResult">No smoke test has run in this browser session.</pre>
             </div>
         </section>
     </main>
 
-    <script>
+    <script nonce="{{ script_nonce }}">
         const state = {
-            statusUrl: "/api/improve/status",
-            smokeUrl: "/api/improve/smoke-test"
+            statusUrl: {{ url_for('improve_status') | tojson }},
+            smokeUrl: {{ url_for('improve_smoke_test') | tojson }}
         };
 
         const el = (id) => document.getElementById(id);
@@ -324,13 +328,16 @@
             el("trustCount").textContent = data.trust?.trusted_key_count ?? 0;
             el("updateCount").textContent = data.server?.qr_updates_sent ?? 0;
 
-            el("featureRows").innerHTML = (data.features || []).map((feature) => `
-                <tr>
-                    <td>${feature.name}</td>
-                    <td><span class="status ${statusClass(feature)}">${feature.ok ? "Pass" : feature.severity}</span></td>
-                    <td>${featureRequired(feature) ? "yes" : "no"}</td>
-                </tr>
-            `).join("");
+            el("featureRows").replaceChildren();
+            for (const feature of data.features || []) {
+                const row = el("featureRows").insertRow();
+                row.insertCell().textContent = feature.name;
+                const badge = document.createElement("span");
+                badge.className = "status " + statusClass(feature);
+                badge.textContent = feature.ok ? "Pass" : feature.severity;
+                row.insertCell().append(badge);
+                row.insertCell().textContent = featureRequired(feature) ? "yes" : "no";
+            }
 
             const currentQr = data.current_qr || {};
             const qrRows = [
@@ -339,15 +346,27 @@
                 ["signature", currentQr.digital_signature ? "present" : "none"],
                 ["expires", currentQr.expires_at ?? "none"]
             ];
-            el("qrRows").innerHTML = qrRows.map(([name, value]) => `
-                <tr><th>${name}</th><td>${value}</td></tr>
-            `).join("");
+            el("qrRows").replaceChildren();
+            for (const [name, value] of qrRows) {
+                const row = el("qrRows").insertRow();
+                const label = document.createElement("th");
+                label.scope = "row";
+                label.textContent = name;
+                row.append(label);
+                row.insertCell().textContent = value;
+            }
         }
 
         async function refreshStatus() {
-            const response = await fetch(state.statusUrl);
-            if (!response.ok) throw new Error(`Status failed: ${response.status}`);
-            renderStatus(await response.json());
+            try {
+                const response = await fetch(state.statusUrl);
+                if (!response.ok) throw new Error("HTTP " + response.status);
+                renderStatus(await response.json());
+            } catch (error) {
+                el("readinessBadge").textContent = "Unavailable";
+                el("readinessBadge").className = "status fail";
+                el("lastUpdated").textContent = "Could not refresh status: " + error.message;
+            }
         }
 
         async function runSmokeTest() {
@@ -355,9 +374,12 @@
             button.disabled = true;
             el("smokeResult").textContent = "Running local signed QR and chunk recovery smoke test...";
             try {
+                const headers = {"Content-Type": "application/json"};
+                const token = el("smokeToken");
+                if (token) headers["X-QRLP-Admin-Token"] = token.value;
                 const response = await fetch(state.smokeUrl, {
                     method: "POST",
-                    headers: { "Content-Type": "application/json" },
+                    headers,
                     body: JSON.stringify({})
                 });
                 const body = await response.json();
@@ -372,11 +394,7 @@
 
         el("refreshButton").addEventListener("click", refreshStatus);
         el("smokeButton").addEventListener("click", runSmokeTest);
-        refreshStatus().catch((error) => {
-            el("readinessBadge").textContent = "Offline";
-            el("readinessBadge").className = "status fail";
-            el("smokeResult").textContent = String(error);
-        });
+        refreshStatus();
     </script>
 </body>
 </html>

@@ -123,7 +123,10 @@ class TestNetworkResilience:
         async_config.blockchain_settings.enabled_chains = {"bitcoin"}
         async with AsyncQRLiveProtocol(async_config) as qrlp:
             # All requests will fail against a closed port -> empty dict, no raise.
-            qrlp._get_chain_data_async = _fail
+            def fail():
+                raise OSError("network down")
+
+            qrlp.sync_qrlp.blockchain_verifier.get_blockchain_hashes = fail
             result = await qrlp.get_blockchain_data_async()
             assert result == {}
 
@@ -132,10 +135,6 @@ class TestNetworkResilience:
         async with AsyncQRLiveProtocol(async_config) as qrlp:
             result = await qrlp.get_time_data_async()
             assert result == {}
-
-
-async def _fail(chain):
-    raise ConnectionError("network down")
 
 
 class TestOptimization:

@@ -9,165 +9,116 @@ import asyncio
 import concurrent.futures
 import logging
 import time
-from collections.abc import Callable
-from typing import Any
-
-import aiohttp
-
-_logger = logging.getLogger("qrlp.async_core")
-
-
-try:
-    import aiofiles
-except ImportError:
-    aiofiles = None  # type: ignore[assignment]
+from collections import OrderedDict, deque
+from collections.abc import AsyncIterator, Callable
+from functools import partial
+from inspect import isawaitable
+from typing import Any, TypeVar
 
 from .config import QRLPConfig
 from .core import QRData, QRLiveProtocol
 
+_logger = logging.getLogger("qrlp.async_core")
+_Result = TypeVar("_Result")
+
 
 class AsyncQRLiveProtocol:
-    """
-    Asynchronous QR Live Protocol implementation.
+    """Run QRLP generation, verification and provider access off the event loop.
 
-    Provides async/await patterns for non-blocking operations including:
-    - Async QR generation with concurrent processing
-    - Async blockchain and time server operations
-    - Async cryptographic operations
-    - Async web server operations
-    - Connection pooling and resource management
+    Use an async context manager or call :meth:`aclose` to stop live generation
+    and release this instance's worker threads.
     """
+
+    _WORKERS = 4
+    _CACHE_SIZE = 100
+    _TIMING_WINDOW = 128
 
     def __init__(self, config: QRLPConfig | None = None):
-        """
-        Initialize async QRLiveProtocol.
-
-        Args:
-            config: QRLPConfig object with settings
-        """
         self.config = config or QRLPConfig()
         self.sync_qrlp = QRLiveProtocol(self.config)
-
-        # Async components
-        self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
-        self._session_pool: list[aiohttp.ClientSession] = []
-        self._semaphore = asyncio.Semaphore(10)  # Limit concurrent operations
-
-        # Performance tracking
-        self._operation_times: dict[str, list[float]] = {}
+        self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=self._WORKERS)
+        self._semaphore = asyncio.Semaphore(10)
+        self._generation_task: asyncio.Task[None] | None = None
+        self._close_task: asyncio.Task[None] | None = None
+        self._active_operations = 0
+        self._operation_times: dict[str, deque[float]] = {}
+        self._image_cache: OrderedDict[str, tuple[bytes, float]] = OrderedDict()
+        self._cache_ttl = 60.0
         self._cache_hits = 0
         self._cache_misses = 0
 
-    async def __aenter__(self):
-        """Async context manager entry."""
-        await self._initialize_async_resources()
+    async def __aenter__(self) -> "AsyncQRLiveProtocol":
+        self._ensure_open()
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Async context manager exit."""
-        await self._cleanup_async_resources()
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        await self.aclose()
 
-    async def _initialize_async_resources(self):
-        """Initialize async resources."""
-        # Create HTTP session pool for blockchain/time APIs
-        for _ in range(3):
-            session = aiohttp.ClientSession(
-                timeout=aiohttp.ClientTimeout(total=10)
-            )
-            self._session_pool.append(session)
+    def _ensure_open(self) -> None:
+        if self._close_task is not None:
+            raise RuntimeError("AsyncQRLiveProtocol is closed")
 
-    async def _cleanup_async_resources(self):
-        """Clean up async resources."""
-        # Close all HTTP sessions
-        for session in self._session_pool:
-            await session.close()
+    async def aclose(self) -> None:
+        """Stop live generation and wait for in-flight work without blocking the loop."""
+        if self._close_task is None:
+            self._close_task = asyncio.create_task(self._close())
+        await asyncio.shield(self._close_task)
 
-        # Shutdown executor
-        self._executor.shutdown(wait=True)
+    async def _close(self) -> None:
+        await self.stop_live_generation_async()
+        await asyncio.to_thread(self._executor.shutdown, wait=True, cancel_futures=True)
+        self._image_cache.clear()
 
-    async def generate_single_qr_async(self, user_data: dict | None = None,
-                                      sign_data: bool = True,
-                                      encrypt_data: bool = False) -> tuple[QRData, bytes]:
-        """
-        Generate a single QR code asynchronously.
-
-        Args:
-            user_data: Optional custom data to include
-            sign_data: Whether to digitally sign the QR data
-            encrypt_data: Whether to encrypt sensitive fields
-
-        Returns:
-            Tuple of (QRData object, QR image as bytes)
-        """
+    async def _run(self, operation: str, call: Callable[[], _Result]) -> _Result:
+        self._ensure_open()
         async with self._semaphore:
-            loop = asyncio.get_event_loop()
-            return await loop.run_in_executor(
-                self._executor,
-                self.sync_qrlp.generate_single_qr,
-                user_data, sign_data, encrypt_data
-            )
+            self._ensure_open()
+            self._active_operations += 1
+            start = time.perf_counter()
+            try:
+                loop = asyncio.get_running_loop()
+                return await loop.run_in_executor(self._executor, call)
+            finally:
+                self._active_operations -= 1
+                self._operation_times.setdefault(operation, deque(maxlen=self._TIMING_WINDOW)).append(
+                    time.perf_counter() - start
+                )
 
-    async def generate_signed_qr_async(self, user_data: dict | None = None,
-                                      signing_key_id: str | None = None) -> tuple[QRData, bytes]:
-        """
-        Generate a cryptographically signed QR code asynchronously.
+    async def generate_single_qr_async(
+        self,
+        user_data: dict | None = None,
+        sign_data: bool | None = True,
+        encrypt_data: bool | None = None,
+    ) -> tuple[QRData, bytes]:
+        """Generate a QR using the same payload and settings as synchronous QRLP."""
+        return await self._run(
+            "qr_generation",
+            partial(self.sync_qrlp.generate_single_qr, user_data, sign_data, encrypt_data),
+        )
 
-        Args:
-            user_data: Optional custom data to include
-            signing_key_id: Specific key ID for signing
+    async def generate_signed_qr_async(
+        self, user_data: dict | None = None, signing_key_id: str | None = None
+    ) -> tuple[QRData, bytes]:
+        """Generate a signed QR with an optional signing key ID."""
+        return await self._run(
+            "qr_generation", partial(self.sync_qrlp.generate_signed_qr, user_data, signing_key_id)
+        )
 
-        Returns:
-            Tuple of (QRData object, QR image as bytes)
-        """
-        async with self._semaphore:
-            loop = asyncio.get_event_loop()
-            return await loop.run_in_executor(
-                self._executor,
-                self.sync_qrlp.generate_signed_qr,
-                user_data, signing_key_id
-            )
+    async def generate_encrypted_qr_async(
+        self, user_data: dict | None = None, encryption_key_id: str | None = None
+    ) -> tuple[QRData, bytes]:
+        """Generate an encrypted QR with an optional encryption key ID."""
+        return await self._run(
+            "qr_generation", partial(self.sync_qrlp.generate_encrypted_qr, user_data, encryption_key_id)
+        )
 
-    async def generate_encrypted_qr_async(self, user_data: dict | None = None,
-                                         encryption_key_id: str | None = None) -> tuple[QRData, bytes]:
-        """
-        Generate an encrypted QR code asynchronously.
-
-        Args:
-            user_data: Optional custom data to include
-            encryption_key_id: Specific key ID for encryption
-
-        Returns:
-            Tuple of (QRData object, QR image as bytes)
-        """
-        async with self._semaphore:
-            loop = asyncio.get_event_loop()
-            return await loop.run_in_executor(
-                self._executor,
-                self.sync_qrlp.generate_encrypted_qr,
-                user_data, encryption_key_id
-            )
-
-    async def verify_qr_data_async(self, qr_json: str) -> dict[str, bool]:
-        """
-        Verify QR code data asynchronously.
-
-        Args:
-            qr_json: JSON string from QR code
-
-        Returns:
-            Dictionary with verification results
-        """
-        async with self._semaphore:
-            loop = asyncio.get_event_loop()
-            return await loop.run_in_executor(
-                self._executor,
-                self.sync_qrlp.verify_qr_data,
-                qr_json
-            )
+    async def verify_qr_data_async(self, qr_json: str) -> dict[str, Any]:
+        """Verify a decoded QR payload off the event loop."""
+        return await self._run("qr_verification", partial(self.sync_qrlp.verify_qr_data, qr_json))
 
     async def batch_generate_qr_async(self, items: list[dict[str, Any]],
-                                     sign_data: bool = True,
-                                     encrypt_data: bool = False) -> list[tuple[QRData, bytes]]:
+                                     sign_data: bool | None = True,
+                                     encrypt_data: bool | None = None) -> list[tuple[QRData, bytes]]:
         """
         Generate multiple QR codes asynchronously in parallel.
 
@@ -179,6 +130,7 @@ class AsyncQRLiveProtocol:
         Returns:
             List of (QRData, QR image) tuples
         """
+        self._ensure_open()
         # Create async tasks for each item
         tasks = [
             self.generate_single_qr_async(item, sign_data, encrypt_data)
@@ -191,204 +143,116 @@ class AsyncQRLiveProtocol:
         # Handle any exceptions
         successful_results = []
         for result in results:
+            if isinstance(result, asyncio.CancelledError):
+                raise result
             if isinstance(result, Exception):
-                _logger.error(f"Batch generation error: {result}")
+                _logger.error("Batch generation error: %s", result)
             else:
                 successful_results.append(result)
 
         return successful_results
 
-    async def generate_qr_stream_async(self, interval: float = 1.0,
-                                      max_qrs: int | None = None,
-                                      callback: Callable | None = None) -> list[tuple[QRData, bytes]]:
-        """
-        Generate a stream of QR codes asynchronously.
-
-        Args:
-            interval: Time between QR generations in seconds
-            max_qrs: Maximum number of QR codes to generate
-            callback: Optional callback for each generated QR
-
-        Returns:
-            List of generated (QRData, QR image) tuples
-        """
-        generated_qrs = []
+    async def iter_qr_stream_async(
+        self, interval: float = 1.0, max_qrs: int | None = None
+    ) -> AsyncIterator[tuple[QRData, bytes]]:
+        """Yield frames one at a time without retaining previous images."""
+        self._ensure_open()
         count = 0
-
-        try:
-            while max_qrs is None or count < max_qrs:
-                # Generate QR asynchronously
-                qr_data, qr_image = await self.generate_single_qr_async()
-
-                generated_qrs.append((qr_data, qr_image))
-                count += 1
-
-                # Call callback if provided
-                if callback:
-                    try:
-                        await callback(qr_data, qr_image)
-                    except Exception as e:
-                        _logger.error(f"Stream callback error: {e}")
-                # Wait for next interval
+        while max_qrs is None or count < max_qrs:
+            if count:
                 await asyncio.sleep(interval)
+            yield await self.generate_single_qr_async()
+            count += 1
 
+    async def generate_qr_stream_async(
+        self,
+        interval: float = 1.0,
+        max_qrs: int | None = None,
+        callback: Callable | None = None,
+    ) -> list[tuple[QRData, bytes]]:
+        """Collect frames, preserving partial results after errors or cancellation.
+
+        Use :meth:`iter_qr_stream_async` for a long stream without retaining images.
+        """
+        self._ensure_open()
+        frames = []
+        try:
+            async for frame in self.iter_qr_stream_async(interval, max_qrs):
+                frames.append(frame)
+                if callback is not None:
+                    try:
+                        await self._notify_callback(callback, *frame)
+                    except Exception:
+                        _logger.exception("Stream callback error")
         except asyncio.CancelledError:
             _logger.info("QR stream generation cancelled")
-        except Exception as e:
-            _logger.error(f"Stream generation error: {e}")
-        return generated_qrs
+        except Exception:
+            _logger.exception("Stream generation error")
+        return frames
+
+    @staticmethod
+    async def _notify_callback(callback: Callable, data: QRData, image: bytes) -> None:
+        result = callback(data, image)
+        if isawaitable(result):
+            await result
 
     async def get_blockchain_data_async(self) -> dict[str, str]:
-        """
-        Get blockchain data asynchronously with connection pooling.
+        """Read the shared blockchain tip cache and schedule a refresh if stale."""
+        self._ensure_open()
+        try:
+            return await self._run(
+                "blockchain", self.sync_qrlp.blockchain_verifier.get_blockchain_hashes
+            )
+        except Exception:
+            _logger.exception("Blockchain provider failed")
+            return {}
 
-        Returns:
-            Dictionary mapping chain names to block hashes
-        """
-        async with self._semaphore:
-            # Use session pool for concurrent requests
-            tasks = []
-            for chain in self.config.blockchain_settings.enabled_chains:
-                task = self._get_chain_data_async(chain)
-                tasks.append(task)
-
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-
-            # Combine results
-            blockchain_hashes = {}
-            for result in results:
-                if isinstance(result, Exception):
-                    _logger.error(f"Blockchain API error: {result}")
-                elif isinstance(result, dict):
-                    blockchain_hashes.update(result)
-
-            return blockchain_hashes
-
-    async def _get_chain_data_async(self, chain: str) -> dict[str, str]:
-        """Get blockchain data for a specific chain asynchronously."""
-        if not self._session_pool:
-            await self._initialize_async_resources()
-
-        # Use first available session
-        session = self._session_pool[0]
-
-        # Blockchain API endpoints
-        endpoints = {
-            'bitcoin': 'https://blockstream.info/api/blocks/tip/hash',
-            'ethereum': 'https://api.blockcypher.com/v1/eth/main',
-            'litecoin': 'https://api.blockcypher.com/v1/ltc/main'
+    async def get_time_data_async(self) -> dict[str, dict[str, str]]:
+        """Return observations from the configured sources used for QR generation."""
+        self._ensure_open()
+        try:
+            observations = await self._run(
+                "time_sync", self.sync_qrlp.time_provider.get_time_server_verification
+            )
+        except Exception:
+            _logger.exception("Time provider failed")
+            return {}
+        return {
+            server: {
+                "timestamp": observation["timestamp"],
+                "offset": str(observation["offset"]),
+                "server": server,
+            }
+            for server, observation in observations.items()
         }
 
-        endpoint = endpoints.get(chain)
-        if not endpoint:
-            return {}
-
-        try:
-            async with session.get(endpoint) as response:
-                if response.status == 200:
-                    data = await response.json()
-
-                    if chain == 'bitcoin':
-                        # Bitcoin returns just the hash
-                        return {chain: data.strip()}
-                    else:
-                        # Other chains return full block info
-                        return {chain: data.get('hash', '')}
-                else:
-                    _logger.error(f"Blockchain API error for {chain}: {response.status}")
-                    return {}
-
-        except Exception as e:
-            _logger.error(f"Blockchain API exception for {chain}: {e}")
-            return {}
-
-    async def get_time_data_async(self) -> dict[str, Any]:
-        """
-        Get time synchronization data asynchronously.
-
-        Returns:
-            Dictionary with time server verification data
-        """
-        async with self._semaphore:
-            # Get current time from multiple sources concurrently
-            tasks = []
-            for server in self.config.time_settings.time_servers[:3]:  # Limit to 3
-                task = self._get_time_from_server_async(server)
-                tasks.append(task)
-
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-
-            # Combine results
-            time_verification = {}
-            for result in results:
-                if isinstance(result, Exception):
-                    _logger.error(f"Time server error: {result}")
-                elif isinstance(result, dict):
-                    time_verification.update(result)
-
-            return time_verification
-
-    async def _get_time_from_server_async(self, server: str) -> dict[str, dict[str, str]]:
-        """Get time from a specific server asynchronously."""
-        if not self._session_pool:
-            await self._initialize_async_resources()
-
-        session = self._session_pool[0]
-
-        try:
-            # Use HTTP time API (NTP over async is non-trivial; HTTP is the async path)
-            url = "http://worldtimeapi.org/api/timezone/UTC"
-            async with session.get(url) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    timestamp = data['datetime']
-
-                    return {
-                        server: {
-                            "timestamp": timestamp,
-                            "offset": "0",  # HTTP APIs don't provide offset
-                            "server": server
-                        }
-                    }
-
-        except Exception as e:
-            _logger.error(f"Time server error for {server}: {e}")
-        return {}
-
     async def start_live_generation_async(self, callback: Callable | None = None) -> None:
-        """
-        Start continuous QR generation asynchronously.
+        """Start one background generator with an optional sync or async callback."""
+        self._ensure_open()
+        if self._generation_task is not None and not self._generation_task.done():
+            return
 
-        Args:
-            callback: Optional callback for each generated QR
-        """
-        async def generation_loop():
+        async def generation_loop() -> None:
             while True:
                 try:
-                    qr_data, qr_image = await self.generate_single_qr_async()
-
-                    if callback:
-                        await callback(qr_data, qr_image)
-
+                    frame = await self.generate_single_qr_async()
+                    if callback is not None:
+                        await self._notify_callback(callback, *frame)
                     await asyncio.sleep(self.config.update_interval)
-
-                except asyncio.CancelledError:
-                    break
-                except Exception as e:
-                    _logger.error(f"Async generation error: {e}")
+                except Exception:
+                    _logger.exception("Async generation error")
                     await asyncio.sleep(1.0)
 
-        # Start generation loop as background task
         self._generation_task = asyncio.create_task(generation_loop())
 
     async def stop_live_generation_async(self) -> None:
-        """Stop continuous QR generation."""
-        if hasattr(self, '_generation_task'):
-            self._generation_task.cancel()
-            try:
-                await self._generation_task
-            except asyncio.CancelledError:
-                pass
+        """Cancel and wait for the active background generator."""
+        task = self._generation_task
+        if task is None or task.done():
+            return
+        task.cancel()
+        if task is not asyncio.current_task():
+            await asyncio.gather(task, return_exceptions=True)
 
     async def get_performance_stats_async(self) -> dict[str, Any]:
         """
@@ -397,7 +261,9 @@ class AsyncQRLiveProtocol:
         Returns:
             Dictionary with performance metrics
         """
-        # Calculate average operation times
+        return self._performance_stats()
+
+    def _performance_stats(self) -> dict[str, Any]:
         perf_stats = {}
         for operation, times in self._operation_times.items():
             if times:
@@ -415,11 +281,11 @@ class AsyncQRLiveProtocol:
                 'hit_rate': self._cache_hits / max(1, self._cache_hits + self._cache_misses)
             },
             'operation_performance': perf_stats,
-            'concurrent_operations': len(asyncio.all_tasks()) - 1,  # Exclude current task
+            'concurrent_operations': self._active_operations,
             'memory_usage': self._get_memory_usage(),
             'async_resources': {
-                'http_sessions': len(self._session_pool),
-                'thread_pool_workers': self._executor._max_workers
+                'http_sessions': 0,  # Providers own their own connections.
+                'thread_pool_workers': self._WORKERS
             }
         }
 
@@ -440,54 +306,30 @@ class AsyncQRLiveProtocol:
         except Exception as e:
             return {'error': str(e)}
 
-    async def cache_qr_image_async(self, cache_key: str, qr_image: bytes,
-                                  ttl: float = 60.0) -> None:
-        """
-        Cache QR image asynchronously.
-
-        Args:
-            cache_key: Unique cache key
-            qr_image: QR image bytes to cache
-            ttl: Time to live in seconds
-        """
-        # Simple in-memory cache with TTL
-        expiry_time = time.time() + ttl
-
-        # Use executor for thread-safe cache operations
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(
-            self._executor,
-            self._cache_qr_sync,
-            cache_key, qr_image, expiry_time
+    async def cache_qr_image_async(
+        self, cache_key: str, qr_image: bytes, ttl: float | None = None
+    ) -> None:
+        """Cache an image using the given TTL, or the current default TTL."""
+        self._ensure_open()
+        self._image_cache[cache_key] = (
+            qr_image,
+            time.monotonic() + (self._cache_ttl if ttl is None else ttl),
         )
-
-    def _cache_qr_sync(self, cache_key: str, qr_image: bytes, expiry_time: float):
-        """Synchronous cache operation (thread-safe)."""
-        # This would be implemented with a thread-safe cache
-        # For now, just track cache statistics
-        self._cache_hits += 1
+        self._image_cache.move_to_end(cache_key)
+        if len(self._image_cache) > self._CACHE_SIZE:
+            self._image_cache.popitem(last=False)
 
     async def get_cached_qr_async(self, cache_key: str) -> bytes | None:
-        """
-        Get cached QR image asynchronously.
-
-        Args:
-            cache_key: Cache key to lookup
-
-        Returns:
-            Cached QR image bytes or None if not found/expired
-        """
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(
-            self._executor,
-            self._get_cached_qr_sync,
-            cache_key
-        )
-
-    def _get_cached_qr_sync(self, cache_key: str) -> bytes | None:
-        """Synchronous cache lookup (thread-safe)."""
-        # This would check the actual cache
-        # For now, simulate cache miss
+        """Return a live cached image, evicting an expired entry if present."""
+        self._ensure_open()
+        entry = self._image_cache.get(cache_key)
+        if entry is not None:
+            image, expires_at = entry
+            if time.monotonic() < expires_at:
+                self._cache_hits += 1
+                self._image_cache.move_to_end(cache_key)
+                return image
+            del self._image_cache[cache_key]
         self._cache_misses += 1
         return None
 
@@ -589,18 +431,21 @@ class AsyncQRLiveProtocol:
 
     # Synchronous compatibility methods
     def generate_single_qr(self, user_data: dict | None = None,
-                          sign_data: bool = True, encrypt_data: bool = False) -> tuple[QRData, bytes]:
-        """Synchronous wrapper for async QR generation."""
-        return asyncio.run(self.generate_single_qr_async(user_data, sign_data, encrypt_data))
+                          sign_data: bool | None = True,
+                          encrypt_data: bool | None = None) -> tuple[QRData, bytes]:
+        """Generate a QR synchronously."""
+        self._ensure_open()
+        return self.sync_qrlp.generate_single_qr(user_data, sign_data, encrypt_data)
 
-    def verify_qr_data(self, qr_json: str) -> dict[str, bool]:
-        """Synchronous wrapper for async verification."""
-        return asyncio.run(self.verify_qr_data_async(qr_json))
+    def verify_qr_data(self, qr_json: str) -> dict[str, Any]:
+        """Verify a QR synchronously."""
+        self._ensure_open()
+        return self.sync_qrlp.verify_qr_data(qr_json)
 
     def get_statistics(self) -> dict:
         """Get combined sync and async statistics."""
         sync_stats = self.sync_qrlp.get_statistics()
-        async_stats = asyncio.run(self.get_performance_stats_async())
+        async_stats = self._performance_stats()
 
         return {
             **sync_stats,

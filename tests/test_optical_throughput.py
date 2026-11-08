@@ -69,6 +69,19 @@ def test_distinct_payloads_not_cached(controller, encoder_counts):
     assert controller.get_performance_report()["cache_hit_rate"] == 0.0
 
 
+def test_payload_cache_evicts_least_recently_used():
+    encoded = []
+
+    def encode(payload):
+        encoded.append(payload)
+        return payload.encode()
+
+    controller = OpticalThroughputController(encode, ThroughputConfig(cache_size=2))
+    for payload in ("a", "b", "a", "c", "b"):
+        controller.produce(payload)
+    assert encoded == ["a", "b", "c", "b"]
+
+
 def test_speed_up_on_reads_ok(controller):
     before = controller.current_interval
     decision = controller.adapt(reads_ok=True, encode_headroom=True)

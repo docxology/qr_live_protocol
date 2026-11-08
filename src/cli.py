@@ -6,18 +6,22 @@ live streaming, verification, and configuration management.
 """
 
 import json
+import math
+import os
 import sys
-import threading
 import time
+from copy import deepcopy
 from pathlib import Path
 
 import click
 
-from .config import QRLPConfig
+from . import __version__
+from .config import QRLPConfig, TimeSettings
 from .core import QRLiveProtocol
 from .frame_recovery import FrameRecoveryConfig
 from .live_simulator import LiveSimulator, OpticalChannelModel
 from .optical_throughput import ThroughputConfig
+from .serializer import QRSerializer
 from .time_stamper import TimeStamper
 from .time_stamper_integration import QRLPTimeStampVerifier
 from .trust import TrustStore
@@ -25,7 +29,7 @@ from .web_server import QRLiveWebServer
 
 
 @click.group()
-@click.version_option(version="1.6.0")
+@click.version_option(version=__version__)
 @click.option('--config', '-c', type=click.Path(exists=True),
               help='Configuration file path (JSON or YAML)')
 @click.option('--debug', '-d', is_flag=True, help='Enable debug mode')
@@ -38,146 +42,96 @@ def cli(ctx, config, debug):
     blockchain verification, and identity confirmation for livestreaming
     and official video releases.
     """
-    # Initialize context
     ctx.ensure_object(dict)
+    try:
+        settings = QRLPConfig.from_file(config) if config else QRLPConfig.from_env()
+        if config and settings.security_settings.encryption_key is None:
+            settings.security_settings.encryption_key = os.getenv('QRLP_ENCRYPTION_KEY') or None
+    except (OSError, ValueError, ImportError) as exc:
+        raise click.ClickException(str(exc)) from exc
 
-    # Load configuration
-    if config:
-        ctx.obj['config'] = QRLPConfig.from_file(config)
-    else:
-        ctx.obj['config'] = QRLPConfig.from_env()
-
-    # Set debug mode
     if debug:
-        ctx.obj['config'].logging_settings.level = 'DEBUG'
-        ctx.obj['config'].web_settings.debug = True
+        settings.logging_settings.level = 'DEBUG'
+        settings.web_settings.debug = True
+    ctx.obj['config'] = settings
+
+
+def _live_options(command):
+    """Share the same CLI overrides for both browser entry points."""
+    for option in (
+        click.option('--identity-file', type=click.Path(dir_okay=False), help='Identity file path'),
+        click.option('--no-browser', is_flag=True, help='Do not auto-open browser'),
+        click.option('--interval', '-i', type=float, help='Update interval in seconds'),
+        click.option('--host', '-h', help='Web server host'),
+        click.option('--port', '-p', type=click.IntRange(1, 65535), help='Web server port'),
+    ):
+        command = option(command)
+    return command
 
 
 @cli.command()
-@click.option('--port', '-p', type=int, help='Web server port')
-@click.option('--host', '-h', default='localhost', help='Web server host')
-@click.option('--interval', '-i', type=float, help='Update interval in seconds')
-@click.option('--no-browser', is_flag=True, help='Do not auto-open browser')
-@click.option('--identity-file', type=click.Path(), help='Identity file path')
-@click.pass_context
-def live(ctx, port, host, interval, no_browser, identity_file):
-    """Start live QR code generation and web display."""
-    config = ctx.obj['config']
-
-    # Override settings from command line
-    if port:
-        config.web_settings.port = port
-    if host:
-        config.web_settings.host = host
-    if interval:
-        config.update_interval = interval
-    if no_browser:
-        config.web_settings.auto_open_browser = False
-    if identity_file:
-        config.identity_settings.identity_file = identity_file
-
-    # Validate configuration
-    issues = config.validate()
-    if issues:
-        click.echo("Configuration issues found:", err=True)
-        for issue in issues:
-            click.echo(f"  - {issue}", err=True)
-        sys.exit(1)
-
-    click.echo(f"Starting QRLP live server on {config.web_settings.host}:{config.web_settings.port}")
-
-    try:
-        # Initialize QRLP
-        qrlp = QRLiveProtocol(config)
-
-        # Initialize web server
-        web_server = QRLiveWebServer(config.web_settings, verifier=qrlp)
-
-        # Connect QRLP updates to web server
-        qrlp.add_update_callback(web_server.update_qr_display)
-
-        # Start services
-        web_server.start_server(threaded=True)
-        qrlp.start_live_generation()
-
-        click.echo(f"✓ QRLP server running at: {web_server.get_server_url()}")
-        click.echo("Press Ctrl+C to stop...")
-
-        # Keep running until interrupted
-        try:
-            while True:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            click.echo("\nShutting down...")
-            qrlp.stop_live_generation()
-            web_server.stop_server()
-            click.echo("QRLP stopped.")
-
-    except Exception as e:
-        click.echo(f"Error starting QRLP: {e}", err=True)
-        sys.exit(1)
+@_live_options
+@click.pass_obj
+def live(obj, port, host, interval, no_browser, identity_file):
+    """Start live QR generation and display."""
+    _serve_live(obj['config'], port, host, interval, no_browser, identity_file, dashboard=False)
 
 
 @cli.command()
-@click.option('--port', '-p', type=int, help='Web server port')
-@click.option('--host', '-h', default='localhost', help='Web server host')
-@click.option('--interval', '-i', type=float, help='Update interval in seconds')
-@click.option('--no-browser', is_flag=True, help='Do not auto-open browser')
-@click.option('--identity-file', type=click.Path(), help='Identity file path')
-@click.pass_context
-def dashboard(ctx, port, host, interval, no_browser, identity_file):
-    """Start QRLP and open the improvement dashboard."""
-    config = ctx.obj['config']
+@_live_options
+@click.pass_obj
+def dashboard(obj, port, host, interval, no_browser, identity_file):
+    """Start live QR generation and open the improvement dashboard."""
+    _serve_live(obj['config'], port, host, interval, no_browser, identity_file, dashboard=True)
 
-    if port:
-        config.web_settings.port = port
-    if host:
-        config.web_settings.host = host
-    if interval:
+
+def _serve_live(config, port, host, interval, no_browser, identity_file, *, dashboard):
+    web = config.web_settings
+    if port is not None:
+        web.port = port
+    if host is not None:
+        web.host = host
+    if interval is not None:
         config.update_interval = interval
-    if identity_file:
+    if identity_file is not None:
         config.identity_settings.identity_file = identity_file
-
-    config.web_settings.auto_open_browser = False
 
     issues = config.validate()
     if issues:
-        click.echo("Configuration issues found:", err=True)
-        for issue in issues:
-            click.echo(f"  - {issue}", err=True)
-        sys.exit(1)
+        raise click.ClickException("Configuration issues:\n  - " + "\n  - ".join(issues))
 
-    click.echo(
-        f"Starting QRLP improvement dashboard on "
-        f"{config.web_settings.host}:{config.web_settings.port}"
-    )
-
+    open_browser = web.auto_open_browser and not no_browser
+    web.auto_open_browser = False  # Open the selected page once, after a successful bind.
     try:
         qrlp = QRLiveProtocol(config)
-        web_server = QRLiveWebServer(config.web_settings, verifier=qrlp)
-        qrlp.add_update_callback(web_server.update_qr_display)
-
-        web_server.start_server(threaded=True)
-        qrlp.start_live_generation()
-
-        dashboard_url = f"{web_server.get_server_url()}/improve"
-        click.echo(f"✓ Improve dashboard running at: {dashboard_url}")
-        if not no_browser:
-            threading.Timer(1.0, web_server.open_improve_dashboard).start()
-        click.echo("Press Ctrl+C to stop...")
-
+        server = QRLiveWebServer(web, verifier=qrlp)
+        qrlp.add_update_callback(server.update_qr_display)
+        qrlp.set_user_data_callback(server.get_user_data)
+        server.start_server(threaded=True)
         try:
+            qrlp.start_live_generation()
+            url = server.get_server_url() + ('/improve' if dashboard else '')
+            service = 'improvement dashboard' if dashboard else 'server'
+            click.echo(f"QRLP {service} running at: {url}")
+            if open_browser:
+                import webbrowser
+
+                try:
+                    webbrowser.open(url)
+                except (OSError, webbrowser.Error):
+                    click.echo("Could not open the browser automatically. Open the URL above.", err=True)
+            click.echo("Press Ctrl+C to stop.")
             while True:
                 time.sleep(1)
-        except KeyboardInterrupt:
-            click.echo("\nShutting down...")
-            qrlp.stop_live_generation()
-            web_server.stop_server()
-            click.echo("QRLP dashboard stopped.")
-
-    except Exception as e:
-        click.echo(f"Error starting QRLP dashboard: {e}", err=True)
-        sys.exit(1)
+        finally:
+            try:
+                qrlp.stop_live_generation()
+            finally:
+                server.stop_server()
+    except KeyboardInterrupt:
+        click.echo("\nQRLP stopped.")
+    except Exception as exc:
+        raise click.ClickException(f"Could not run the live server: {exc}") from exc
 
 
 @cli.command()
@@ -189,6 +143,7 @@ def dashboard(ctx, port, host, interval, no_browser, identity_file):
 @click.option('--include-text', is_flag=True, help='Include text overlay')
 @click.option('--user-data', type=str, help='JSON object to include in the QR payload')
 @click.option('--sign/--no-sign', default=None, help='Override signed QR generation')
+@click.option('--encrypt/--no-encrypt', default=None, help='Override QR payload encryption')
 @click.option('--key-id', type=str, help='Signing key ID to use when signing')
 @click.option('--issuer-id', type=str, help='Issuer ID to embed in the QR payload')
 @click.option('--public-key-output', type=click.Path(), help='Write signing public key PEM')
@@ -202,6 +157,7 @@ def generate(
     include_text,
     user_data,
     sign,
+    encrypt,
     key_id,
     issuer_id,
     public_key_output,
@@ -213,16 +169,24 @@ def generate(
         config.security_settings.issuer_id = issuer_id
 
     try:
-        # Initialize QRLP
-        qrlp = QRLiveProtocol(config)
         parsed_user_data = _parse_user_data(user_data)
         sign_data = config.security_settings.sign_qr_data if sign is None else sign
+        encrypt_data = config.security_settings.encrypt_qr_data if encrypt is None else encrypt
+        if (public_key_output or trust_record_output) and not sign_data:
+            raise click.ClickException("Public key/trust record export requires signing (--sign)")
+        if encrypt_data and not config.security_settings.encryption_key:
+            raise click.ClickException("Encrypted output requires a persistent key (QRLP_ENCRYPTION_KEY or config)")
+        if encrypt_data and not sign_data:
+            raise click.ClickException("Use --sign for encrypted output so another process can authenticate it")
 
-        # Generate QR code
+        qrlp = QRLiveProtocol(config)
         qr_data, qr_image = qrlp.generate_single_qr(
             user_data=parsed_user_data,
             sign_data=sign_data,
+            encrypt_data=encrypt_data,
             signing_key_id=key_id,
+            style=style,
+            include_text=include_text,
         )
 
         click.echo(f"Generated QR code with sequence #{qr_data.sequence_number}")
@@ -230,55 +194,45 @@ def generate(
         click.echo(f"Identity: {qr_data.identity_hash[:16]}...")
         click.echo(f"Issuer: {qr_data.issuer_id}")
         click.echo(f"Signed: {'yes' if qr_data.digital_signature else 'no'}")
-
         if qr_data.blockchain_hashes:
-            click.echo(f"Blockchain verification: {list(qr_data.blockchain_hashes.keys())}")
+            click.echo(f"Blockchain tip context: {list(qr_data.blockchain_hashes.keys())}")
 
-        if (public_key_output or trust_record_output) and not qr_data.signing_key_id:
-            raise click.ClickException("Public key/trust record export requires --sign")
-
-        if public_key_output:
+        if public_key_output or trust_record_output:
+            if not qr_data.signing_key_id:
+                raise click.ClickException("QR generation did not produce a signing key ID")
             public_key = qrlp.key_manager.export_public_key(qr_data.signing_key_id)
             if not public_key:
                 raise click.ClickException(f"Could not export public key: {qr_data.signing_key_id}")
-            _write_bytes(public_key_output, public_key)
-            click.echo(f"✓ Public key saved to: {public_key_output}")
+            if public_key_output:
+                _write_bytes(public_key_output, public_key)
+                click.echo(f"✓ Public key saved to: {public_key_output}")
+            if trust_record_output:
+                trust_store = TrustStore()
+                trust_store.add_public_key(
+                    qr_data.issuer_id, qr_data.signing_key_id, public_key, qr_data.signature_algorithm,
+                )
+                trust_store.to_file(trust_record_output)
+                click.echo(f"✓ Trust store saved to: {trust_record_output}")
 
-        if trust_record_output:
-            public_key = qrlp.key_manager.export_public_key(qr_data.signing_key_id)
-            if not public_key:
-                raise click.ClickException(f"Could not export public key: {qr_data.signing_key_id}")
-            trust_store = TrustStore()
-            trust_store.add_public_key(
-                qr_data.issuer_id,
-                qr_data.signing_key_id,
-                public_key,
-                qr_data.signature_algorithm,
-            )
-            trust_store.to_file(trust_record_output)
-            click.echo(f"✓ Trust store saved to: {trust_record_output}")
-
-        # Handle output
         if output:
-            if format in ['png', 'both']:
-                png_path = output if output.endswith('.png') else f"{output}.png"
-                with open(png_path, 'wb') as f:
-                    f.write(qr_image)
-                click.echo(f"✓ QR image saved to: {png_path}")
-
-            if format in ['json', 'both']:
-                json_path = output if output.endswith('.json') else f"{output}.json"
-                with open(json_path, 'w') as f:
-                    json.dump(qr_data.__dict__, f, indent=2, default=str)
+            if format in ('png', 'both'):
+                extension = config.qr_settings.image_format.lower()
+                image_path = Path(output) if output.lower().endswith(f'.{extension}') else Path(f"{output}.{extension}")
+                image_path.write_bytes(qr_image)
+                click.echo(f"✓ QR image saved to: {image_path}")
+            if format in ('json', 'both'):
+                json_path = Path(output) if output.endswith('.json') else Path(f"{output}.json")
+                json_path.write_bytes(qr_data.to_json().encode('utf-8'))
                 click.echo(f"✓ QR data saved to: {json_path}")
         else:
-            # Print QR data to console
             click.echo("\nQR Data:")
-            click.echo(json.dumps(qr_data.__dict__, indent=2, default=str))
-
-    except Exception as e:
-        click.echo(f"Error generating QR code: {e}", err=True)
-        sys.exit(1)
+            click.echo(json.dumps(json.loads(qr_data.to_json()), indent=2))
+        if qr_data.ots_proof_path:
+            click.echo(f"OpenTimestamps proof: {qr_data.ots_proof_path}")
+    except click.ClickException:
+        raise
+    except Exception as exc:
+        raise click.ClickException(f"Error generating QR code: {exc}") from exc
 
 
 @cli.command()
@@ -287,8 +241,7 @@ def generate(
               help='Read QR JSON from a file (single) or batch JSON array')
 @click.option('--batch', is_flag=True,
               help='Treat --file as a batch JSON array of QR payloads to verify')
-@click.option('--tolerance', '-t', type=float, default=30.0,
-              help='Time tolerance in seconds')
+@click.option('--tolerance', '-t', type=float, help='Override time tolerance in seconds')
 @click.option('--public-key', type=click.Path(exists=True),
               help='Trusted issuer public key PEM for external signature verification')
 @click.option('--trust-store', type=click.Path(exists=True),
@@ -300,6 +253,7 @@ def generate(
 @click.option('--algorithm', type=click.Choice(['rsa', 'ecdsa']), default='rsa',
               help='Signature algorithm for --public-key')
 @click.option('--json-output', is_flag=True, help='Print raw verification JSON')
+@click.option('--strict', is_flag=True, help='Exit with status 1 when any QR is invalid')
 @click.option('--verbose', '-v', is_flag=True, help='Show raw verification JSON after summary')
 @click.pass_context
 def verify(
@@ -314,87 +268,90 @@ def verify(
     key_id,
     algorithm,
     json_output,
+    strict,
     verbose,
 ):
     """Verify a QR code's data and authenticity."""
     config = ctx.obj['config']
-    config.verification_settings.max_time_drift = tolerance
+    if tolerance is not None:
+        if not math.isfinite(tolerance) or tolerance < 0:
+            raise click.BadParameter('must be finite and non-negative', param_hint='--tolerance')
+        config.verification_settings.max_time_drift = tolerance
+    if batch and (not input_file or qr_data):
+        raise click.UsageError("--batch requires --file and does not accept an argument")
+    if qr_data and input_file:
+        raise click.UsageError("Provide a QR argument or --file")
+    if batch and public_key and not (issuer and key_id):
+        raise click.UsageError("--batch --public-key requires explicit --issuer and --key-id")
 
     try:
-        # Batch verification mode
-        if batch and input_file:
-            with open(input_file) as f:
-                payloads = json.load(f)
-            if not isinstance(payloads, list):
-                raise click.ClickException("--batch file must contain a JSON array")
-
-            qrlp = QRLiveProtocol(config)
-            if trust_store:
-                qrlp.trust_store = TrustStore.from_file(trust_store)
-
-            results_list = []
-            valid_count = 0
-            for i, payload in enumerate(payloads):
-                payload_str = payload if isinstance(payload, str) else json.dumps(payload)
-                result = qrlp.verify_qr_data(payload_str)
-                results_list.append(result)
-                if result.get('valid'):
-                    valid_count += 1
-                click.echo(f"QR #{i+1}: {'✓ VALID' if result.get('valid') else '✗ INVALID'}")
-
-            click.echo(f"\nBatch: {valid_count}/{len(payloads)} valid")
-            if json_output:
-                click.echo(json.dumps(results_list, indent=2, default=str))
-            return
-
-        qr_data = _load_qr_data_argument(qr_data, input_file)
-
-        # Initialize QRLP
         qrlp = QRLiveProtocol(config)
-
         if trust_store:
             qrlp.trust_store = TrustStore.from_file(trust_store)
 
-        if public_key:
-            parsed = json.loads(qr_data)
-            issuer = issuer or parsed.get('issuer_id')
-            key_id = key_id or parsed.get('signing_key_id')
-            if not issuer or not key_id:
-                click.echo("--public-key requires --issuer/--key-id or QR issuer_id/signing_key_id fields", err=True)
-                sys.exit(1)
-            qrlp.trust_store.add_public_key_file(issuer, key_id, public_key, algorithm)
-
-        # Verify QR data
-        results = qrlp.verify_qr_data(qr_data)
-
-        if json_output:
-            click.echo(json.dumps(results, indent=2, default=str))
+        if batch:
+            payloads = QRSerializer.deserialize(Path(input_file).read_text(encoding='utf-8'))
+            if not isinstance(payloads, list):
+                raise click.ClickException("--batch file must contain a JSON array")
+            if public_key:
+                qrlp.trust_store.add_public_key_file(issuer, key_id, public_key, algorithm)
+            results = [
+                qrlp.verify_qr_data(payload if isinstance(payload, str) else json.dumps(payload))
+                for payload in payloads
+            ]
+            if json_output:
+                click.echo(json.dumps(results, indent=2))
+            else:
+                for i, result in enumerate(results, 1):
+                    click.echo(f"QR #{i}: {'✓ VALID' if result['valid'] else '✗ INVALID'}")
+                click.echo(f"\nBatch: {sum(result['valid'] for result in results)}/{len(results)} valid")
+            if strict and not all(result['valid'] for result in results):
+                ctx.exit(1)
             return
 
-        click.echo("Verification Results:")
-        click.echo(f"  Valid JSON: {'✓' if results['valid_json'] else '✗'}")
+        qr_data = _load_qr_data_argument(qr_data, input_file)
+        if public_key:
+            if not (issuer and key_id):
+                parsed = QRSerializer.deserialize(qr_data)
+                if isinstance(parsed, dict):
+                    issuer = issuer or parsed.get('issuer_id')
+                    key_id = key_id or parsed.get('signing_key_id')
+            if not issuer or not key_id:
+                raise click.ClickException(
+                    "--public-key requires --issuer/--key-id or QR issuer_id/signing_key_id fields",
+                )
+            qrlp.trust_store.add_public_key_file(issuer, key_id, public_key, algorithm)
 
-        if results['valid_json']:
-            click.echo(f"  Identity verified: {'✓' if results['identity_verified'] else '✗'}")
-            click.echo(f"  Time verified: {'✓' if results['time_verified'] else '✗'}")
-            click.echo(f"  Blockchain verified: {'✓' if results['blockchain_verified'] else '✗'}")
-            click.echo(f"  Signature verified: {'✓' if results['signature_verified'] else '✗'}")
-            click.echo(f"  HMAC verified: {'✓' if results['hmac_verified'] else '✗'}")
-            click.echo(f"  Trust mode: {results.get('trust_mode', 'none')}")
+        result = qrlp.verify_qr_data(qr_data)
+        if json_output:
+            click.echo(json.dumps(result, indent=2))
         else:
-            click.echo(f"  Error: {results.get('error', 'Unknown error')}")
+            _show_verification(result, verbose)
+        if strict and not result['valid']:
+            ctx.exit(1)
+    except (click.ClickException, click.exceptions.Exit):
+        raise
+    except Exception as exc:
+        raise click.ClickException(f"Error verifying QR code: {exc}") from exc
 
-        # Overall result
-        overall_valid = results.get('valid', False)
 
-        click.echo(f"\nOverall: {'✓ VALID' if overall_valid else '✗ INVALID'}")
-        if verbose:
-            click.echo("\nRaw Results:")
-            click.echo(json.dumps(results, indent=2, default=str))
-
-    except Exception as e:
-        click.echo(f"Error verifying QR code: {e}", err=True)
-        sys.exit(1)
+def _show_verification(result, verbose):
+    click.echo("Verification Results:")
+    click.echo(f"  Valid JSON: {'✓' if result['valid_json'] else '✗'}")
+    if result['valid_json']:
+        for label, field in (
+            ('Identity', 'identity_verified'), ('Time', 'time_verified'),
+            ('Blockchain', 'blockchain_verified'), ('Signature', 'signature_verified'),
+            ('HMAC', 'hmac_verified'),
+        ):
+            click.echo(f"  {label} verified: {'✓' if result[field] else '✗'}")
+        click.echo(f"  Trust mode: {result.get('trust_mode', 'none')}")
+    if result.get('error'):
+        click.echo(f"  Error: {result['error']}")
+    click.echo(f"\nOverall: {'✓ VALID' if result['valid'] else '✗ INVALID'}")
+    if verbose:
+        click.echo("\nRaw Results:")
+        click.echo(json.dumps(result, indent=2))
 
 
 @cli.group()
@@ -404,7 +361,7 @@ def keys():
 
 @keys.command("generate")
 @click.option('--algorithm', type=click.Choice(['rsa', 'ecdsa']), default='rsa')
-@click.option('--key-size', type=int, default=2048)
+@click.option('--key-size', type=int, help='Defaults to 2048 (RSA) or 256 (ECDSA)')
 @click.option('--purpose', type=str, default='qr_signing')
 @click.option('--public-key-output', type=click.Path(), help='Write generated public key PEM')
 @click.pass_context
@@ -413,7 +370,7 @@ def keys_generate(ctx, algorithm, key_size, purpose, public_key_output):
     qrlp = QRLiveProtocol(ctx.obj['config'])
     public_key, _private_key = qrlp.key_manager.generate_keypair(
         algorithm=algorithm,
-        key_size=key_size,
+        key_size=key_size if key_size is not None else (256 if algorithm == 'ecdsa' else 2048),
         purpose=purpose,
     )
     key_id = next(reversed(qrlp.key_manager.list_keys()))
@@ -457,7 +414,7 @@ def keys_export_public(ctx, key_id, output):
 @keys.command("rotate")
 @click.argument('key_id', type=str)
 @click.option('--algorithm', type=click.Choice(['rsa', 'ecdsa']), default='rsa')
-@click.option('--key-size', type=int, default=2048)
+@click.option('--key-size', type=int, help='Defaults to 2048 (RSA) or 256 (ECDSA)')
 @click.option('--public-key-output', type=click.Path(), help='Write new public key PEM')
 @click.option('--archive-dir', type=click.Path(), help='Archive directory for the old key (default: key_dir/archive)')
 @click.option('--trust-store', type=click.Path(), help='Add the old public key to this trust store for continued verification')
@@ -471,6 +428,14 @@ def keys_rotate(ctx, key_id, algorithm, key_size, public_key_output,
     verifiable. Use --trust-store to register the old public key for an
     external verifier.
     """
+    if trust_store and not issuer:
+        raise click.UsageError("--issuer is required with --trust-store")
+
+    # Load and check the trust file before modifying local key material.
+    store = None
+    if trust_store:
+        store = TrustStore.from_file(trust_store) if Path(trust_store).exists() else TrustStore()
+
     qrlp = QRLiveProtocol(ctx.obj['config'])
     keypair = qrlp.key_manager.get_keypair(key_id)
     if not keypair:
@@ -480,7 +445,7 @@ def keys_rotate(ctx, key_id, algorithm, key_size, public_key_output,
     new_key_id, old_public = qrlp.key_manager.rotate_signing_key(
         key_id=key_id,
         algorithm=algorithm,
-        key_size=key_size,
+        key_size=key_size if key_size is not None else (256 if algorithm == 'ecdsa' else 2048),
         archive_dir=archive_dir,
     )
     click.echo(f"✓ New key generated: {new_key_id}")
@@ -494,14 +459,9 @@ def keys_rotate(ctx, key_id, algorithm, key_size, public_key_output,
             click.echo(f"✓ New public key saved to: {public_key_output}")
 
     # Optionally register the old public key with a trust store.
-    if trust_store:
-        if not issuer:
-            raise click.ClickException("--issuer is required with --trust-store")
+    if store is not None:
         if not old_public:
             raise click.ClickException("Could not read old key public material")
-        store = TrustStore()
-        if Path(trust_store).exists():
-            store = TrustStore.from_file(trust_store)
         store.add_public_key(issuer, key_id, old_public, keypair.algorithm)
         store.to_file(trust_store)
         click.echo(f"✓ Old public key added to trust store: {trust_store}")
@@ -554,26 +514,21 @@ def trust_list(store):
 @click.pass_context
 def config_init(ctx, output, format):
     """Initialize a new configuration file with defaults."""
+    config = QRLPConfig().to_dict()
     try:
-        config = QRLPConfig()
-
         if format == 'json':
-            with open(output, 'w') as f:
-                json.dump(config.to_dict(), f, indent=2, default=str)
-        elif format == 'yaml':
+            content = json.dumps(config, indent=2, allow_nan=False) + "\n"
+        else:
             try:
                 import yaml
-                with open(output, 'w') as f:
-                    yaml.dump(config.to_dict(), f, default_flow_style=False)
-            except ImportError:
-                click.echo("PyYAML required for YAML format", err=True)
-                sys.exit(1)
+            except ImportError as exc:
+                raise click.ClickException("Install the full extra for YAML support") from exc
+            content = yaml.safe_dump(config, sort_keys=False)
+        Path(output).write_text(content, encoding='utf-8')
+    except OSError as exc:
+        raise click.ClickException(f"Error creating configuration: {exc}") from exc
 
-        click.echo(f"✓ Configuration file created: {output}")
-
-    except Exception as e:
-        click.echo(f"Error creating configuration: {e}", err=True)
-        sys.exit(1)
+    click.echo(f"✓ Configuration file created: {output}")
 
 
 @cli.command()
@@ -683,21 +638,21 @@ def config_validate(ctx, config_path):
 @click.argument('qr_json_file', type=click.Path(exists=True))
 @click.option('--proof-dir', type=click.Path(), default='output/timestamps',
               help='Where to save .ots proof files (default: output/timestamps/)')
-@click.option('--server', default='https://stamp.opentimestamps.org',
+@click.option('--server', default=TimeSettings().ots_server,
               help='OpenTimestamps server URL')
 @click.option('--signing-key', type=click.Path(),
-              help='Optional: sign the QR before stamping (PEM private key)')
+              hidden=True)
 @click.option('--json-output', is_flag=True, help='Output result as JSON')
 def stamp(qr_json_file: str, proof_dir: str, server: str, signing_key: str, json_output: bool) -> None:
     """Stamp a QR JSON file with OpenTimestamps.
 
-    Computes the SHA-256 of the QR payload, submits it to an OpenTimestamps
-    calendar server, and saves the ``.ots`` proof file alongside the input.
-    The proof can later be verified with ``qrlp verify-ots``.
+    Submits a commitment to the exact file bytes and saves the calendar's
+    initial receipt in the proof directory.
     """
+    if signing_key is not None:
+        raise click.UsageError("Sign the QR with qrlp generate --sign before stamping it")
     try:
-        with open(qr_json_file, encoding='utf-8') as f:
-            qr_json = f.read()
+        qr_bytes = Path(qr_json_file).read_bytes()
 
         stamper = TimeStamper(
             enabled=True,
@@ -705,7 +660,7 @@ def stamp(qr_json_file: str, proof_dir: str, server: str, signing_key: str, json
             min_interval=0,
             proof_dir=Path(proof_dir),
         )
-        proof_path = stamper.stamp(qr_json.encode('utf-8'))
+        proof_path = stamper.stamp(qr_bytes)
 
         if proof_path is None:
             click.echo("✗ Timestamping failed or disabled.", err=True)
@@ -731,17 +686,16 @@ def stamp(qr_json_file: str, proof_dir: str, server: str, signing_key: str, json
 @click.argument('qr_json_file', type=click.Path(exists=True))
 @click.argument('proof_file', type=click.Path(exists=True))
 @click.option('--tolerance', '-t', type=int, default=60,
-              help='Acceptable time drift in seconds (default: 60)')
+              hidden=True)
 @click.option('--json-output', is_flag=True, help='Output result as JSON')
 def verify_ots(qr_json_file: str, proof_file: str, tolerance: int, json_output: bool) -> None:
     """Verify a QR JSON file against an OpenTimestamps proof.
 
-    Checks that the QR data matches the ``.ots`` proof and reports the
-    attested timestamp and blockchain.
+    Checks the exact file digest and reports the receipt's declared state.
+    It does not verify a chain anchor or an attested time.
     """
     try:
-        with open(qr_json_file, encoding='utf-8') as f:
-            qr_json = f.read()
+        qr_json = Path(qr_json_file).read_bytes().decode('utf-8')
 
         stamper = TimeStamper(enabled=False)
         verifier = QRLPTimeStampVerifier(stamper)
@@ -755,14 +709,12 @@ def verify_ots(qr_json_file: str, proof_file: str, tolerance: int, json_output: 
             click.echo(json.dumps(result, indent=2, default=str))
             return
 
-        click.echo("OpenTimestamps Verification:")
-        click.echo(f"  OTS verified: {'✓' if result.get('ots_verified') else '✗'}")
+        click.echo("OpenTimestamps receipt:")
+        click.echo(f"  Matching digest and attestation: {'yes' if result.get('ots_verified') else 'no'}")
         click.echo(f"  Proof path: {result.get('ots_proof_path', '')}")
-        click.echo(f"  Timestamp: {result.get('ots_timestamp', '')}")
-        click.echo(f"  Blockchain: {result.get('ots_blockchain', '')}")
-        click.echo(
-            f"\nOverall: {'✓ VERIFIED' if result.get('ots_verified') else '✗ NOT VERIFIED'}"
-        )
+        click.echo(f"  Local receipt time: {result.get('ots_timestamp') or 'unavailable'}")
+        click.echo(f"  Reported chain: {result.get('ots_blockchain', '')}")
+        click.echo("  Chain anchor checked: no")
     except Exception as e:
         click.echo(f"Error verifying OTS proof: {e}", err=True)
         sys.exit(1)
@@ -771,7 +723,7 @@ def verify_ots(qr_json_file: str, proof_file: str, tolerance: int, json_output: 
 def _parse_user_data(user_data):
     if not user_data:
         return None
-    parsed = json.loads(user_data)
+    parsed = QRSerializer.deserialize(user_data)
     if not isinstance(parsed, dict):
         raise click.ClickException("--user-data must be a JSON object")
     return parsed
@@ -779,12 +731,12 @@ def _parse_user_data(user_data):
 
 def _load_qr_data_argument(qr_data, input_file=None) -> str:
     if input_file:
-        with open(input_file) as f:
+        with open(input_file, encoding='utf-8') as f:
             return f.read()
     if not qr_data:
         raise click.ClickException("Provide QR JSON as an argument or use --file")
     if qr_data.startswith("@"):
-        with open(qr_data[1:]) as f:
+        with open(qr_data[1:], encoding='utf-8') as f:
             return f.read()
     return qr_data
 
@@ -817,9 +769,8 @@ def simulate_live(frames, drop_rate, reorder_rate, seed, json_output):
                 seed=seed,
             ),
         )
-        report = sim.run(frames)
         if json_output:
-            click.echo(json.dumps(report.summary_json(), indent=2))
+            click.echo(json.dumps(sim.run(frames).summary_json(), indent=2))
         else:
             click.echo(sim.summary(frames))
     except ValueError as e:
@@ -833,12 +784,15 @@ def simulate_live(frames, drop_rate, reorder_rate, seed, json_output):
 @click.pass_context
 def benchmark_ws(ctx, iterations, json_output):
     """Benchmark WebSocket QR-update throughput (in-process, no network)."""
-    qrlp = QRLiveProtocol(ctx.obj['config'])
-    # Generate a baseline QR so the server has data to broadcast.
-    _, qr_image = qrlp.generate_single_qr({"benchmark": True})
-    server = QRLiveWebServer(ctx.obj['config'].web_settings, verifier=qrlp)
-    server.current_qr_data = qrlp.get_current_qr_data()
-    server.current_qr_image = qr_image
+    config = deepcopy(ctx.obj['config'])
+    config.time_settings.time_servers = []
+    config.time_settings.local_fallback = True
+    config.time_settings.ots_enabled = False
+    config.blockchain_settings.enabled_chains.clear()
+    qrlp = QRLiveProtocol(config)
+    data, qr_image = qrlp.generate_single_qr({"benchmark": True}, sign_data=False, encrypt_data=False)
+    server = QRLiveWebServer(config.web_settings, verifier=qrlp)
+    server.update_qr_display(data, qr_image)
 
     try:
         results = server.benchmark_websocket_throughput(iterations)

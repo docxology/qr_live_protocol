@@ -3,9 +3,9 @@ OpenTimestamps timestamping service for QRLP QRData commitments.
 
 This module provides the :class:`TimeStamper`, a companion to the existing
 :class:`src.time_provider.TimeProvider`. Where ``TimeProvider`` synchronises the
-local clock against NTP servers, the ``TimeStamper`` commits a SHA-256 digest
-of QR data to a public blockchain via an OpenTimestamps calendar server and
-produces a ``.ots`` attestation file that anyone can verify independently.
+local clock, the ``TimeStamper`` submits a SHA-256 digest of QR data to an
+OpenTimestamps calendar and saves the returned ``.ots`` receipt. A pending
+receipt needs a later upgrade and independent chain verification.
 
 The stamper is *additive*: it is disabled by default and degrades gracefully
 (returning ``None``) if the calendar server is unreachable, so the rest of the
@@ -15,13 +15,14 @@ protocol (NTP + blockchain hashes + signatures) keeps working unchanged.
 import hashlib
 import json
 import logging
+import os
 import threading
 import time
-from datetime import UTC
+from datetime import UTC, datetime
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import Any
 
-import requests
 from opentimestamps.core.notary import (
     BitcoinBlockHeaderAttestation,
     LitecoinBlockHeaderAttestation,
@@ -29,17 +30,17 @@ from opentimestamps.core.notary import (
 )
 from opentimestamps.core.op import OpSHA256
 from opentimestamps.core.serialize import (
-    StreamDeserializationContext,
-    StreamSerializationContext,
+    BytesDeserializationContext,
+    BytesSerializationContext,
 )
 from opentimestamps.core.timestamp import DetachedTimestampFile, Timestamp
 
 _logger = logging.getLogger("qrlp.time_stamper")
 
-# Sidecar written alongside each ``.ots`` proof so that the QR verifier can
-# extract the attested timestamp and blockchain without parsing the binary OTS
-# container (which only encodes block *heights*, not timestamps).
+# This sidecar records local receipt metadata outside the OTS commitment.
 _META_SUFFIX = ".meta.json"
+_MAX_PROOF_BYTES = 1024 * 1024
+_MAX_METADATA_BYTES = 8192
 
 
 class TimeStamper:
@@ -63,19 +64,23 @@ class TimeStamper:
         protocol stamps a periodic commitment. Defaults to 300 (5 minutes).
     proof_dir:
         Directory where ``.ots`` proof files (and their ``.meta.json``
-        sidecars) are stored. Created on demand.
+        sidecars) are stored.
+    timeout:
+        Calendar request timeout in seconds.
     """
 
     def __init__(
         self,
         enabled: bool = False,
-        server: str = "https://stamp.opentimestamps.org",
+        server: str = "https://a.pool.opentimestamps.org",
         min_interval: int = 300,
         proof_dir: Path | None = None,
+        timeout: float = 5.0,
     ) -> None:
         self.enabled = enabled
         self.server = server
         self.min_interval = min_interval
+        self.timeout = timeout
         self.proof_dir = proof_dir if proof_dir is not None else Path("output/timestamps")
 
         # State — guarded by a lock so the stamper is safe to use from the
@@ -83,22 +88,18 @@ class TimeStamper:
         self._lock = threading.Lock()
         self._last_stamp_time: float = 0.0
         self._last_proof_path: Path | None = None
+        self._stamp_in_progress = False
 
-        # A single requests.Session gives us keep-alive connection pooling,
-        # mirroring the pattern used by BlockchainVerifier.
-        self._session: requests.Session | None = None
-
-        # Ensure the proof directory exists eagerly so callers can rely on it.
-        self._ensure_proof_dir()
+        if enabled:
+            self._ensure_proof_dir()
 
     # ------------------------------------------------------------------ #
     # Public API
     # ------------------------------------------------------------------ #
     def needs_stamp(self) -> bool:
-        """Return ``True`` if enough time has elapsed since the last stamp."""
-        if self._last_stamp_time == 0.0:
-            return True
-        return (time.time() - self._last_stamp_time) >= self.min_interval
+        """Return whether a new stamp can be attempted now."""
+        with self._lock:
+            return self.enabled and not self._stamp_in_progress and self._interval_elapsed_locked()
 
     def last_stamp_path(self) -> Path | None:
         """Return the path of the most recent proof file, or ``None``."""
@@ -119,22 +120,25 @@ class TimeStamper:
             return None
 
         with self._lock:
-            if not self._interval_elapsed_locked():
-                _logger.debug("OTS min_interval not elapsed; skipping stamp.")
+            if self._stamp_in_progress or not self._interval_elapsed_locked():
                 return None
+            self._stamp_in_progress = True
 
-        digest = hashlib.sha256(data).digest()
+        proof_path = None
         try:
+            digest = hashlib.sha256(data).digest()
             dts = self._build_timestamp_file(digest)
             self._submit_to_calendar(dts.timestamp)
-            proof_path = self._write_proof(dts, digest, data)
+            proof_path = self._write_proof(dts, digest)
         except Exception as exc:
             _logger.warning("OpenTimestamps stamping failed: %s", exc)
             return None
-
-        with self._lock:
-            self._last_stamp_time = time.time()
-            self._last_proof_path = proof_path
+        finally:
+            with self._lock:
+                if proof_path is not None:
+                    self._last_stamp_time = time.monotonic()
+                    self._last_proof_path = proof_path
+                self._stamp_in_progress = False
 
         _logger.info("OTS proof written to %s", proof_path)
         return proof_path
@@ -145,86 +149,53 @@ class TimeStamper:
         return self.stamp(canonical.encode("utf-8"))
 
     def verify(self, data: bytes, proof_path: Path) -> bool:
-        """Verify that ``data`` matches the OTS proof at ``proof_path``.
+        """Check the SHA-256 digest and the presence of an attestation.
 
-        Returns ``True`` when the proof file parses as a valid OpenTimestamps
-        container *and* the SHA-256 digest of ``data`` equals the digest
-        committed in the proof. A freshly-stamped proof is a *pending*
-        attestation (confirmed on-chain later), so on-chain block-header
-        verification is attempted best-effort but is not required for a
-        ``True`` result — the digest match itself proves ``data`` was the
-        committed value.
-
-        A proof that carries **no attestation at all** is rejected. Such a file
-        can be fabricated entirely offline (just a digest and a timestamp with
-        no calendar or chain behind it) and therefore provides no evidence that
-        the data was ever committed — accepting it would let an attacker cook
-        up a ``.ots`` file that "verifies" arbitrary data.
+        This is a structural check. Calendar and block-header claims require
+        independent OpenTimestamps verification against a trusted chain.
         """
-        try:
-            dts = self._read_proof(proof_path)
-        except Exception as exc:
-            _logger.warning("Cannot read OTS proof %s: %s", proof_path, exc)
-            return False
+        matches, _ = self.check_proof(data, proof_path)
+        return matches
 
-        expected_digest = hashlib.sha256(data).digest()
-        if dts.file_digest != expected_digest:
-            _logger.warning("OTS digest mismatch for %s", proof_path)
-            return False
-
-        # Reject offline-fabricated proofs with no calendar/chain attestation.
-        if not _has_attestation(dts.timestamp):
-            _logger.warning("OTS proof %s has no attestation; rejecting", proof_path)
-            return False
-
-        # The digest matches and the proof is structurally valid, carrying at
-        # least a submitted (pending or confirmed) attestation. Best-effort
-        # on-chain confirmation: if a block-header attestation is present we
-        # cannot verify the header without the full block, so the digest match
-        # plus a real attestation is treated as sufficient evidence the data
-        # was committed.
-        return True
+    def check_proof(self, data: bytes, proof_path: Path) -> tuple[bool, dict[str, Any]]:
+        """Return the structural digest result and metadata from one proof read."""
+        digest = hashlib.sha256(data).digest()
+        dts = self._read_proof_if_valid(proof_path)
+        if dts is None or dts.file_digest != digest:
+            return False, self._proof_summary(None, proof_path)
+        return _has_attestation(dts.timestamp), self._proof_summary(dts, proof_path)
 
     def proof_info(self, proof_path: Path) -> dict[str, Any]:
-        """Parse a ``.ots`` proof and return summary metadata.
+        """Return digest, reported chain, local receipt time and attestations."""
+        return self._proof_summary(self._read_proof_if_valid(proof_path), proof_path)
 
-        The returned dict contains:
-        - ``digest``: hex SHA-256 digest committed in the proof.
-        - ``blockchain``: ``"bitcoin"`` / ``"litecoin"`` / ``"pending"`` /
-          ``"unknown"`` based on the strongest attestation present.
-        - ``timestamp``: ISO-8601 stamp time from the ``.meta.json`` sidecar
-          written when the proof was created, or ``""`` if unavailable.
-        - ``attestations``: list of human-readable attestation descriptions.
-        """
-        info: dict[str, Any] = {
-            "digest": "",
-            "blockchain": "unknown",
-            "timestamp": "",
-            "attestations": [],
-        }
+    def _read_proof_if_valid(self, proof_path: Path) -> DetachedTimestampFile | None:
         try:
             dts = self._read_proof(proof_path)
+            if not isinstance(dts.file_hash_op, OpSHA256):
+                raise ValueError("QRLP receipts must commit to SHA-256")
+            return dts
         except Exception as exc:
-            _logger.debug("proof_info: cannot parse %s: %s", proof_path, exc)
-            return info
+            _logger.debug("Cannot read OTS proof %s: %s", proof_path, exc)
+            return None
 
-        info["digest"] = dts.file_digest.hex()
+    def _proof_summary(self, dts: DetachedTimestampFile | None, proof_path: Path) -> dict[str, Any]:
+        if dts is None:
+            return {"digest": "", "blockchain": "unknown", "timestamp": "", "attestations": []}
+
+        digest = dts.file_digest.hex()
         attestations = _attestation_objects(dts.timestamp)
-        info["attestations"] = [
-            self._describe_attestation(att) for att in attestations
-        ]
-        info["blockchain"] = self._blockchain_from_attestations(attestations)
-        info["timestamp"] = self._read_meta_timestamp(proof_path)
-        return info
+        return {
+            "digest": digest,
+            "blockchain": self._blockchain_from_attestations(attestations),
+            "timestamp": self._read_meta_timestamp(proof_path, digest),
+            "attestations": [self._describe_attestation(att) for att in attestations],
+        }
 
     def render_proof_text(self, proof_path: Path) -> str:
         """Render a small key:value text summary of a proof.
 
-        Used by :class:`src.time_stamper_integration.QRLPTimeStampVerifier` so
-        its ``_extract_timestamp`` / ``_extract_blockchain`` helpers can parse
-        a human-readable string (the binary OTS container encodes block
-        *heights*, not timestamps, so the sidecar metadata is the source of
-        the stamp time).
+        Timestamp is the local receipt time saved in the sidecar.
         """
         info = self.proof_info(proof_path)
         return (
@@ -243,16 +214,8 @@ class TimeStamper:
         except OSError as exc:
             _logger.warning("Could not create OTS proof dir %s: %s", self.proof_dir, exc)
 
-    def _session_obj(self) -> requests.Session:
-        if self._session is None:
-            self._session = requests.Session()
-        return self._session
-
     def _interval_elapsed_locked(self) -> bool:
-        """Caller must hold ``self._lock``."""
-        if self._last_stamp_time == 0.0:
-            return True
-        return (time.time() - self._last_stamp_time) >= self.min_interval
+        return self._last_proof_path is None or time.monotonic() - self._last_stamp_time >= self.min_interval
 
     @staticmethod
     def _canonical_json(qr_data_dict: dict[str, Any]) -> str:
@@ -268,67 +231,56 @@ class TimeStamper:
         return DetachedTimestampFile(OpSHA256(), Timestamp(digest))
 
     def _submit_to_calendar(self, timestamp: Timestamp) -> None:
-        """Submit the commitment to the calendar server and merge the proof.
-
-        Imported lazily so that tests can patch ``RemoteCalendar`` and so the
-        opentimestamps network code is not imported at module import time.
-        """
+        """Merge the attestation returned by the calendar's submit operation."""
         from opentimestamps.calendar import RemoteCalendar
 
-        calendar = RemoteCalendar(self.server)
-        commitment = timestamp.msg
-        calendar.submit(commitment)
-        try:
-            remote_ts = calendar.get_timestamp(commitment)
-            timestamp.merge(remote_ts)
-        except Exception as exc:
-            # A pending attestation is still a valid proof of submission time.
-            _logger.debug("OTS calendar upgrade pending: %s", exc)
-
-        # A brand-new submission is not yet confirmed on-chain, so it carries a
-        # pending attestation. Ensure at least one attestation exists — an
-        # empty timestamp cannot be serialized into a ``.ots`` file.
+        calendar = RemoteCalendar(self.server.rstrip("/") + "/")
+        returned = calendar.submit(timestamp.msg, timeout=self.timeout)
+        timestamp.merge(returned)
         if not _has_attestation(timestamp):
-            timestamp.attestations.add(PendingAttestation(self.server))
+            raise ValueError("OpenTimestamps calendar response has no attestation")
 
-    def _write_proof(
-        self,
-        dts: DetachedTimestampFile,
-        digest: bytes,
-        data: bytes,
-    ) -> Path:
-        """Serialise the proof to disk and write a ``.meta.json`` sidecar."""
+    def _write_proof(self, dts: DetachedTimestampFile, digest: bytes) -> Path:
         proof_path = self.proof_dir / f"{digest.hex()}.ots"
-        with open(proof_path, "wb") as fh:
-            dts.serialize(StreamSerializationContext(fh))
+        self._ensure_proof_dir()
+        context = BytesSerializationContext()
+        dts.serialize(context)
+        _atomic_write(proof_path, context.getbytes())
 
-        # Sidecar with the stamp time — the binary OTS file only encodes block
-        # heights, so this is the canonical source of "when was this stamped".
+        # The locally measured receipt time is optional metadata. A sidecar
+        # write failure must not discard the successfully stored proof.
         meta = {
             "stamp_time": datetime_now_iso(),
-            "blockchain": self._blockchain_from_attestations(
-                _attestation_objects(dts.timestamp)
-            ),
+            "blockchain": self._blockchain_from_attestations(_attestation_objects(dts.timestamp)),
             "digest": digest.hex(),
-            "data_sha256": hashlib.sha256(data).hexdigest(),
+            "data_sha256": digest.hex(),
         }
-        meta_path = self.proof_dir / f"{digest.hex()}{_META_SUFFIX}"
-        with open(meta_path, "w", encoding="utf-8") as fh:
-            json.dump(meta, fh)
+        try:
+            _atomic_write(self._meta_path_for(proof_path), json.dumps(meta).encode("utf-8"))
+        except OSError as exc:
+            _logger.warning("Could not write OTS receipt metadata: %s", exc)
         return proof_path
 
     def _read_proof(self, proof_path: Path) -> DetachedTimestampFile:
-        with open(proof_path, "rb") as fh:
-            return DetachedTimestampFile.deserialize(StreamDeserializationContext(fh))
+        with proof_path.open("rb") as stream:
+            proof = stream.read(_MAX_PROOF_BYTES + 1)
+        if len(proof) > _MAX_PROOF_BYTES:
+            raise ValueError("OpenTimestamps proof exceeds size limit")
+        return DetachedTimestampFile.deserialize(BytesDeserializationContext(proof))
 
-    def _read_meta_timestamp(self, proof_path: Path) -> str:
-        meta_path = self._meta_path_for(proof_path)
+    def _read_meta_timestamp(self, proof_path: Path, digest: str | None = None) -> str:
         try:
-            with open(meta_path, encoding="utf-8") as fh:
-                meta = json.load(fh)
-            return str(meta.get("stamp_time", ""))
+            with self._meta_path_for(proof_path).open("rb") as stream:
+                data = stream.read(_MAX_METADATA_BYTES + 1)
+            if len(data) <= _MAX_METADATA_BYTES:
+                meta = json.loads(data)
+                if isinstance(meta, dict) and (digest is None or meta.get("digest") == digest):
+                    timestamp = meta.get("stamp_time")
+                    if isinstance(timestamp, str):
+                        return timestamp
         except (OSError, ValueError):
-            return ""
+            pass
+        return ""
 
     def _meta_path_for(self, proof_path: Path) -> Path:
         """Return the ``.meta.json`` sidecar path for a given ``.ots`` proof."""
@@ -362,6 +314,18 @@ class TimeStamper:
         return "unknown"
 
 
+def _atomic_write(path: Path, data: bytes) -> None:
+    """Publish complete bytes using a private temporary in the same directory."""
+    with NamedTemporaryFile(dir=path.parent, delete=False) as stream:
+        temporary = Path(stream.name)
+        try:
+            stream.write(data)
+            stream.close()
+            os.replace(temporary, path)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+
 def _attestation_objects(timestamp: Timestamp) -> list[Any]:
     """Return the attestation objects from ``timestamp.all_attestations()``.
 
@@ -387,6 +351,4 @@ def _has_attestation(timestamp: Timestamp) -> bool:
 
 def datetime_now_iso() -> str:
     """Return the current UTC time as an ISO-8601 string."""
-    from datetime import datetime
-
     return datetime.now(UTC).isoformat()

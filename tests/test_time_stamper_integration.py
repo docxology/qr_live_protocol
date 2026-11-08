@@ -23,21 +23,12 @@ def _confirmed_calendar():
     from opentimestamps.core.notary import BitcoinBlockHeaderAttestation
     from opentimestamps.core.timestamp import Timestamp
 
-    @staticmethod
-    def _submit(commitment, timeout=None):
-        return None
-
-    @staticmethod
-    def _get_timestamp(commitment, timeout=None):
+    def submit(self, commitment, timeout=None):
         ts = Timestamp(commitment)
         ts.attestations.add(BitcoinBlockHeaderAttestation(800000))
         return ts
 
-    return patch(
-        "opentimestamps.calendar.RemoteCalendar.submit", _submit
-    ), patch(
-        "opentimestamps.calendar.RemoteCalendar.get_timestamp", _get_timestamp
-    )
+    return patch("opentimestamps.calendar.RemoteCalendar.submit", submit)
 
 
 @pytest.fixture
@@ -68,7 +59,7 @@ def stamped_qr(verifier, stamper):
         },
         separators=(",", ":"),
     )
-    with _confirmed_calendar()[0], _confirmed_calendar()[1]:
+    with _confirmed_calendar():
         proof_path = stamper.stamp(qr_json.encode("utf-8"))
     assert proof_path is not None
     return qr_json, proof_path
@@ -93,6 +84,7 @@ class TestVerifyQRWithTimestamp:
             assert field in result, f"missing OTS field: {field}"
         assert result["ots_proof_path"] == str(proof_path)
         assert result["ots_tolerance_seconds"] == 60
+        assert result["ots_chain_verified"] is False
 
     def test_ots_verification_fails_on_tampered_data(self, verifier, stamped_qr):
         """Verifying a modified QR payload against the proof fails."""

@@ -8,10 +8,13 @@ styled image fallbacks.
 """
 
 import json
-import os
+import socket
 import subprocess
 import sys
 import time
+from pathlib import Path
+from urllib.error import URLError
+from urllib.request import urlopen
 
 import pytest
 from click.testing import CliRunner
@@ -31,6 +34,7 @@ def config_file(tmp_path):
         "update_interval": 0.1,
         "blockchain_settings": {"enabled_chains": []},
         "time_settings": {"time_servers": []},
+        "security_settings": {"key_dir": str(tmp_path / "keys")},
     }
     path = tmp_path / "test_config.json"
     path.write_text(json.dumps(config))
@@ -40,42 +44,39 @@ def config_file(tmp_path):
 # === CLI live/dashboard tests using subprocess ===
 
 class TestCLILiveSubprocess:
-    """Test cli live command using a real subprocess with timeout."""
+    """Exercise real CLI startup through the loopback HTTP listener."""
 
-    def test_live_starts_and_stops(self, config_file, tmp_path):
-        """qrlp live should start and be killable."""
-        env = os.environ.copy()
-        env["QRLP_UPDATE_INTERVAL"] = "0.1"
-        proc = subprocess.Popen(
-            [sys.executable, "-c",
-             "from src.cli import cli; cli(['--config', '" + config_file +
-             "', 'live', '--no-browser', '--port', '0'])"],
-            cwd=str(tmp_path.parent.parent.parent),  # repo root
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-        time.sleep(2)
-        proc.terminate()
-        proc.wait(timeout=5)
-        assert proc.returncode is not None
+    @pytest.mark.parametrize(("command", "route"), [("live", "/viewer"), ("dashboard", "/improve")])
+    def test_cli_serves_requested_page(self, config_file, command, route):
+        with socket.socket() as reservation:
+            reservation.bind(("127.0.0.1", 0))
+            port = reservation.getsockname()[1]
 
-    def test_dashboard_starts_and_stops(self, config_file, tmp_path):
-        """qrlp dashboard should start and be killable."""
-        env = os.environ.copy()
         proc = subprocess.Popen(
-            [sys.executable, "-c",
-             "from src.cli import cli; cli(['--config', '" + config_file +
-             "', 'dashboard', '--no-browser', '--port', '0'])"],
-            cwd=str(tmp_path.parent.parent.parent),
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            [sys.executable, "-m", "src", "--config", config_file, command,
+             "--no-browser", "--host", "127.0.0.1", "--port", str(port)],
+            cwd=Path(__file__).resolve().parents[1],
+            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         )
-        time.sleep(2)
-        proc.terminate()
-        proc.wait(timeout=5)
-        assert proc.returncode is not None
+        try:
+            deadline = time.monotonic() + 10
+            while time.monotonic() < deadline and proc.poll() is None:
+                try:
+                    with urlopen(f"http://127.0.0.1:{port}{route}", timeout=0.5) as response:
+                        assert response.status == 200
+                        assert b"QRLP" in response.read()
+                        return
+                except (OSError, URLError):
+                    time.sleep(0.05)
+        finally:
+            if proc.poll() is None:
+                proc.terminate()
+            try:
+                stdout, stderr = proc.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                stdout, stderr = proc.communicate(timeout=5)
+        pytest.fail(f"{command} never served {route}: {stdout!r} {stderr!r}")
 
 
 class TestCLIHelpCommand:

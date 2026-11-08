@@ -17,6 +17,17 @@ from src import QRLiveProtocol, QRLPConfig
 from src.crypto import DataEncryptor, HMACManager, KeyManager
 
 
+@pytest.fixture(autouse=True)
+def isolate_default_key_store(monkeypatch, tmp_path):
+    """Tests that use default settings must not read or write operator keys."""
+    original_init = KeyManager.__init__
+
+    def isolated_init(self, key_dir=None, *args, **kwargs):
+        return original_init(self, key_dir or str(tmp_path / "default-keys"), *args, **kwargs)
+
+    monkeypatch.setattr(KeyManager, "__init__", isolated_init)
+
+
 @pytest.fixture
 def test_config():
     """Test configuration with minimal settings for fast testing."""

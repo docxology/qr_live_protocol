@@ -8,8 +8,10 @@ import time
 from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from src.config import TimeSettings
-from src.time_provider import TimeProvider
+from src.time_provider import TimeProvider, TimeServerResponse
 
 
 def make_mock_ntp_response():
@@ -160,6 +162,33 @@ class TestSyncAllServers:
             result = provider.sync_all_servers()
             assert len(result) >= 1
             assert result[0].success is True
+
+
+    def test_only_queries_configured_sources(self):
+        provider = TimeProvider(TimeSettings(time_servers=["ntp.example", "https://clock.example"]))
+        with patch.object(provider, "get_ntp_time") as ntp, patch.object(provider, "get_http_time") as http:
+            provider.sync_all_servers()
+        ntp.assert_called_once_with("ntp.example")
+        http.assert_called_once_with("https://clock.example")
+
+    def test_failed_sync_is_throttled_and_drops_unavailable_observations(self):
+        provider = TimeProvider(TimeSettings(time_servers=["ntp.example"], update_interval=60))
+        responses = [
+            [TimeServerResponse("ntp.example", time.time(), 0.1, 0.1, 1, True)],
+            [TimeServerResponse("ntp.example", 0, 0, 0, 0, False)],
+        ]
+        with patch.object(provider, "sync_all_servers", side_effect=responses) as sync:
+            assert provider.force_sync()
+            assert "ntp.example" in provider.get_time_server_verification()
+            assert not provider.force_sync()
+            assert provider.get_time_server_verification() == {}
+            assert provider.get_time_server_verification() == {}
+        assert sync.call_count == 2
+
+    def test_unavailable_clock_when_local_fallback_is_disabled(self):
+        provider = TimeProvider(TimeSettings(time_servers=[], local_fallback=False))
+        with pytest.raises(RuntimeError, match="No configured time source"):
+            provider.get_current_time()
 
 
 class TestForceSync:

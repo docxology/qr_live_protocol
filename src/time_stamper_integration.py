@@ -4,8 +4,8 @@ OpenTimestamps integration with the QRLP verification pipeline.
 This module connects the :class:`src.time_stamper.TimeStamper` to the QR data
 verification flow. It is *additive*: the existing HMAC + signature + time +
 blockchain checks run exactly as before, and the OTS timestamp proof is layered
-on top as additional, independently-verifiable attestation that the QR payload
-existed at the stamped time.
+on top as a structural check. Independent chain verification requires a
+trusted block header and is outside this integration.
 """
 
 import json
@@ -59,12 +59,13 @@ class QRLPTimeStampVerifier:
         verifies the OTS proof against ``qr_json``. The returned dict contains
         all the existing verification fields plus:
 
-        - ``ots_verified``: ``True`` if the OTS proof matches the QR data.
+        - ``ots_verified``: whether the proof contains an attestation and its
+          SHA-256 digest matches the exact QR data bytes.
+        - ``ots_chain_verified``: always false because this method does not
+          check a trusted block header.
         - ``ots_proof_path``: string path of the proof file.
-        - ``ots_timestamp``: ISO timestamp attested by the proof (from the
-          ``.meta.json`` sidecar), or ``""`` if unavailable.
-        - ``ots_blockchain``: ``"bitcoin"`` / ``"litecoin"`` / ``"pending"`` /
-          ``"unknown"`` — the chain the proof is attested on.
+        - ``ots_timestamp``: local receipt time from the metadata sidecar.
+        - ``ots_blockchain``: chain reported in the proof, or its pending state.
 
         Parameters
         ----------
@@ -79,18 +80,15 @@ class QRLPTimeStampVerifier:
         existing = self._existing_verification(qr_json)
 
         qr_bytes = qr_json.encode("utf-8")
-        ots_ok = self.time_stamper.verify(qr_bytes, proof_path)
-
-        proof_text = self.time_stamper.render_proof_text(proof_path)
-        ots_ts = self._extract_timestamp(proof_text)
-        ots_chain = self._extract_blockchain(proof_text)
+        ots_ok, info = self.time_stamper.check_proof(qr_bytes, proof_path)
 
         return {
             **existing,
             "ots_verified": ots_ok,
+            "ots_chain_verified": False,
             "ots_proof_path": str(proof_path),
-            "ots_timestamp": ots_ts,
-            "ots_blockchain": ots_chain,
+            "ots_timestamp": info["timestamp"],
+            "ots_blockchain": info["blockchain"],
             "ots_tolerance_seconds": tolerance_seconds,
         }
 

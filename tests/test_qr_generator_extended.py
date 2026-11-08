@@ -75,6 +75,26 @@ class TestQRGeneratorChunking:
             with pytest.raises(ValueError, match="Incomplete"):
                 QRGenerator.reassemble_chunked_payloads(tampered)
 
+    def test_chunk_reassembly_rejects_huge_advertised_count(self):
+        gen = QRGenerator(QRSettings())
+        payload = json.loads(gen.generate_chunked_payloads("hello")[0])
+        payload["total_chunks"] = 10**100
+        with pytest.raises(ValueError, match="Incomplete"):
+            gen.reassemble_chunked_payloads([json.dumps(payload)])
+
+    def test_chunk_reassembly_rejects_non_ascii(self):
+        gen = QRGenerator(QRSettings())
+        payload = json.loads(gen.generate_chunked_payloads("hello")[0])
+        payload["chunk"] = "é"
+        with pytest.raises(ValueError, match="base64-encoded"):
+            gen.reassemble_chunked_payloads([json.dumps(payload)])
+
+    def test_image_cache_tracks_rendering_settings(self):
+        gen = QRGenerator(QRSettings(image_format="PNG"))
+        assert gen.generate_qr_image("hello").startswith(b"\x89PNG")
+        gen.settings.image_format = "JPEG"
+        assert gen.generate_qr_image("hello").startswith(b"\xff\xd8")
+
     def test_chunk_reassembly_corrupted_data(self):
         """Corrupted chunk data should fail checksum validation."""
         settings = QRSettings(error_correction_level="L", max_data_size=50)

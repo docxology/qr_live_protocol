@@ -6,13 +6,13 @@ Provides cryptographic proof of QR code origin and integrity.
 """
 
 import hashlib
-import json
 from typing import Any
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec, padding
 
+from ..serializer import QRSerializer
 from .exceptions import SignatureError
 from .key_manager import KeyManager
 
@@ -72,10 +72,8 @@ class DigitalSigner:
             Digital signature bytes
         """
         # Convert QR data to canonical JSON for consistent signing
-        data_json = json.dumps(
+        data_json = QRSerializer.serialize_for_signature(
             canonicalize_qr_payload_for_signature(qr_data),
-            sort_keys=True,
-            separators=(',', ':')
         )
 
         # Create hash of the data
@@ -170,10 +168,8 @@ class SignatureVerifier:
         """
         try:
             # Convert QR data to canonical JSON for consistent verification
-            data_json = json.dumps(
+            data_json = QRSerializer.serialize_for_signature(
                 canonicalize_qr_payload_for_signature(qr_data),
-                sort_keys=True,
-                separators=(',', ':')
             )
 
             # Create hash of the data
@@ -308,15 +304,19 @@ class QRSignatureManager:
             True if signature is valid
         """
         try:
-            if public_key_pem:
-                verifier = SignatureVerifier(public_key_pem, algorithm or "rsa")
-                return verifier.verify_qr_data(qr_data, signature)
-
-            keypair = self.key_manager.get_keypair(key_id)
-            if not keypair:
-                return False
-
-            verifier = SignatureVerifier(keypair.public_key, keypair.algorithm)
+            if public_key_pem is None:
+                key = self.key_manager.get_public_key(key_id)
+                if key is None:
+                    return False
+                public_key_pem, algorithm = key
+            verifier = SignatureVerifier(public_key_pem, algorithm or "rsa")
+            if isinstance(qr_data, dict):
+                claimed_algorithm = qr_data.get("signature_algorithm")
+                if claimed_algorithm is not None and (
+                    not isinstance(claimed_algorithm, str)
+                    or claimed_algorithm.lower() != verifier.algorithm
+                ):
+                    return False
             return verifier.verify_qr_data(qr_data, signature)
         except SignatureError:
             return False

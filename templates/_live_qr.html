@@ -1,0 +1,42 @@
+<script nonce="{{ script_nonce }}">
+    const qrlpLive = (() => {
+        function textElement(tag, className, text) {
+            const element = document.createElement(tag);
+            element.className = className;
+            element.textContent = text;
+            return element;
+        }
+
+        function renderImage(container, source) {
+            if (typeof source !== 'string' || !/^data:image\/(png|jpeg);base64,[a-zA-Z0-9+/]+={0,2}$/.test(source)) {
+                return false;
+            }
+            const image = document.createElement('img');
+            image.alt = 'QR Live Protocol code';
+            image.className = 'qr-image';
+            image.src = source;
+            container.replaceChildren(image);
+            return true;
+        }
+
+        function formatValue(value) {
+            return typeof value === 'object' ? JSON.stringify(value) : String(value);
+        }
+
+        function connect(onFrame, onConnection) {
+            const stream = new EventSource({{ url_for('qr_events') | tojson }});
+            stream.onopen = () => onConnection(true);
+            stream.onerror = () => {
+                onConnection(false);
+                if (stream.readyState === EventSource.CLOSED) {
+                    // A rejected HTTP request closes EventSource without retrying.
+                    stream.onerror = null;
+                    window.setTimeout(() => connect(onFrame, onConnection), 5000);
+                }
+            };
+            stream.onmessage = event => onFrame(JSON.parse(event.data));
+        }
+
+        return { connect, formatValue, renderImage, textElement };
+    })();
+</script>

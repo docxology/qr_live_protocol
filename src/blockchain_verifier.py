@@ -1,8 +1,8 @@
 """
 Blockchain Verifier module for QRLP.
 
-Handles blockchain verification by retrieving current block hashes
-from multiple blockchain networks to provide tamper-evident timestamps.
+Retrieves recent block hashes from blockchain services for contextual
+comparison against QR payloads.
 """
 
 import logging
@@ -34,8 +34,8 @@ class BlockchainVerifier:
     """
     Blockchain verification provider for QRLP.
     
-    Retrieves current block hashes from multiple blockchain networks
-    to provide cryptographic proof of time and immutable verification.
+    Retrieves recent block hashes for a current-tip comparison. Establishing
+    an independent proof requires additional chain data and verification.
     """
 
     def __init__(self, settings: BlockchainSettings):
@@ -49,6 +49,9 @@ class BlockchainVerifier:
         self.cached_blocks: dict[str, BlockchainInfo] = {}
         self.last_update: dict[str, float] = {}
         self.update_lock = threading.Lock()
+        self._refresh_lock = threading.Lock()
+        self._updating = False
+        self._last_refresh_attempt: float | None = None
 
         # Connection pool for keep-alive HTTP
         self._session: requests.Session | None = None
@@ -83,30 +86,11 @@ class BlockchainVerifier:
             ]
         }
 
-        # Perform initial update in background
-        threading.Thread(target=self._initial_update, daemon=True).start()
-
-    def _initial_update(self):
-        """Perform initial blockchain data update."""
-        try:
-            self._update_all_chains()
-        except Exception as e:
-            _logger.warning(f"Initial blockchain update warning: {e}")
-    def get_blockchain_hashes(self) -> dict[str, str]:
-        """
-        Get current blockchain hashes for all enabled chains.
-        
-        Returns:
-            Dictionary mapping chain names to block hashes
-        """
         self._update_if_needed()
 
-        hashes = {}
-        for chain, block_info in self.cached_blocks.items():
-            if chain in self.settings.enabled_chains:
-                hashes[chain] = block_info.block_hash
-
-        return hashes
+    def get_blockchain_hashes(self) -> dict[str, str]:
+        """Return fresh, cached hashes for the enabled chains."""
+        return {chain: block.block_hash for chain, block in self.get_all_blockchain_info().items()}
 
     def get_blockchain_info(self, chain: str) -> BlockchainInfo | None:
         """
@@ -119,15 +103,22 @@ class BlockchainVerifier:
             BlockchainInfo object or None if not available
         """
         self._update_if_needed()
-        return self.cached_blocks.get(chain)
+        block = self.cached_blocks.get(chain)
+        if block is not None and self._fresh(block, time.time()):
+            return block
+        return None
 
     def get_all_blockchain_info(self) -> dict[str, BlockchainInfo]:
         """Get detailed information for all cached blockchains."""
         self._update_if_needed()
+        now = time.time()
         return {
-            chain: info for chain, info in self.cached_blocks.items()
-            if chain in self.settings.enabled_chains
+            chain: info for chain, info in self.cached_blocks.copy().items()
+            if chain in self.settings.enabled_chains and self._fresh(info, now)
         }
+
+    def _fresh(self, block: BlockchainInfo, now: float) -> bool:
+        return 0 <= now - block.retrieved_at <= self.settings.cache_duration
 
     def verify_blockchain_hash(self, chain: str, block_hash: str, tolerance_blocks: int = 10) -> dict[str, Any]:
         """
@@ -196,39 +187,41 @@ class BlockchainVerifier:
         }
 
     def _update_if_needed(self) -> None:
-        """Update blockchain data if cache is stale."""
-        current_time = time.time()
+        """Schedule at most one refresh, throttling attempts during an outage."""
+        with self._refresh_lock:
+            if self._updating or not self.settings.enabled_chains:
+                return
+            if self._last_refresh_attempt is not None and time.monotonic() - self._last_refresh_attempt < 1:
+                return
+            now = time.time()
+            if all(
+                (block := self.cached_blocks.get(chain)) is not None and self._fresh(block, now)
+                for chain in self.settings.enabled_chains
+            ):
+                return
 
-        # Check if any chain needs updating
-        needs_update = False
-        for chain in self.settings.enabled_chains:
-            last_update = self.last_update.get(chain, 0)
-            if current_time - last_update > self.settings.cache_duration:
-                needs_update = True
-                break
-
-        # Only update if needed and not already updating
-        if needs_update and not getattr(self, '_updating', False):
             self._updating = True
+            worker = threading.Thread(target=self._update_all_chains_safe, daemon=True)
             try:
-                # Use a single thread to update all chains sequentially
-                threading.Thread(target=self._update_all_chains_safe, daemon=True).start()
-            finally:
-                # Reset the flag after a delay to prevent rapid-fire updates
-                threading.Timer(1.0, lambda: setattr(self, '_updating', False) if hasattr(self, '_updating') else None).start()
+                worker.start()
+            except RuntimeError:
+                self._updating = False
+                raise
 
     def _update_all_chains_safe(self) -> None:
-        """Wrapper that clears the _updating flag after completion."""
+        """Keep refresh admission closed until the worker actually finishes."""
         try:
             self._update_all_chains()
         finally:
-            self._updating = False
+            with self._refresh_lock:
+                self._last_refresh_attempt = time.monotonic()
+                self._updating = False
 
     def _update_all_chains(self) -> bool:
         """Update all enabled blockchain chains."""
         success_count = 0
 
-        for chain in self.settings.enabled_chains:
+        for chain in self.settings.enabled_chains.copy():
             try:
                 if self._update_chain(chain):
                     success_count += 1
@@ -250,8 +243,7 @@ class BlockchainVerifier:
             True if successful
         """
         if not self.update_lock.acquire(blocking=False):
-            self.cache_hits += 1
-            return True  # Another thread is updating
+            return False  # Another worker owns this request.
 
         try:
             self.total_requests += 1
@@ -305,12 +297,12 @@ class BlockchainVerifier:
             # Try blockstream.info API first
             try:
                 # Get latest block
-                response = requests.get("https://blockstream.info/api/blocks/tip/hash", timeout=5)
+                response = requests.get("https://blockstream.info/api/blocks/tip/hash", timeout=self.settings.timeout)
                 if response.status_code == 200:
                     block_hash = response.text.strip()
 
                     # Get block details
-                    block_response = requests.get(f"https://blockstream.info/api/block/{block_hash}", timeout=5)
+                    block_response = requests.get(f"https://blockstream.info/api/block/{block_hash}", timeout=self.settings.timeout)
                     if block_response.status_code == 200:
                         block_data = block_response.json()
 
@@ -325,11 +317,11 @@ class BlockchainVerifier:
                 _logger.error(f"Blockstream.info API failed: {e}")
             # Fallback to mempool.space
             try:
-                response = requests.get("https://mempool.space/api/blocks/tip/hash", timeout=5)
+                response = requests.get("https://mempool.space/api/blocks/tip/hash", timeout=self.settings.timeout)
                 if response.status_code == 200:
                     block_hash = response.text.strip()
 
-                    block_response = requests.get(f"https://mempool.space/api/block/{block_hash}", timeout=5)
+                    block_response = requests.get(f"https://mempool.space/api/block/{block_hash}", timeout=self.settings.timeout)
                     if block_response.status_code == 200:
                         block_data = block_response.json()
 
@@ -344,7 +336,7 @@ class BlockchainVerifier:
                 _logger.error(f"Mempool.space API failed: {e}")
             # Final fallback to blockcypher
             try:
-                response = requests.get("https://api.blockcypher.com/v1/btc/main", timeout=5)
+                response = requests.get("https://api.blockcypher.com/v1/btc/main", timeout=self.settings.timeout)
                 if response.status_code == 200:
                     data = response.json()
 

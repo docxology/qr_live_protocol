@@ -1,591 +1,94 @@
-# QRLiveWebServer Module
+# QRLP web server
 
-## Overview
+The local QRLP web server displays the latest QR image and its payload metadata.
+Use the live display at `/` or the viewer at `/viewer` as a browser source in OBS.
+`/admin` shows current frame availability, active connections, and broadcast
+counts. `/improve` shows configured capabilities and offers a local smoke
+test for public-key verification and chunk recovery.
 
-The QRLiveWebServer module provides a Flask-based web interface for displaying live QR codes with real-time updates, verification information, and user interaction capabilities. This module enables browser-based QR code display for livestreaming and other real-time applications.
+Run `qrlp live --no-browser` and open the URL printed by the command. The
+default bind is `localhost:8080`. The viewer can set a message for the next
+generated frame. Submitting an empty message clears it.
 
-## Architecture
+## Embed the server
 
-```
-QRLiveWebServer
-├── Flask Application (Web framework)
-├── SocketIO (Real-time WebSocket communication)
-├── Security Middleware (Input validation and protection)
-├── Template Rendering (HTML templates for different views)
-├── API Endpoints (REST API for QR operations)
-└── Static File Serving (CSS, JavaScript, images)
-```
-
-## Key Features
-
-### 🌐 Web Interface
-- **Live QR Display**: Real-time QR code updates in browser
-- **Responsive Design**: Works on desktop and mobile devices
-- **Multiple Views**: Main interface, viewer mode, admin panel
-- **Real-time Updates**: WebSocket-based live updates
-
-### 🔒 Security Features
-- **Input Validation**: Comprehensive sanitization and validation
-- **CORS Support**: Configurable cross-origin resource sharing
-- **Rate Limiting**: Request throttling protection
-- **Error Handling**: Secure error responses without information leakage
-
-### 📊 Monitoring & Statistics
-- **Page View Tracking**: User interaction metrics
-- **WebSocket Connections**: Real-time connection monitoring
-- **QR Update Statistics**: Generation and display metrics
-- **System Health**: Component status monitoring
-
-## Usage Examples
-
-### Basic Web Server Setup
 ```python
-from src.web_server import QRLiveWebServer
-from src.config import WebSettings
-
-# Configure web server
-web_config = WebSettings()
-web_config.port = 8080
-web_config.host = "0.0.0.0"  # Allow external connections
-web_config.auto_open_browser = True
-web_config.cors_enabled = True
-
-# Initialize and start server
-server = QRLiveWebServer(web_config)
-server.start_server(threaded=True)
-
-# Server will be available at http://localhost:8080
-```
-
-### Integration with QRLiveProtocol
-```python
-from src import QRLiveProtocol, QRLiveWebServer
-
-# Initialize QRLP
-qrlp = QRLiveProtocol()
-
-# Initialize web server with a QRLP-backed verifier
-web_server = QRLiveWebServer(qrlp.config.web_settings, verifier=qrlp)
-
-# Connect QR updates to web server
-qrlp.add_update_callback(web_server.update_qr_display)
-
-# Start both services
-web_server.start_server(threaded=True)
-qrlp.start_live_generation()
-
-# QR codes will update in browser automatically
-```
-
-### Custom API Integration
-```python
-import base64
-from flask import Flask, jsonify
-from src.config import WebSettings
+from src.config import QRLPConfig, WebSettings
+from src.core import QRLiveProtocol
 from src.web_server import QRLiveWebServer
 
-# Create custom Flask app
-app = Flask(__name__)
-web_server = QRLiveWebServer(WebSettings())
+config = QRLPConfig()
+config.blockchain_settings.enabled_chains = set()
+config.time_settings.time_servers = []
 
-# Add custom routes
-@app.route('/api/custom-qr')
-def get_custom_qr():
-    """Get current QR with custom formatting."""
-    qr_data, qr_image = web_server.current_qr_data, web_server.current_qr_image
+protocol = QRLiveProtocol(config)
+server = QRLiveWebServer(WebSettings(port=0, auto_open_browser=False), verifier=protocol)
+protocol.add_update_callback(server.update_qr_display)
+protocol.set_user_data_callback(server.get_user_data)
 
-    if not qr_data or not qr_image:
-        return jsonify({"error": "No QR data available"}), 404
-
-    return jsonify({
-        "qr_data": qr_data.to_dict(),
-        "qr_image_base64": base64.b64encode(qr_image).decode(),
-        "custom_field": "custom_value"
-    })
-
-# Start server
-app.run(port=8080)
-```
-
-## API Endpoints
-
-### Core Endpoints
-
-**`GET /`**
-- Main QR display interface
-- Shows live QR code with verification information
-
-**`GET /viewer`**
-- Clean QR viewer for external displays (OBS Studio)
-- Minimal interface focused on QR display
-
-**`GET /admin`**
-- Admin dashboard with system statistics
-- Monitoring and control interface
-
-**`GET /improve`**
-- Improvement dashboard with readiness gates, key/trust state, and smoke-test controls
-- Designed for local operator verification before a stream or release
-
-### API Endpoints
-
-**`GET /api/status`**
-```json
-{
-  "is_running": true,
-  "page_views": 42,
-  "websocket_connections": 2,
-  "qr_updates_sent": 156,
-  "server_url": "http://localhost:8080",
-  "current_qr_available": true
-}
-```
-
-**`GET /api/qr/current`**
-```json
-{
-  "qr_data": {
-    "timestamp": "2025-01-11T15:30:45.123Z",
-    "identity_hash": "abc123def456...",
-    "blockchain_hashes": {...},
-    "sequence_number": 123
-  },
-  "qr_image": "data:image/png;base64,iVBORw0KGgo...",
-  "timestamp": "2025-01-11T15:30:45.456Z"
-}
-```
-
-**`POST /api/verify`**
-```json
-{
-  "qr_data": "{\"timestamp\":\"2025-01-11T...\"}"
-}
-```
-Response:
-```json
-{
-  "valid": true,
-  "timestamp": "2025-01-11T15:30:45.789Z",
-  "data_length": 768,
-  "valid_json": true,
-  "identity_verified": true,
-  "time_verified": true,
-  "blockchain_verified": false,
-  "signature_verified": true,
-  "hmac_verified": false,
-  "encrypted": false,
-  "trust_mode": "public_signature"
-}
-```
-
-**`GET /api/improve/status`**
-```json
-{
-  "readiness": {
-    "passed": 5,
-    "total": 5,
-    "score": 1.0,
-    "state": "ready"
-  },
-  "features": [
-    {"name": "signed_qr_generation", "ok": true, "severity": "pass"},
-    {"name": "web_verify_endpoint", "ok": true, "severity": "pass"}
-  ],
-  "trust": {"trusted_key_count": 0, "trusted_keys": []},
-  "keys": {"signing_key_count": 0, "signing_keys": []}
-}
-```
-
-**`POST /api/improve/smoke-test`**
-```json
-{
-  "success": true,
-  "signed_round_trip": {
-    "valid": true,
-    "trust_mode": "public_signature",
-    "signature_verified": true
-  },
-  "chunk_recovery": {
-    "valid": true,
-    "chunk_count": 4
-  }
-}
-```
-
-**`GET /api/user-data`**
-```json
-{
-  "user_data": "Custom message text"
-}
-```
-
-**`POST /api/user-data`**
-```json
-{
-  "user_text": "Custom message for QR codes"
-}
-```
-
-## WebSocket Events
-
-### Client → Server Events
-
-**`connect`**
-- Triggered when client connects to server
-- Server sends current QR data if available
-
-**`request_qr_update`**
-- Client requests current QR data
-- Server responds with latest QR information
-
-**`update_user_data`**
-```json
-{
-  "user_text": "Custom message for QR codes"
-}
-```
-
-### Server → Client Events
-
-**`qr_update`**
-```json
-{
-  "qr_data": {...},
-  "qr_image": "data:image/png;base64,...",
-  "timestamp": "2025-01-11T15:30:45.456Z"
-}
-```
-
-**`user_data_updated`**
-```json
-{
-  "user_data": "Updated custom message",
-  "timestamp": "2025-01-11T15:30:45.789Z"
-}
-```
-
-**`user_data_error`**
-```json
-{
-  "error": "User text too long (max 1000 characters)"
-}
-```
-
-## Configuration
-
-### WebSettings Configuration
-```python
-from src.config import WebSettings
-
-web_config = WebSettings()
-web_config.host = "0.0.0.0"          # Server bind address
-web_config.port = 8080                # Server port
-web_config.auto_open_browser = True    # Auto-open browser on start
-web_config.template_dir = "templates"  # Template directory
-web_config.static_dir = "static"      # Static files directory
-web_config.debug = False              # Debug mode
-web_config.cors_enabled = True        # Enable CORS
-```
-
-### Security Configuration
-```python
-# Security settings for production
-web_config = WebSettings()
-web_config.cors_enabled = False  # Disable CORS for security
-web_config.debug = False         # Disable debug mode
-
-# Add custom security headers
-@app.after_request
-def add_security_headers(response):
-    response.headers['X-Content-Type-Options'] = 'nosniff'
-    response.headers['X-Frame-Options'] = 'DENY'
-    response.headers['X-XSS-Protection'] = '1; mode=block'
-    return response
-```
-
-## Integration Examples
-
-### OBS Studio Integration
-```python
-from src.config import WebSettings
-from src.web_server import QRLiveWebServer
-
-# Configure for OBS
-web_config = WebSettings()
-web_config.host = "0.0.0.0"  # Allow external connections
-web_config.port = 8080
-
-server = QRLiveWebServer(web_config)
 server.start_server()
-
-# In OBS: Add Browser Source
-# URL: http://localhost:8080/viewer
-# Width: 800, Height: 600
-# Check "Shutdown source when not visible"
+try:
+    print(server.get_server_url())
+    with protocol:
+        input("Press Enter to stop the local overlay.\n")
+finally:
+    server.stop_server()
 ```
 
-### Custom Styling
-```python
-# Custom CSS for branding
-@app.route('/custom.css')
-def custom_css():
-    return """
-    .qr-container {
-        background: linear-gradient(45deg, #your-brand-color1, #your-brand-color2);
-        border-radius: 15px;
-        box-shadow: 0 8px 16px rgba(0,0,0,0.3);
-    }
-    .qr-title {
-        color: #your-text-color;
-        font-family: 'Your Brand Font', sans-serif;
-    }
-    """
-```
+Startup binds the socket before returning. With port `0`, `get_server_url()`
+reports the assigned port. `stop_server()` releases the listener and closes its
+browser streams. The embedded listener uses a threaded development WSGI server
+for local overlays. Deployments that expose the application on a network
+should use a WSGI server and reverse proxy suitable for long-lived connections
+and configure TLS, request limits, and an admin token.
 
-### Multi-Instance Setup
-```python
-# For load balancing and redundancy
-instances = []
+## HTTP and live updates
 
-for port in [8080, 8081, 8082]:
-    config = WebSettings()
-    config.port = port
-    config.host = "0.0.0.0"
+| Endpoint | Behavior |
+| --- | --- |
+| `GET /api/qr/current` | Latest frame as JSON, or HTTP 404 before the first frame. |
+| `GET /api/qr/events` | Server-sent events with the current frame followed by new frames. |
+| `GET /api/status`, `GET /status` | Listener state, page views, live connections, and Socket.IO broadcasts. |
+| `POST /api/verify` | Verify a JSON string supplied as `{"qr_data": "..."}`. |
+| `GET /api/user-data` | Current message, or `null`. |
+| `POST /api/user-data` | Set or clear the message with `{"user_text": "..."}`. |
+| `GET /api/improve/status` | Readiness, signing and trust metadata, and public configuration. |
+| `POST /api/improve/smoke-test` | Submit `{}` to test signed QR verification in a separate verifier and check chunk recovery. |
 
-    server = QRLiveWebServer(config)
-    server.start_server()
-    instances.append(server)
+The browser pages use the same-origin event stream and require no CDN scripts.
+The stream sends a comment heartbeat every 15 seconds when no new frame is
+ready. A slow client receives the newest available frame. Configure proxies
+to pass the event stream through without buffering. A Socket.IO client can
+still listen for `qr_update` or emit `request_qr_update`. The current-frame API,
+event stream, and Socket.IO use the same envelope with `qr_data` (the parsed
+object), `qr_json` (the exact wire text), `qr_image` (a data URL), and
+`timestamp` (the frame's publication time). Use `qr_json` to verify a detached
+receipt against the original UTF-8 bytes. Local
+OpenTimestamps proof paths stay on the issuer's machine.
 
-# Load balancer distributes traffic across instances
-```
+## Access controls
 
-## Performance Considerations
+Set `WebSettings.admin_token` for protected controls. The viewer and
+improvement dashboard prompt for the token when one is configured. An HTTP
+client can supply `X-QRLP-Admin-Token` or `Authorization: Bearer <token>`.
+Socket.IO clients supply an `admin_token` property alongside `user_text` in
+the `update_user_data` event. A successful message update emits
+`user_data_updated`. Rejected socket updates emit `user_data_error`.
 
-### Memory Usage
-- **Base memory**: ~20MB for Flask + SocketIO
-- **Per connection**: ~1MB for WebSocket connections
-- **QR caching**: ~5MB for 1000 cached QR images
-- **Template caching**: Minimal overhead
+Without a configured token, message changes and smoke tests work only on a
+loopback listener from a loopback peer using a loopback request host and
+either no Origin header or the same origin. CORS is disabled by default.
+Set both `cors_enabled` and explicit `cors_allowed_origins` for trusted browser
+integrations. CORS permits cross-origin access to the configured routes and
+Socket.IO transport subject to their normal authorization.
 
-### Response Times
-- **Page load**: < 100ms for cached templates
-- **QR update**: < 50ms for WebSocket broadcast
-- **API response**: < 20ms for simple endpoints
-- **Image generation**: < 100ms for QR code creation
+The server caps request bodies at 128 KiB and applies an in-memory per-peer
+HTTP request limit. Treat displayed QR metadata and messages as public to
+any client that can reach the server. The display lists evidence included
+in a frame. Use the verification endpoint to evaluate that evidence.
 
-### Scalability
-- **Concurrent connections**: 1000+ WebSocket connections
-- **Request rate**: 100+ requests/second
-- **Static file serving**: Efficient with proper caching headers
-- **Database queries**: None (stateless design)
-
-## Security Best Practices
-
-### Input Validation
-```python
-# Comprehensive input validation
-from src.web_server import SecurityValidator
-
-@app.route('/api/user-data', methods=['POST'])
-def update_user_data():
-    try:
-        data = request.get_json()
-        user_text = data.get('user_text', '')
-
-        # Validate and sanitize input
-        validated_text = SecurityValidator.validate_user_text(user_text)
-
-        # Process validated data
-        return jsonify({"success": True, "user_data": validated_text})
-
-    except BadRequest as e:
-        return jsonify({"error": str(e)}), 400
-```
-
-### Rate Limiting
-`WebSettings.rate_limit_per_minute` applies a basic in-memory per-client request cap. This is suitable for local and single-process deployments; place a reverse proxy or gateway in front of QRLP before exposing it beyond localhost.
-
-```python
-from src.config import WebSettings
-from src.web_server import QRLiveWebServer
-
-settings = WebSettings(rate_limit_per_minute=120, admin_token="change-me")
-server = QRLiveWebServer(settings)
-```
-
-### HTTPS Configuration
-```python
-# Production HTTPS setup
-from flask import Flask
-from werkzeug.serving import make_server
-
-app = Flask(__name__)
-
-# SSL context for HTTPS
-ssl_context = (
-    '/path/to/certificate.pem',
-    '/path/to/private_key.pem'
-)
-
-# Start with HTTPS
-server = make_server('0.0.0.0', 443, app, ssl_context=ssl_context)
-server.serve_forever()
-```
-
-## Error Handling
-
-### Custom Error Pages
-```python
-@app.errorhandler(404)
-def not_found(error):
-    return render_template('404.html'), 404
-
-@app.errorhandler(500)
-def internal_error(error):
-    return render_template('500.html'), 500
-```
-
-### Logging Configuration
-```python
-import logging
-from logging.handlers import RotatingFileHandler
-
-# Configure logging
-handler = RotatingFileHandler('qrlp_web.log', maxBytes=10*1024*1024, backupCount=5)
-handler.setFormatter(logging.Formatter(
-    '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-))
-
-app.logger.addHandler(handler)
-app.logger.setLevel(logging.INFO)
-```
-
-## Testing
-
-### Web Server Testing
-```python
-import pytest
-from src.config import WebSettings
-from src.web_server import QRLiveWebServer
-
-def test_web_server_initialization():
-    """Test web server initializes correctly."""
-    server = QRLiveWebServer(WebSettings())
-    assert server.app is not None
-    assert server.socketio is not None
-    assert server.settings is not None
-
-def test_qr_display_update():
-    """Test QR display update functionality."""
-    server = QRLiveWebServer(WebSettings())
-
-    # Mock QR data
-    mock_qr_data = type('MockQR', (), {
-        'timestamp': '2025-01-11T15:30:45Z',
-        'sequence_number': 1,
-        '__dict__': {'timestamp': '2025-01-11T15:30:45Z', 'sequence_number': 1}
-    })()
-
-    mock_qr_image = b'fake_png_data'
-
-    # Update display
-    server.update_qr_display(mock_qr_data, mock_qr_image)
-
-    # Check state updated
-    assert server.current_qr_data == mock_qr_data
-    assert server.current_qr_image == mock_qr_image
-```
-
-### Integration Testing
-```python
-import requests
-from src.config import WebSettings
-from src.web_server import QRLiveWebServer
-
-def test_web_api_integration():
-    """Test web API endpoints."""
-    server = QRLiveWebServer(WebSettings())
-    server.start_server(threaded=True)
-
-    try:
-        # Test status endpoint
-        response = requests.get('http://localhost:8080/api/status')
-        assert response.status_code == 200
-
-        status_data = response.json()
-        assert 'is_running' in status_data
-        assert 'page_views' in status_data
-
-        # Test QR endpoint
-        response = requests.get('http://localhost:8080/api/qr/current')
-        if response.status_code == 200:
-            qr_data = response.json()
-            assert 'qr_data' in qr_data
-            assert 'qr_image' in qr_data
-
-    finally:
-        server.stop_server()
-```
-
-## Troubleshooting
-
-### Common Issues
-
-**WebSocket Connection Fails**
-```python
-from src.config import WebSettings
-from src.web_server import QRLiveWebServer
-
-# Check SocketIO configuration
-server = QRLiveWebServer(WebSettings())
-print(f"SocketIO configured: {server.socketio is not None}")
-
-# Check CORS settings
-if server.settings.cors_enabled:
-    print("CORS enabled - check origin settings")
-```
-
-**QR Updates Not Displaying**
-```python
-# Check callback registration
-from src import QRLiveProtocol
-
-qrlp = QRLiveProtocol()
-web_server = QRLiveWebServer(qrlp.config.web_settings, verifier=qrlp)
-
-# Ensure callback is registered
-qrlp.add_update_callback(web_server.update_qr_display)
-
-# Check server statistics
-stats = web_server.get_statistics()
-print(f"QR updates sent: {stats['qr_updates_sent']}")
-```
-
-**Performance Issues**
-```python
-# Monitor performance metrics
-stats = web_server.get_statistics()
-print(f"Page views: {stats['page_views']}")
-print(f"WebSocket connections: {stats['websocket_connections']}")
-
-# Check memory usage
-import psutil
-process = psutil.Process()
-memory_mb = process.memory_info().rss / 1024 / 1024
-print(f"Memory usage: {memory_mb:.1f}MB")
-```
-
-## Deployment Notes
-
-This repository currently does not ship a tested Dockerfile, compose stack, Prometheus exporter, or internet-facing hardening profile. The web server is intended for local stream overlays and controlled networks by default.
-
-Before exposing QRLP beyond localhost:
-
-- Configure `WebSettings.admin_token` for state-changing controls.
-- Keep CORS disabled unless a specific trusted origin is required.
-- Put QRLP behind a reverse proxy that handles TLS, durable rate limiting, request size limits, and access logs.
-- Use a configured `QRLiveProtocol` verifier for `/api/verify` when public-key trust is required.
-
-Reverse proxy, load balancer, and metrics-exporter examples are intentionally omitted until this repository ships tested deployment artifacts for them.
-
-This web server module provides a local-first live QR interface for QRLP with input validation, optional admin-token controls, basic rate limiting, Socket.IO updates, and a real `/api/verify` integration point.
+An installed wheel includes its default templates. A custom
+`WebSettings.template_dir` can be absolute or relative to the project root.
+Custom templates with inline scripts must apply the per-response nonce,
+`<script nonce="{{ script_nonce }}">`, to work with the default Content
+Security Policy.

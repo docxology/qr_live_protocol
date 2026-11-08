@@ -5,6 +5,8 @@ Tests key generation, storage, encryption, and management operations.
 """
 
 import json
+import os
+import stat
 
 import pytest
 
@@ -212,6 +214,8 @@ class TestKeyManager:
         # Check backup file exists
         backup_file = backup_dir / "keys_backup.json"
         assert backup_file.exists()
+        if os.name == "posix":
+            assert stat.S_IMODE(backup_file.stat().st_mode) == 0o600
 
         # Check backup content
         with open(backup_file) as f:
@@ -220,6 +224,30 @@ class TestKeyManager:
         assert "backup_created" in backup_data
         assert "keys" in backup_data
         assert len(backup_data["keys"]) == 1
+
+    def test_missing_key_does_not_replace_existing_backup(self, key_manager, tmp_path):
+        key_manager.generate_keypair()
+        backup_dir = tmp_path / "backup"
+        assert key_manager.backup_keys(str(backup_dir))
+        backup_file = backup_dir / "keys_backup.json"
+        original = backup_file.read_bytes()
+
+        key_id = next(iter(key_manager.list_keys()))
+        (key_manager.key_dir / f"{key_id}.key").unlink()
+
+        assert key_manager.backup_keys(str(backup_dir)) is False
+        assert backup_file.read_bytes() == original
+
+    def test_key_lookup_does_not_escape_key_directory(self, key_manager, temp_key_dir):
+        key_manager.generate_keypair()
+        key_id = next(iter(key_manager.list_keys()))
+        key_file = temp_key_dir / f"{key_id}.key"
+        other_dir = temp_key_dir / "other"
+        other_dir.mkdir()
+        key_file.rename(other_dir / key_file.name)
+
+        assert key_manager.get_keypair(f"other/{key_id}") is None
+        assert key_manager.get_public_key(f"other/{key_id}") is None
 
     def test_key_metadata_persistence(self, temp_key_dir):
         """Test that key metadata persists across instances."""

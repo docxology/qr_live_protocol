@@ -7,18 +7,22 @@ Provides secure storage and transmission of confidential data.
 
 import base64
 import json
-import logging
 import secrets
+import threading
 from dataclasses import dataclass
-from datetime import UTC
+from datetime import UTC, datetime
 from typing import Any
 
-from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.exceptions import InvalidTag
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
+from ..serializer import QRSerializer
 from .exceptions import EncryptionError
 
-_logger = logging.getLogger("qrlp.crypto.encryptor")
+_SENSITIVE_FIELDS = ("user_data", "identity_hash", "custom_data")
+_NONCE_SIZE = 12
+_TAG_SIZE = 16
+
 
 @dataclass
 class EncryptionKey:
@@ -28,6 +32,7 @@ class EncryptionKey:
     algorithm: str
     created_at: str
     purpose: str
+
 
 class DataEncryptor:
     """
@@ -47,162 +52,126 @@ class DataEncryptor:
         self.master_key = master_key or secrets.token_bytes(32)
         self.key_id = self._generate_key_id()
         self.key_store: dict[str, bytes] = {}
+        self._lock = threading.RLock()
 
     def encrypt_sensitive_data(self, data: Any, additional_data: str | None = None) -> bytes:
-        """
-        Encrypt sensitive data using AES-256-GCM.
+        """Encrypt data with the current master key, returning Base64 bytes."""
+        with self._lock:
+            key = self.master_key
+        return self._encrypt(data, key, additional_data)
 
-        Args:
-            data: Data to encrypt (string, dict, or bytes)
-            additional_data: Additional authenticated data
+    def decrypt_sensitive_data(self, encrypted_data_b64: bytes, additional_data: str | None = None) -> Any:
+        """Decrypt Base64 bytes encrypted with the current master key."""
+        with self._lock:
+            key = self.master_key
+        return self._decode_plaintext(self._decrypt(encrypted_data_b64, key, additional_data))
 
-        Returns:
-            Encrypted data as bytes
-        """
-        # Serialize data if needed
+    @staticmethod
+    def _encrypt(data: Any, key: bytes, additional_data: str | None) -> bytes:
         if isinstance(data, (dict, list)):
-            plaintext = json.dumps(data, separators=(',', ':')).encode('utf-8')
-        elif isinstance(data, str):
-            plaintext = data.encode('utf-8')
+            plaintext = QRSerializer.serialize(data, filter_none=False).encode("utf-8")
         elif isinstance(data, bytes):
             plaintext = data
         else:
-            plaintext = str(data).encode('utf-8')
+            plaintext = str(data).encode("utf-8")
 
-        # Generate random IV
-        iv = secrets.token_bytes(12)
-
-        # Create cipher
-        cipher = Cipher(
-            algorithms.AES(self.master_key),
-            modes.GCM(iv),
-            backend=default_backend()
-        )
-
-        encryptor = cipher.encryptor()
-
-        # Add additional authenticated data if provided
-        if additional_data:
-            encryptor.authenticate_additional_data(additional_data.encode('utf-8'))
-
-        # Encrypt data
-        ciphertext = encryptor.update(plaintext) + encryptor.finalize()
-
-        # Combine IV, tag, and ciphertext
-        tag = encryptor.tag
-        encrypted_data = iv + tag + ciphertext
-
-        return base64.b64encode(encrypted_data)
-
-    def decrypt_sensitive_data(self, encrypted_data_b64: bytes, additional_data: str | None = None) -> Any:
-        """
-        Decrypt data encrypted with encrypt_sensitive_data.
-
-        Args:
-            encrypted_data_b64: Base64-encoded encrypted data
-            additional_data: Additional authenticated data used during encryption
-
-        Returns:
-            Decrypted data (original format)
-        """
+        iv = secrets.token_bytes(_NONCE_SIZE)
+        aad = additional_data.encode("utf-8") if additional_data else None
         try:
-            # Decode base64
-            encrypted_data = base64.b64decode(encrypted_data_b64)
+            ciphertext_and_tag = AESGCM(key).encrypt(iv, plaintext, aad)
+        except (ValueError, OverflowError) as error:
+            raise EncryptionError("Encryption failed") from error
+        # QRLP encodes IV + tag + ciphertext, unlike AESGCM's return value.
+        ciphertext, tag = ciphertext_and_tag[:-_TAG_SIZE], ciphertext_and_tag[-_TAG_SIZE:]
+        return base64.b64encode(iv + tag + ciphertext)
 
-            # Extract components
-            iv = encrypted_data[:12]
-            tag = encrypted_data[12:28]
-            ciphertext = encrypted_data[28:]
+    @staticmethod
+    def _decrypt(encrypted: str | bytes, key: bytes, additional_data: str | None) -> str:
+        try:
+            wire = base64.b64decode(encrypted, validate=True)
+            if len(wire) < _NONCE_SIZE + _TAG_SIZE:
+                raise ValueError("Encrypted data is truncated")
+            iv = wire[:_NONCE_SIZE]
+            tag = wire[_NONCE_SIZE:_NONCE_SIZE + _TAG_SIZE]
+            ciphertext = wire[_NONCE_SIZE + _TAG_SIZE:]
+            aad = additional_data.encode("utf-8") if additional_data else None
+            return AESGCM(key).decrypt(iv, ciphertext + tag, aad).decode("utf-8")
+        except (InvalidTag, TypeError, ValueError) as error:
+            raise EncryptionError("Decryption failed") from error
 
-            # Create cipher
-            cipher = Cipher(
-                algorithms.AES(self.master_key),
-                modes.GCM(iv, tag),
-                backend=default_backend()
-            )
-
-            decryptor = cipher.decryptor()
-
-            # Add additional authenticated data if provided
-            if additional_data:
-                decryptor.authenticate_additional_data(additional_data.encode('utf-8'))
-
-            # Decrypt data
-            plaintext = decryptor.update(ciphertext) + decryptor.finalize()
-
-            # Try to parse as JSON first
-            try:
-                return json.loads(plaintext.decode('utf-8'))
-            except json.JSONDecodeError:
-                # Return as string if not JSON
-                return plaintext.decode('utf-8')
-
-        except Exception as e:
-            raise EncryptionError(f"Decryption failed: {e}")
+    @staticmethod
+    def _decode_plaintext(plaintext: str) -> Any:
+        try:
+            return QRSerializer.deserialize(plaintext)
+        except json.JSONDecodeError:
+            return plaintext
 
     def encrypt_qr_payload(self, qr_data: dict[str, Any]) -> dict[str, Any]:
-        """
-        Encrypt sensitive fields in QR data payload.
+        """Encrypt present sensitive QR fields with the current master key."""
+        with self._lock:
+            key_id, key = self.key_id, self.master_key
+        return self._encrypt_fields(qr_data, key, key_id)
 
-        Args:
-            qr_data: QR data dictionary
-
-        Returns:
-            QR data with sensitive fields encrypted
-        """
-        encrypted_qr = qr_data.copy()
-
-        # Fields to encrypt
-        sensitive_fields = ['user_data', 'identity_hash', 'custom_data']
-
-        for field in sensitive_fields:
-            if field in encrypted_qr and encrypted_qr[field] is not None:
-                encrypted_qr[field] = self.encrypt_sensitive_data(
-                    encrypted_qr[field],
-                    additional_data=f"qr_field_{field}"
-                ).decode('utf-8')
-
-        # Add encryption metadata
-        encrypted_qr['_encrypted_fields'] = sensitive_fields
-        encrypted_qr['_encryption_key_id'] = self.key_id
-        encrypted_qr['_encrypted_at'] = self._get_timestamp()
-
-        return encrypted_qr
+    def _encrypt_fields(
+        self, qr_data: dict[str, Any], key: bytes, key_id: str,
+    ) -> dict[str, Any]:
+        encrypted = qr_data.copy()
+        fields = [field for field in _SENSITIVE_FIELDS if encrypted.get(field) is not None]
+        if not fields:
+            raise EncryptionError("No sensitive QR fields to encrypt")
+        for field in fields:
+            encrypted[field] = self._encrypt(encrypted[field], key, f"qr_field_{field}").decode("ascii")
+        encrypted.update({
+            "_encrypted_fields": fields,
+            "_encryption_key_id": key_id,
+            "_encrypted_at": self._get_timestamp(),
+        })
+        return encrypted
 
     def decrypt_qr_payload(self, encrypted_qr_data: dict[str, Any]) -> dict[str, Any]:
-        """
-        Decrypt sensitive fields in QR data payload.
+        """Decrypt the whole QR payload or raise if a protected field fails."""
+        decrypted = encrypted_qr_data.copy()
+        fields = decrypted.get("_encrypted_fields")
+        if fields is None:
+            return decrypted
+        if (
+            not isinstance(fields, list) or not fields
+            or any(field not in _SENSITIVE_FIELDS for field in fields)
+            or len(fields) != len(set(fields))
+        ):
+            raise EncryptionError("Invalid encrypted field list")
 
-        Args:
-            encrypted_qr_data: QR data with encrypted fields
+        decrypted.pop("_encrypted_fields")
+        master_id = decrypted.pop("_encryption_key_id", None)
+        data_key_id = decrypted.pop("_data_key_id", None)
+        decrypted.pop("_encrypted_at", None)
+        if master_id is not None and not isinstance(master_id, str):
+            raise EncryptionError("Invalid encryption key identifier")
+        with self._lock:
+            if data_key_id is not None:
+                if not isinstance(data_key_id, str) or not data_key_id:
+                    raise EncryptionError("Invalid data key identifier")
+                key = self._get_key_by_id(data_key_id).key_data
+            else:
+                # Older payloads use a sender-local master ID. A verifier
+                # with the same master bytes can still authenticate the fields.
+                key = self.key_store.get(master_id, self.master_key)
 
-        Returns:
-            QR data with sensitive fields decrypted
-        """
-        decrypted_qr = encrypted_qr_data.copy()
-
-        # Check if data is encrypted
-        if '_encrypted_fields' not in decrypted_qr:
-            return decrypted_qr
-
-        encrypted_fields = decrypted_qr.pop('_encrypted_fields')
-        key_id = decrypted_qr.pop('_encryption_key_id', None)
-        encrypted_at = decrypted_qr.pop('_encrypted_at', None)
-
-        for field in encrypted_fields:
-            if field in decrypted_qr and decrypted_qr[field] is not None:
-                try:
-                    encrypted_value = decrypted_qr[field]
-                    if isinstance(encrypted_value, str):
-                        decrypted_qr[field] = self.decrypt_sensitive_data(
-                            encrypted_value.encode('utf-8'),
-                            additional_data=f"qr_field_{field}"
-                        )
-                except Exception as e:
-                    _logger.error(f"Warning: Failed to decrypt field {field}: {e}")
-                    # Keep encrypted value if decryption fails
-
-        return decrypted_qr
+        # Legacy writers listed absent sensitive fields. A payload must
+        # nevertheless contain at least one actual encrypted field.
+        present = [field for field in fields if decrypted.get(field) is not None]
+        if not present:
+            raise EncryptionError("No encrypted QR fields to decrypt")
+        for field in present:
+            value = decrypted[field]
+            if not isinstance(value, str):
+                raise EncryptionError("Invalid encrypted field")
+            plaintext = self._decrypt(value, key, f"qr_field_{field}")
+            try:
+                decrypted[field] = plaintext if field == "identity_hash" else self._decode_plaintext(plaintext)
+            except ValueError as error:
+                raise EncryptionError("Invalid encrypted field value") from error
+        return decrypted
 
     def generate_data_key(self, purpose: str = "data") -> EncryptionKey:
         """
@@ -224,69 +193,22 @@ class DataEncryptor:
             created_at=self._get_timestamp(),
             purpose=purpose,
         )
-        # Register the key so later lookups find it in key_store instead of
-        # silently falling back to the master key. Without this, a caller who
-        # generates a data key and then encrypts with it actually encrypts with
-        # the master key, defeating the whole point of per-data-key separation.
-        self.key_store[key_id] = key_data
+        with self._lock:
+            self.key_store[key_id] = key_data
         return key
 
     def create_encrypted_qr_data(self, qr_data: dict[str, Any], key_id: str) -> dict[str, Any]:
-        """
-        Create QR data with encrypted sensitive information.
-
-        Args:
-            qr_data: Original QR data
-            key_id: Encryption key identifier
-
-        Returns:
-            QR data with encrypted fields
-        """
-        # Get encryption key
-        key = self._get_key_by_id(key_id)
-        if not key:
-            raise EncryptionError(f"Encryption key not found: {key_id}")
-
-        # Temporarily use this key for encryption
-        original_key = self.master_key
-        self.master_key = key.key_data
-
-        try:
-            encrypted_data = self.encrypt_qr_payload(qr_data)
-            encrypted_data['_data_key_id'] = key_id
-            return encrypted_data
-        finally:
-            # Restore original key
-            self.master_key = original_key
+        """Encrypt sensitive QR fields with a registered data key."""
+        with self._lock:
+            key = self._get_key_by_id(key_id)
+            master_id = self.key_id
+        encrypted = self._encrypt_fields(qr_data, key.key_data, master_id)
+        encrypted["_data_key_id"] = key.key_id
+        return encrypted
 
     def decrypt_encrypted_qr_data(self, encrypted_qr_data: dict[str, Any]) -> dict[str, Any]:
-        """
-        Decrypt QR data with encrypted sensitive information.
-
-        Args:
-            encrypted_qr_data: QR data with encrypted fields
-
-        Returns:
-            QR data with decrypted fields
-        """
-        key_id = encrypted_qr_data.get('_data_key_id')
-        if not key_id:
-            return encrypted_qr_data
-
-        # Get decryption key
-        key = self._get_key_by_id(key_id)
-        if not key:
-            raise EncryptionError(f"Decryption key not found: {key_id}")
-
-        # Temporarily use this key for decryption
-        original_key = self.master_key
-        self.master_key = key.key_data
-
-        try:
-            return self.decrypt_qr_payload(encrypted_qr_data)
-        finally:
-            # Restore original key
-            self.master_key = original_key
+        """Decrypt a QR payload using its embedded key metadata."""
+        return self.decrypt_qr_payload(encrypted_qr_data)
 
     def _generate_key_id(self) -> str:
         """Generate unique key identifier."""
@@ -294,7 +216,6 @@ class DataEncryptor:
 
     def _get_timestamp(self) -> str:
         """Get current timestamp in ISO format."""
-        from datetime import datetime
         return datetime.now(UTC).isoformat()
 
     def _get_key_by_id(self, key_id: str) -> EncryptionKey:
@@ -328,7 +249,8 @@ class DataEncryptor:
             key_id: Unique identifier for the key
             key_data: The key bytes to store
         """
-        self.key_store[key_id] = key_data
+        with self._lock:
+            self.key_store[key_id] = key_data
 
     def rotate_key(self) -> str:
         """Rotate the master key.
@@ -338,12 +260,8 @@ class DataEncryptor:
         Returns:
             The key_id of the new master key
         """
-        # Archive the old master key with its key_id
-        self.key_store[self.key_id] = self.master_key
-
-        # Generate new master key
-        self.master_key = secrets.token_bytes(32)
-        self.key_id = self._generate_key_id()
-
-        return self.key_id
-
+        with self._lock:
+            self.key_store[self.key_id] = self.master_key
+            self.master_key = secrets.token_bytes(32)
+            self.key_id = self._generate_key_id()
+            return self.key_id

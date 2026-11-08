@@ -1,30 +1,16 @@
-"""
-Frame recovery algorithms for fault-tolerant QR frame delivery.
+"""Track gaps and late deliveries in a numbered optical frame stream.
 
-QRLP frames are delivered over an unreliable optical channel: cameras drop
-frames (motion blur, occlusion, focus loss), and receivers may decode frames
-out of order. This module provides a receiver-side recovery layer that:
-
-- Reorders out-of-order frames into a contiguous sequence.
-- Detects gaps via monotonic frame indices.
-- Records a retransmission window when a gap is detected (the sender keeps a
-  small sliding window of ``retransmission_window`` frames for re-request).
-- Accepts a contiguous subsequence once any recoverable gap has been closed.
-
-The recovery is stateless on the wire: every frame still carries its own
-sequence number in-band (from ``QRGenerator`` chunk metadata), so this module
-only adds receiver-side buffering and gap bookkeeping.
+The receiver retains a bounded window of missing frame numbers and marks a
+frame as recovered when it actually arrives. Callers own payload buffering
+and any retransmission requests.
 """
 
 from __future__ import annotations
 
-import logging
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 from typing import Any
-
-_logger = logging.getLogger("qrlp.frame_recovery")
 
 
 class RecoveryDecision(Enum):
@@ -57,7 +43,7 @@ class FrameRecoveryConfig:
 
 @dataclass
 class FrameRecoveryStats:
-    """Immutable statistics snapshot for the recovery controller."""
+    """Statistics snapshot for the recovery controller."""
 
     frames_accepted: int = 0
     frames_duplicate: int = 0
@@ -81,9 +67,9 @@ class FrameRecoveryController:
     def __init__(self, config: FrameRecoveryConfig | None = None):
         """Initialize the recovery controller with an optional config."""
         self.config = config or FrameRecoveryConfig()
-        self._lock = threading.RLock()
-        # Monotonic cursor; ``None`` means "no frame observed yet".
+        self._lock = threading.Lock()
         self._last_accepted: int | None = None
+        self._pending: dict[int, None] = {}
         self.stats = FrameRecoveryStats()
 
     @staticmethod
@@ -115,39 +101,27 @@ class FrameRecoveryController:
         gap_end: int | None = None
 
         with self._lock:
-            if self._last_accepted is None:
-                # First frame of a stream is always accepted.
-                self._last_accepted = frame_number
+            if frame_number in self._pending:
+                del self._pending[frame_number]
                 self.stats.frames_accepted += 1
-            elif frame_number < self._last_accepted:
-                # Duplicate or stale frame: drop silently.
-                self.stats.frames_duplicate += 1
-                decision = RecoveryDecision.DUPLICATE
-            elif frame_number == self._last_accepted:
-                # Exact duplicate of the accepted cursor.
+                self.stats.frames_reordered += 1
+                self.stats.gaps_recovered += 1
+                decision = RecoveryDecision.GAP_RECOVERED
+                gap_start = gap_end = frame_number
+            elif self._last_accepted is not None and frame_number <= self._last_accepted:
                 self.stats.frames_duplicate += 1
                 decision = RecoveryDecision.DUPLICATE
             else:
-                gap_size = frame_number - self._last_accepted - 1
-                if gap_size > 0:
-                    # One or more missing intermediate frames.
-                    gap_start = self._last_accepted + 1
-                    gap_end = frame_number - 1
-                    if gap_size > self.config.max_gap_tolerance:
-                        # Unrecoverable gap: treat as a stream reset.
+                if self._last_accepted is not None:
+                    self._expire_pending(frame_number)
+                    gap_size = frame_number - self._last_accepted - 1
+                    if gap_size:
                         decision = RecoveryDecision.GAP
-                    else:
-                        self.stats.gaps_detected += gap_size
-                        if gap_size <= self.config.retransmission_window:
-                            self.stats.gaps_recovered += gap_size
-                            decision = RecoveryDecision.GAP_RECOVERED
-                        else:
-                            decision = RecoveryDecision.GAP
-                    self.stats.frames_accepted += 1
-                else:
-                    # Contiguous next frame.
-                    self.stats.frames_accepted += 1
+                        gap_start = self._last_accepted + 1
+                        gap_end = frame_number - 1
+                        self._record_gap(gap_start, gap_end, gap_size)
                 self._last_accepted = frame_number
+                self.stats.frames_accepted += 1
 
             self._recompute_recovery_rate()
 
@@ -157,6 +131,31 @@ class FrameRecoveryController:
             "gap_start": gap_start,
             "gap_end": gap_end,
         }
+
+    def _expire_pending(self, frame_number: int) -> None:
+        oldest_allowed = frame_number - self.config.retransmission_window
+        while self._pending:
+            oldest = next(iter(self._pending))
+            if oldest >= oldest_allowed:
+                break
+            del self._pending[oldest]
+            self.stats.frames_dropped += 1
+
+    def _record_gap(self, start: int, end: int, size: int) -> None:
+        self.stats.gaps_detected += size
+        window = min(
+            self.config.max_gap_tolerance,
+            self.config.retransmission_window,
+            self.config.buffer_size,
+        )
+        if size > window:
+            self.stats.frames_dropped += size
+            return
+
+        while len(self._pending) + size > self.config.buffer_size:
+            del self._pending[next(iter(self._pending))]
+            self.stats.frames_dropped += 1
+        self._pending.update(dict.fromkeys(range(start, end + 1)))
 
     def _recompute_recovery_rate(self) -> None:
         """Recompute the derived recovery rate after a state change."""
@@ -168,18 +167,13 @@ class FrameRecoveryController:
     def get_stats(self) -> FrameRecoveryStats:
         """Return a snapshot of the current recovery statistics."""
         with self._lock:
-            return FrameRecoveryStats(
-                frames_accepted=self.stats.frames_accepted,
-                frames_duplicate=self.stats.frames_duplicate,
-                frames_reordered=self.stats.frames_reordered,
-                gaps_detected=self.stats.gaps_detected,
-                gaps_recovered=self.stats.gaps_recovered,
-                frames_dropped=self.stats.frames_dropped,
-                recovery_rate=self.stats.recovery_rate,
-            )
+            return replace(self.stats)
 
-    def reset(self) -> None:
-        """Reset all recovery state."""
+    def reset(self, *, start_frame: int | None = None) -> None:
+        """Reset recovery and optionally set the expected first frame number."""
+        if start_frame is not None and start_frame < 0:
+            raise ValueError("start_frame must be non-negative")
         with self._lock:
-            self._last_accepted = None
+            self._last_accepted = None if start_frame is None else start_frame - 1
+            self._pending.clear()
             self.stats = FrameRecoveryStats()

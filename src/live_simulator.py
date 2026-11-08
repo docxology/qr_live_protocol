@@ -10,7 +10,7 @@ The simulator wires the real components together:
 - :class:`OpticalThroughputController` paces *and* caches frame production.
 - A configurable optical channel model drops a fraction of frames
   (motion blur, occlusion, focus loss) and optionally reorders them.
-- :class:`FrameRecoveryController` re-orders and recovers the received stream.
+- :class:`FrameRecoveryController` tracks gaps and actual late arrivals.
 
 A run produces a full report: frames produced, frames dropped, gaps detected,
 gaps recovered, recovery rate, adapted frames-per-second, and the lasting
@@ -21,11 +21,15 @@ provided, so simulator runs are reproducible. No hardware is required.
 from __future__ import annotations
 
 import random
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
-from typing import Any, Callable
+from heapq import heappop, heappush
+from typing import Any, TypeVar
 
 from .frame_recovery import FrameRecoveryConfig, FrameRecoveryController
 from .optical_throughput import OpticalThroughputController, ThroughputConfig
+
+_Frame = TypeVar("_Frame")
 
 
 @dataclass
@@ -46,52 +50,35 @@ class OpticalChannelModel:
             raise ValueError("reorder_span must be non-negative")
         self._random = random.Random(self.seed)
 
-    def transmit(self, frames: list[Any]) -> list[Any]:
-        """
-        Pass frames through the unreliable channel.
+    def transmit(self, frames: list[_Frame]) -> list[_Frame]:
+        """Return the original frames in simulated delivery order."""
+        return [frame for _, frame in self._deliver(frames)]
 
-        Frames are either dropped, delivered in order, or (when reorder is
-        enabled) delivered late. Returns the frames observed by the receiver.
-
-        Args:
-            frames: Ordered list of produced frames.
-
-        Returns:
-            The subset of frames that arrive at the receiver.
-        """
-        received = []
-        drop_pool = set()
-
+    def _deliver(
+        self,
+        frames: Iterable[_Frame],
+        on_attempt: Callable[[int, bool], None] | None = None,
+    ) -> Iterator[tuple[int, _Frame]]:
+        pending: list[tuple[int, int, _Frame]] = []
         for index, frame in enumerate(frames):
-            if self._random.random() < self.drop_rate:
-                drop_pool.add(index)
-                continue
-            # With the reorder probability, defer this frame a few positions.
-            if self.reorder_rate > 0 and self._random.random() < self.reorder_rate:
-                received.append(_DeferredFrame(index, frame))
-            else:
-                received.append(frame)
+            received = self._random.random() >= self.drop_rate
+            if on_attempt is not None:
+                on_attempt(index, received)
 
-        return received
+            if received:
+                if self.reorder_span and self.reorder_rate and self._random.random() < self.reorder_rate:
+                    delay = self._random.randint(1, self.reorder_span)
+                    heappush(pending, (index + delay, index, frame))
+                else:
+                    yield index, frame
 
+            while pending and pending[0][0] <= index:
+                _, original_index, delayed_frame = heappop(pending)
+                yield original_index, delayed_frame
 
-class _DeferredFrame:
-    """
-    A frame whose delivery is intentionally deferred to simulate reordering.
-
-    Wraps an original frame so it still exposes ``frame_number`` but arrives
-    after frames with larger sequence numbers.
-    """
-
-    __slots__ = ("_payload", "frame_number")
-
-    def __init__(self, frame_number: int, payload: Any):
-        self.frame_number = frame_number
-        self._payload = payload
-
-    def unwrap(self) -> Any:
-        """Return the underlying produced frame."""
-        return self._payload
+        while pending:
+            _, original_index, delayed_frame = heappop(pending)
+            yield original_index, delayed_frame
 
 
 @dataclass
@@ -144,8 +131,7 @@ class LiveSimulator:
 
     Args:
         encoder: Callable(frame_number) -> bytes. Defaults to a synthetic
-            ``b"frame:<n>"`` encoder when left as ``None`` (no hardware/QR
-            dependency, so simulations run anywhere).
+            byte payload, so the simulation needs no hardware.
         config: Optional throughput configuration.
         recovery_config: Optional frame recovery configuration.
         channel: Optional optical channel model. A default 15% drop rate is
@@ -159,9 +145,8 @@ class LiveSimulator:
         recovery_config: FrameRecoveryConfig | None = None,
         channel: OpticalChannelModel | None = None,
     ):
-        def default_encoder(frame_number: int) -> SimulatedFrame:
-            payload = f"QRLP-FRAME-{frame_number}".encode("ascii")
-            return SimulatedFrame(frame_number=frame_number, payload=payload)
+        def default_encoder(frame_number: int) -> bytes:
+            return f"QRLP-FRAME-{frame_number}".encode("ascii")
 
         self._encoder = encoder or default_encoder
         self.config = config or ThroughputConfig()
@@ -185,57 +170,35 @@ class LiveSimulator:
         if frame_count < 1:
             raise ValueError("frame_count must be at least 1")
 
-        produced_frames: list[Any] = []
+        self._producer.reset()
+        self._recovery.reset(start_frame=0)
         loss_pattern: list[int] = []
 
-        # Phase 1: produce frames, applying drops so adaptation reacts.
-        for n in range(frame_count):
-            frame = self._producer.produce(n)
-            if self._channel_drops_frame():
-                loss_pattern.append(n)
-                if adapt_on_reads:
-                    self._producer.adapt(reads_ok=False)
-            elif adapt_on_reads:
-                self._producer.adapt(reads_ok=True)
-            produced_frames.append(frame)
+        def observe(index: int, received: bool) -> None:
+            if not received:
+                loss_pattern.append(index)
+            if adapt_on_reads:
+                self._producer.adapt(reads_ok=received)
 
-        # Phase 2: pass frames through the channel model (drop + reorder).
-        delivered = self.channel.transmit(produced_frames)
-        # Flatten reordered (deferred) wrappers back to their payloads.
-        flattened = [
-            frame.unwrap() if isinstance(frame, _DeferredFrame) else frame
-            for frame in delivered
-        ]
-
-        # Phase 3: drive the recovery controller over delivered frame numbers.
-        received_numbers = []
-        for frame in flattened:
-            frame_number = getattr(frame, "frame_number", None)
-            if frame_number is None:
-                frame_number = frame if isinstance(frame, int) else None
-            if frame_number is not None:
-                received_numbers.append(frame_number)
-                self._recovery.feed_frame(frame_number)
+        frames = (self._producer.produce(index) for index in range(frame_count))
+        for frame_number, _ in self.channel._deliver(frames, observe):
+            self._recovery.feed_frame(frame_number)
 
         report_stats = self._producer.get_performance_report()
         recovery_stats = self._recovery.get_stats()
 
         return SimulationReport(
             frames_produced=report_stats["frames_produced"],
-            frames_received=len(received_numbers),
-            frames_dropped=report_stats["frames_produced"] - len(received_numbers),
+            frames_received=frame_count - len(loss_pattern),
+            frames_dropped=len(loss_pattern),
             gaps_detected=recovery_stats.gaps_detected,
             gaps_recovered=recovery_stats.gaps_recovered,
             recovery_rate=recovery_stats.recovery_rate,
             adapted_frames_per_second=report_stats["frames_per_second"],
             cache_hit_rate=report_stats["cache_hit_rate"],
             encode_average_s=report_stats["encode_average_s"],
-            loss_pattern=sorted(set(loss_pattern)),
+            loss_pattern=loss_pattern,
         )
-
-    def _channel_drops_frame(self) -> bool:
-        """Query the channel's PRNG for a single-frame drop decision."""
-        return self.channel._random.random() < self.channel.drop_rate
 
     def summary(self, frame_count: int = 100) -> str:
         """Return a human-readable summary of a simulation run."""

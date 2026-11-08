@@ -8,11 +8,14 @@ Supports RSA and ECDSA key pairs with secure storage and backup capabilities.
 import base64
 import json
 import logging
+import os
 import secrets
+import tempfile
 import threading
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes, serialization
@@ -22,6 +25,20 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 _logger = logging.getLogger("qrlp.crypto.key_manager")
 
+
+def _write_private_file(path: Path, data: bytes, *, create_only: bool = False) -> None:
+    """Publish a complete owner-only file, optionally without replacement."""
+    descriptor, name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
+    temporary = Path(name)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(data)
+        if create_only:
+            os.link(temporary, path)
+        else:
+            temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 @dataclass
@@ -68,7 +85,7 @@ class KeyManager:
                 PBKDF2-HMAC-SHA256 with a stored salt.
         """
         self.key_dir = Path(key_dir) if key_dir else Path.home() / ".qrlp" / "keys"
-        self.key_dir.mkdir(parents=True, exist_ok=True)
+        self.key_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
         self._lock = threading.RLock()
 
         self._password = password
@@ -175,14 +192,11 @@ class KeyManager:
             KeyPair object or None if not found
         """
         with self._lock:
-            key_file = self.key_dir / f"{key_id}.key"
-            if not key_file.exists():
+            data = self._read_key_data(key_id)
+            if data is None:
                 return None
 
             try:
-                with open(key_file, 'rb') as f:
-                    data = json.load(f)
-
                 # Decrypt private key for use
                 encrypted_private = base64.b64decode(data['private_key'])
                 decrypted_private = self._decrypt_private_key(encrypted_private, key_id)
@@ -203,6 +217,38 @@ class KeyManager:
                 )
             except Exception:
                 return None
+
+    def get_public_key(self, key_id: str) -> tuple[bytes, str] | None:
+        """Load the public PEM and algorithm without decrypting private key material."""
+        with self._lock:
+            data = self._read_key_data(key_id)
+            if data is None:
+                return None
+            try:
+                public_key = base64.b64decode(data["public_key"], validate=True)
+                algorithm = data["algorithm"]
+                if public_key and isinstance(algorithm, str):
+                    return public_key, algorithm
+            except (KeyError, TypeError, ValueError):
+                pass
+            return None
+
+    def _read_key_data(self, key_id: str) -> dict[str, Any] | None:
+        # Signing key IDs come from scanned payloads. Keep lookups in the
+        # managed directory even when a caller passes an arbitrary ID.
+        if not isinstance(key_id, str) or not key_id or any(
+            char in key_id for char in ("/", "\\", "\x00")
+        ):
+            return None
+        key_file = self.key_dir / f"{key_id}.key"
+        try:
+            if key_file.is_symlink() or not key_file.is_file():
+                return None
+            with key_file.open("rb") as handle:
+                data = json.load(handle)
+        except (OSError, ValueError, RecursionError):
+            return None
+        return data if isinstance(data, dict) else None
 
     def list_keys(self) -> dict[str, KeyInfo]:
         """
@@ -259,17 +305,17 @@ class KeyManager:
             if key_id not in self.keys_info:
                 return None
 
-            key_file = self.key_dir / f"{key_id}.key"
-            if not key_file.exists():
+            public_key = self.get_public_key(key_id)
+            if public_key is None:
                 return None
-
-            with open(key_file, 'rb') as f:
-                data = json.load(f)
-            public_pem = base64.b64decode(data['public_key'])
+            public_pem, _ = public_key
+            key_file = self.key_dir / f"{key_id}.key"
 
             archive_path = Path(archive_dir) if archive_dir else self.key_dir / "archive"
             archive_path.mkdir(parents=True, exist_ok=True)
             archived_file = archive_path / f"{key_id}.key"
+            if archived_file.exists() or archived_file.is_symlink():
+                raise FileExistsError(archived_file)
             key_file.rename(archived_file)
 
             del self.keys_info[key_id]
@@ -352,7 +398,10 @@ class KeyManager:
 
     def backup_keys(self, backup_dir: str) -> bool:
         """
-        Create encrypted backup of all keys.
+        Export all keys to an owner-only JSON file.
+
+        The legacy backup format holds Base64-encoded private PEM, so store
+        the resulting file as a private key.
 
         Args:
             backup_dir: Directory to store backup
@@ -361,19 +410,19 @@ class KeyManager:
             True if backup was successful
         """
         backup_path = Path(backup_dir)
-        backup_path.mkdir(parents=True, exist_ok=True)
-
         try:
-            # Backup key metadata
+            backup_path.mkdir(parents=True, exist_ok=True, mode=0o700)
             metadata_backup = backup_path / "keys_backup.json"
             backup_data = {
                 "backup_created": datetime.now(UTC).isoformat(),
                 "keys": {}
             }
 
-            for key_id, key_info in self.keys_info.items():
-                keypair = self.get_keypair(key_id)
-                if keypair:
+            with self._lock:
+                for key_id, key_info in self.keys_info.items():
+                    keypair = self.get_keypair(key_id)
+                    if keypair is None:
+                        return False
                     backup_data["keys"][key_id] = {
                         "key_info": asdict(key_info),
                         "public_key": base64.b64encode(keypair.public_key).decode(),
@@ -382,8 +431,9 @@ class KeyManager:
                         "key_size": keypair.key_size
                     }
 
-            with open(metadata_backup, 'w') as f:
-                json.dump(backup_data, f, indent=2, default=str)
+                _write_private_file(
+                    metadata_backup, json.dumps(backup_data, indent=2, default=str).encode("utf-8"),
+                )
 
             return True
 
@@ -405,15 +455,7 @@ class KeyManager:
         master_key_file = self.key_dir / ".master_key"
 
         if self._password is not None:
-            # PBKDF2 key derivation from password
-            salt_file = self.key_dir / ".master_salt"
-            if salt_file.exists():
-                salt = salt_file.read_bytes()
-            else:
-                salt = secrets.token_bytes(16)
-                salt_file.write_bytes(salt)
-                salt_file.chmod(0o600)
-
+            salt = self._load_or_create_secret(self.key_dir / ".master_salt", 16)
             kdf = PBKDF2HMAC(
                 algorithm=hashes.SHA256(),
                 length=32,
@@ -423,20 +465,21 @@ class KeyManager:
             )
             return kdf.derive(self._password.encode("utf-8"))
 
-        # No password -- use random key (original behavior)
-        if master_key_file.exists():
-            with open(master_key_file, 'rb') as f:
-                return f.read()
+        return self._load_or_create_secret(master_key_file, 32)
 
-        # Generate new master key
-        master_key = secrets.token_bytes(32)
-        with open(master_key_file, 'wb') as f:
-            f.write(master_key)
-
-        # Set restrictive permissions
-        master_key_file.chmod(0o600)
-
-        return master_key
+    @staticmethod
+    def _load_or_create_secret(path: Path, length: int) -> bytes:
+        try:
+            secret = path.read_bytes()
+        except FileNotFoundError:
+            secret = secrets.token_bytes(length)
+            try:
+                _write_private_file(path, secret, create_only=True)
+            except FileExistsError:
+                secret = path.read_bytes()
+        if len(secret) != length:
+            raise ValueError(f"Invalid key store secret: {path.name}")
+        return secret
 
     def _encrypt_private_key(self, private_key_pem: bytes, key_id: str) -> bytes:
         """Encrypt private key using master key."""
@@ -485,11 +528,7 @@ class KeyManager:
             "created_at": keypair.created_at.isoformat()
         }
 
-        with open(key_file, 'w') as f:
-            json.dump(data, f, indent=2)
-
-        # Set restrictive permissions
-        key_file.chmod(0o600)
+        _write_private_file(key_file, json.dumps(data, indent=2).encode("utf-8"), create_only=True)
 
     def _load_key_metadata(self) -> None:
         """Load key metadata from disk."""
@@ -527,5 +566,4 @@ class KeyManager:
                 "purpose": key_info.purpose
             }
 
-        with open(self.keys_file, 'w') as f:
-            json.dump(data, f, indent=2, default=str)
+        _write_private_file(self.keys_file, json.dumps(data, indent=2, default=str).encode("utf-8"))

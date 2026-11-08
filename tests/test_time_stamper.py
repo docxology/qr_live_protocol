@@ -1,8 +1,7 @@
 """
 Tests for the OpenTimestamps TimeStamper.
 
-All network-dependent paths are mocked: ``RemoteCalendar.submit`` and
-``RemoteCalendar.get_timestamp`` are patched so no real HTTP calls are made.
+Calendar submissions are stubbed so no real HTTP calls are made.
 The tests exercise stamping, verification, interval enforcement, canonical
 serialisation, and graceful degradation.
 """
@@ -10,6 +9,8 @@ serialisation, and graceful degradation.
 import hashlib
 import json
 import time
+from concurrent.futures import ThreadPoolExecutor
+from threading import Event
 from pathlib import Path
 from unittest.mock import patch
 
@@ -21,22 +22,14 @@ from src.time_stamper import TimeStamper
 # --------------------------------------------------------------------------- #
 # Helpers / fixtures
 # --------------------------------------------------------------------------- #
-def _make_calendar_stub(attestation_factory):
-    """Return stubs for RemoteCalendar.submit / get_timestamp.
+def _mock_calendar(attestation_factory):
+    """Return a calendar stub that attaches the requested proof state."""
 
-    ``attestation_factory(commitment)`` returns a ``Timestamp`` whose
-    attestations reflect the desired proof state (pending or confirmed).
-    """
-
-    @staticmethod
-    def _submit(commitment, timeout=None):
-        return None
-
-    @staticmethod
-    def _get_timestamp(commitment, timeout=None):
+    def submit(self, commitment, timeout=None):
+        assert timeout is not None
         return attestation_factory(commitment)
 
-    return _submit, _get_timestamp
+    return patch("opentimestamps.calendar.RemoteCalendar.submit", submit)
 
 
 def _confirmed_timestamp(commitment):
@@ -60,7 +53,7 @@ def _pending_timestamp(commitment):
 
 
 def _empty_timestamp(commitment):
-    """A timestamp with no attestations — exercises the pending fallback."""
+    """A malformed calendar response with no attestation."""
     from opentimestamps.core.timestamp import Timestamp
 
     return Timestamp(commitment)
@@ -86,12 +79,7 @@ def stamper(proof_dir):
 @pytest.fixture
 def patched_calendar():
     """Patch RemoteCalendar to use a confirmed (bitcoin) attestation."""
-    submit, get_ts = _make_calendar_stub(_confirmed_timestamp)
-    with patch(
-        "opentimestamps.calendar.RemoteCalendar.submit", submit
-    ), patch(
-        "opentimestamps.calendar.RemoteCalendar.get_timestamp", get_ts
-    ):
+    with _mock_calendar(_confirmed_timestamp):
         yield
 
 
@@ -157,9 +145,7 @@ class TestIntervalEnforcement:
             enabled=True, server="https://example.test",
             min_interval=300, proof_dir=proof_dir,
         )
-        submit, get_ts = _make_calendar_stub(_confirmed_timestamp)
-        with patch("opentimestamps.calendar.RemoteCalendar.submit", submit), \
-                patch("opentimestamps.calendar.RemoteCalendar.get_timestamp", get_ts):
+        with _mock_calendar(_confirmed_timestamp):
             first = s.stamp(b"first")
             second = s.stamp(b"second")
         assert first is not None
@@ -171,12 +157,10 @@ class TestIntervalEnforcement:
             enabled=True, server="https://example.test",
             min_interval=1, proof_dir=proof_dir,
         )
-        submit, get_ts = _make_calendar_stub(_confirmed_timestamp)
-        with patch("opentimestamps.calendar.RemoteCalendar.submit", submit), \
-                patch("opentimestamps.calendar.RemoteCalendar.get_timestamp", get_ts):
+        with _mock_calendar(_confirmed_timestamp):
             first = s.stamp(b"first")
             # Force the last-stamp time into the past so the interval elapsed.
-            s._last_stamp_time = time.time() - 2
+            s._last_stamp_time = time.monotonic() - 2
             second = s.stamp(b"second")
         assert first is not None
         assert second is not None
@@ -214,22 +198,17 @@ class TestVerification:
         """A pending (not-yet-on-chain) proof still verifies the digest."""
         s = TimeStamper(enabled=True, server="https://example.test",
                         min_interval=0, proof_dir=proof_dir)
-        submit, get_ts = _make_calendar_stub(_pending_timestamp)
-        with patch("opentimestamps.calendar.RemoteCalendar.submit", submit), \
-                patch("opentimestamps.calendar.RemoteCalendar.get_timestamp", get_ts):
+        with _mock_calendar(_pending_timestamp):
             path = s.stamp(b"pending-data")
         assert s.verify(b"pending-data", path) is True
 
-    def test_verify_empty_calendar_fallback(self, proof_dir):
-        """When get_timestamp returns empty, a pending attestation is added."""
+    def test_empty_calendar_response_is_not_written(self, proof_dir):
+        """A response with no attestations cannot produce a receipt."""
         s = TimeStamper(enabled=True, server="https://example.test",
                         min_interval=0, proof_dir=proof_dir)
-        submit, get_ts = _make_calendar_stub(_empty_timestamp)
-        with patch("opentimestamps.calendar.RemoteCalendar.submit", submit), \
-                patch("opentimestamps.calendar.RemoteCalendar.get_timestamp", get_ts):
-            path = s.stamp(b"fallback-data")
-        assert path is not None
-        assert s.verify(b"fallback-data", path) is True
+        with _mock_calendar(_empty_timestamp):
+            assert s.stamp(b"fallback-data") is None
+        assert list(proof_dir.iterdir()) == []
 
     def test_verify_rejects_attestation_less_fabricated_proof(self, proof_dir):
         """verify() rejects a proof carrying no attestation at all.
@@ -285,9 +264,7 @@ class TestCanonicalAndMetadata:
         """proof_info reports pending blockchain for a pending proof."""
         s = TimeStamper(enabled=True, server="https://example.test",
                         min_interval=0, proof_dir=proof_dir)
-        submit, get_ts = _make_calendar_stub(_pending_timestamp)
-        with patch("opentimestamps.calendar.RemoteCalendar.submit", submit), \
-                patch("opentimestamps.calendar.RemoteCalendar.get_timestamp", get_ts):
+        with _mock_calendar(_pending_timestamp):
             path = s.stamp(b"pending-info")
         info = s.proof_info(path)
         assert info["blockchain"] == "pending"
@@ -333,31 +310,36 @@ class TestCanonicalAndMetadata:
 # Server-error graceful degradation paths
 # --------------------------------------------------------------------------- #
 class TestGracefulDegradation:
-    def test_get_timestamp_error_falls_back_to_pending(self, proof_dir):
-        """If get_timestamp raises, a pending attestation is still added."""
-        s = TimeStamper(enabled=True, server="https://example.test",
-                        min_interval=0, proof_dir=proof_dir)
-
-        @staticmethod
-        def _submit(commitment, timeout=None):
-            return None
-
-        with patch("opentimestamps.calendar.RemoteCalendar.submit", _submit), \
-                patch(
-                    "opentimestamps.calendar.RemoteCalendar.get_timestamp",
-                    side_effect=RuntimeError("upgrade not ready"),
-                ):
-            path = s.stamp(b"degrade-data")
+    def test_submit_receipt_is_used_without_immediate_upgrade(self, stamper):
+        with (
+            _mock_calendar(_pending_timestamp),
+            patch("opentimestamps.calendar.RemoteCalendar.get_timestamp") as upgrade,
+        ):
+            path = stamper.stamp(b"submitted")
+        upgrade.assert_not_called()
         assert path is not None
-        assert s.verify(b"degrade-data", path) is True
-        info = s.proof_info(path)
-        assert info["blockchain"] == "pending"
+        assert stamper.verify(b"submitted", path)
+        assert stamper.proof_info(path)["blockchain"] == "pending"
 
-    def test_session_obj_reuses_session(self, stamper):
-        """_session_obj returns the same Session across calls."""
-        sess1 = stamper._session_obj()
-        sess2 = stamper._session_obj()
-        assert sess1 is sess2
+    def test_concurrent_stamp_only_submits_once(self, stamper, monkeypatch):
+        entered = Event()
+        release = Event()
+
+        def submit(self, commitment, timeout=None):
+            entered.set()
+            assert release.wait(5)
+            return _pending_timestamp(commitment)
+
+        monkeypatch.setattr("opentimestamps.calendar.RemoteCalendar.submit", submit)
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            first = executor.submit(stamper.stamp, b"first")
+            try:
+                assert entered.wait(5)
+                assert not stamper.needs_stamp()
+                assert stamper.stamp(b"second") is None
+            finally:
+                release.set()
+            assert first.result(timeout=5) is not None
 
 
 # --------------------------------------------------------------------------- #
@@ -374,7 +356,7 @@ class TestCoverageGaps:
         """needs_stamp() is True once min_interval has elapsed."""
         stamper.min_interval = 1
         stamper.stamp(b"old")
-        stamper._last_stamp_time = time.time() - 2
+        stamper._last_stamp_time = time.monotonic() - 2
         assert stamper.needs_stamp() is True
 
     def test_proof_info_litecoin(self, proof_dir):
@@ -389,9 +371,7 @@ class TestCoverageGaps:
             ts.attestations.add(LitecoinBlockHeaderAttestation(2000000))
             return ts
 
-        submit, get_ts = _make_calendar_stub(_litecoin)
-        with patch("opentimestamps.calendar.RemoteCalendar.submit", submit), \
-                patch("opentimestamps.calendar.RemoteCalendar.get_timestamp", get_ts):
+        with _mock_calendar(_litecoin):
             path = s.stamp(b"ltc-data")
         info = s.proof_info(path)
         assert info["blockchain"] == "litecoin"

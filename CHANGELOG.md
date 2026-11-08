@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+- Use a single QR wire representation for rendered images, JSON export and
+  detached timestamp receipts. Reject duplicate JSON keys and nonfinite values.
+- Enforce requested encryption, support shared keys across processes, and keep
+  rejected payloads from consuming accepted replay nonces.
+- Share live startup and shutdown across the CLI and legacy launcher. Use
+  same-origin browser events, restore operator text input, and remove admin
+  tokens and local proof paths from public diagnostics. Retry temporarily
+  rejected overlay connections and keep serving if the browser cannot open.
+- Reuse configured providers in async operations, bound caches and QR chunk
+  recovery, and make simulation reports account for actual drops and reordering.
+- Save actual calendar receipts and distinguish digest matching from chain
+  verification. Make configuration export round-trip, add strict CLI verification,
+  and package browser templates with the Python module.
+- Keep the minimum Flask and Flask-CORS versions in the package metadata so
+  both pip installation paths use the security fixes.
+
 All notable changes to QR Live Protocol (QRLP) will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),

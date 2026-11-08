@@ -7,7 +7,24 @@ hmac.py, encryptor.py, and qr_generator.py.
 """
 
 import json
+import math
 from typing import Any
+
+
+def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("QR JSON contains duplicate object keys")
+        result[key] = value
+    return result
+
+
+def _finite_number(value: str) -> float:
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValueError("QR JSON contains a non-finite number")
+    return number
 
 
 class QRSerializer:
@@ -35,7 +52,9 @@ class QRSerializer:
         """
         if filter_none and isinstance(data, dict):
             data = {k: v for k, v in data.items() if v is not None}
-        return json.dumps(data, separators=QRSerializer.SEPARATORS, sort_keys=sort_keys)
+        return json.dumps(
+            data, separators=QRSerializer.SEPARATORS, sort_keys=sort_keys, allow_nan=False,
+        )
 
     @staticmethod
     def serialize_for_signature(data: Any) -> str:
@@ -43,13 +62,11 @@ class QRSerializer:
 
         Uses sort_keys=True and filter_none=True for deterministic output.
         """
-        if isinstance(data, dict):
-            data = {k: v for k, v in data.items() if v is not None}
-        return json.dumps(data, separators=QRSerializer.SEPARATORS, sort_keys=True)
+        return QRSerializer.serialize(data, sort_keys=True)
 
     @staticmethod
     def deserialize(json_str: str) -> Any:
-        """Deserialize a JSON string.
+        """Deserialize JSON, rejecting duplicate keys and non-finite numbers.
 
         Args:
             json_str: JSON string to parse
@@ -57,7 +74,15 @@ class QRSerializer:
         Returns:
             Parsed data (dict, list, or primitive)
         """
-        return json.loads(json_str)
+        try:
+            return json.loads(
+                json_str,
+                object_pairs_hook=_unique_object,
+                parse_float=_finite_number,
+                parse_constant=_finite_number,
+            )
+        except RecursionError as error:
+            raise ValueError("QR JSON exceeds the supported nesting depth") from error
 
     @staticmethod
     def serialize_to_dict(data: Any, filter_none: bool = True) -> dict[str, Any]:

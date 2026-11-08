@@ -359,3 +359,56 @@ class TestHelperFunctions:
         path = str(tmp_path / "output.bin")
         _write_bytes(path, b"test data")
         assert Path(path).read_bytes() == b"test data"
+
+
+def test_verify_batch_outputs_only_json_and_can_fail_strict(runner, config_file, tmp_path):
+    batch = tmp_path / "batch.json"
+    batch.write_text('[{}, "not-json"]', encoding="utf-8")
+    result = runner.invoke(cli, [
+        "--config", config_file, "verify", "--file", str(batch), "--batch", "--strict", "--json-output",
+    ])
+    assert result.exit_code == 1
+    assert [item["valid"] for item in json.loads(result.output)] == [False, False]
+
+
+def test_config_init_is_loadable(runner, tmp_path):
+    config = tmp_path / "config.json"
+    result = runner.invoke(cli, ["config-init", "--output", str(config)])
+    assert result.exit_code == 0, result.output
+    result = runner.invoke(cli, ["config-validate", str(config)])
+    assert result.exit_code == 0, result.output
+    assert isinstance(json.loads(config.read_text(encoding="utf-8"))["blockchain_settings"]["enabled_chains"], list)
+
+
+def test_live_wires_viewer_input_and_stops_both_services(runner, config_file, monkeypatch):
+    from unittest.mock import Mock
+
+    protocol, web = Mock(), Mock()
+    web.get_server_url.return_value = "http://localhost:8080"
+    monkeypatch.setattr("src.cli.QRLiveProtocol", lambda config: protocol)
+    monkeypatch.setattr("src.cli.QRLiveWebServer", lambda settings, verifier: web)
+    protocol.start_live_generation.side_effect = KeyboardInterrupt
+    result = runner.invoke(cli, ["--config", config_file, "live", "--no-browser"])
+    assert result.exit_code == 0, result.output
+    protocol.set_user_data_callback.assert_called_once_with(web.get_user_data)
+    protocol.stop_live_generation.assert_called_once()
+    web.stop_server.assert_called_once()
+
+
+def test_browser_launch_failure_keeps_the_live_loop_running(runner, config_file, monkeypatch):
+    from unittest.mock import Mock
+
+    protocol, web = Mock(), Mock()
+    web.get_server_url.return_value = "http://localhost:8080"
+    monkeypatch.setattr("src.cli.QRLiveProtocol", lambda config: protocol)
+    monkeypatch.setattr("src.cli.QRLiveWebServer", lambda settings, verifier: web)
+    monkeypatch.setattr("webbrowser.open", Mock(side_effect=OSError("browser unavailable")))
+    wait = Mock(side_effect=KeyboardInterrupt)
+    monkeypatch.setattr("src.cli.time.sleep", wait)
+
+    result = runner.invoke(cli, ["--config", config_file, "live"])
+
+    assert result.exit_code == 0, result.output
+    assert "http://localhost:8080" in result.output
+    wait.assert_called_once()
+    web.stop_server.assert_called_once()

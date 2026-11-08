@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import threading
 import time
-from collections import deque
+from collections import OrderedDict, deque
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable, Generic, TypeVar
@@ -42,6 +42,7 @@ class ThroughputConfig:
     encode_latency_smoothing: float = 0.5  # EMA weight for latency tracking
     max_batch_size: int = 4           # Max frames to pre-encode ahead
     slow_threshold: float = 0.75      # Fraction of target budget => too slow
+    cache_size: int = 128             # Max distinct payload images retained
 
 
 class ThroughputAdaptation(Enum):
@@ -88,6 +89,10 @@ class OpticalThroughputController(Generic[PayloadT]):
             raise ValueError("ceiling_interval must be >= floor_interval")
         if self.config.initial_interval < self.config.floor_interval or self.config.initial_interval > self.config.ceiling_interval:
             raise ValueError("initial_interval must lie within [floor, ceiling]")
+        if self.config.cache_size < 0:
+            raise ValueError("cache_size must be non-negative")
+        if self.config.max_batch_size < 0:
+            raise ValueError("max_batch_size must be non-negative")
 
         self._lock = threading.RLock()
         self._current_interval = self.config.initial_interval
@@ -95,8 +100,8 @@ class OpticalThroughputController(Generic[PayloadT]):
         self._frames_produced = 0
         self._frames_from_cache = 0
         # Payload dedup cache: (encoded_image) keyed by payload identity.
-        self._cache: dict[PayloadT, bytes] = {}
-        self._batch_queue: deque[bytes] = deque()
+        self._cache: OrderedDict[PayloadT, bytes] = OrderedDict()
+        self._batch_queue: deque[bytes] = deque(maxlen=self.config.max_batch_size)
 
     @property
     def current_interval(self) -> float:
@@ -122,41 +127,26 @@ class OpticalThroughputController(Generic[PayloadT]):
             Frame image bytes.
         """
         with self._lock:
-            if not force_reencode and payload in self._cache:
+            frame, from_cache = self._get_frame(payload, force_reencode)
+            self._frames_produced += 1
+            if from_cache:
                 self._frames_from_cache += 1
-                self._frames_produced += 1
-                frame = self._cache[payload]
-                cached = True
-            else:
-                t0 = time.perf_counter()
-                frame = self._encoder(payload)
-                latency = time.perf_counter() - t0
-                self._encode_average = (
-                    self.config.encode_latency_smoothing * latency
-                    + (1 - self.config.encode_latency_smoothing) * self._encode_average
-                )
-                self._cache[payload] = frame
-                self._frames_produced += 1
-                cached = False
-            if self._frame_is_healthy(frame):
-                self._record_healthy(frame)
-            self._ensure_batch_drain()
+            return frame
 
-        return frame
+    def _get_frame(self, payload: PayloadT, force_reencode: bool = False) -> tuple[bytes, bool]:
+        if not force_reencode and payload in self._cache:
+            self._cache.move_to_end(payload)
+            return self._cache[payload], True
 
-    @staticmethod
-    def _frame_is_healthy(frame: bytes) -> bool:
-        """Heuristic: a non-empty PNG frame is considered healthy output."""
-        return bool(frame) and len(frame) > 0
-
-    def _record_healthy(self, frame: bytes) -> None:
-        """Bookkeeping hook; kept for future health-based adaptation."""
-        _ = frame
-
-    def _ensure_batch_drain(self) -> None:
-        """Maintain the pre-encode batch queue within its configured bound."""
-        if len(self._batch_queue) > self.config.max_batch_size:
-            self._batch_queue.clear()
+        started_at = time.perf_counter()
+        frame = self._encoder(payload)
+        self.register_encode(time.perf_counter() - started_at)
+        if self.config.cache_size:
+            self._cache[payload] = frame
+            self._cache.move_to_end(payload)
+            while len(self._cache) > self.config.cache_size:
+                self._cache.popitem(last=False)
+        return frame, False
 
     def register_encode(self, latency: float) -> None:
         """Record an encoder latency measurement (outside context of produce)."""
@@ -175,20 +165,8 @@ class OpticalThroughputController(Generic[PayloadT]):
         """
         with self._lock:
             for payload in payloads:
-                if payload not in self._cache:
-                    t0 = time.perf_counter()
-                    frame = self._encoder(payload)
-                    latency = time.perf_counter() - t0
-                    self._encode_average = (
-                        self.config.encode_latency_smoothing * latency
-                        + (1 - self.config.encode_latency_smoothing) * self._encode_average
-                    )
-                    self._cache[payload] = frame
-                self._batch_queue.append(self._cache[payload])
-            # Bound the queue so we never hold more than max_batch_size
-            # pre-encoded frames, keeping the most recent ones.
-            while len(self._batch_queue) > self.config.max_batch_size:
-                self._batch_queue.popleft()
+                frame, _ = self._get_frame(payload)
+                self._batch_queue.append(frame)
 
     def drain_batch(self) -> bytes | None:
         """

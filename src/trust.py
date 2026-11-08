@@ -22,7 +22,7 @@ class TrustStore:
     """In-memory registry of issuer public keys trusted by this verifier."""
 
     def __init__(self) -> None:
-        self._keys: dict[str, TrustedPublicKey] = {}
+        self._keys: dict[tuple[str, str], TrustedPublicKey] = {}
 
     def add_public_key(
         self,
@@ -41,7 +41,7 @@ class TrustStore:
             public_key_pem=public_key_pem,
             algorithm=algorithm.lower(),
         )
-        self._keys[self._lookup_key(issuer_id, key_id)] = trusted_key
+        self._keys[issuer_id, key_id] = trusted_key
         return trusted_key
 
     def add_public_key_file(
@@ -98,7 +98,7 @@ class TrustStore:
         """Return trusted public key metadata if this issuer/key-id is trusted."""
         if not issuer_id or not key_id:
             return None
-        return self._keys.get(self._lookup_key(issuer_id, key_id))
+        return self._keys.get((issuer_id, key_id))
 
     def is_trusted(self, issuer_id: str | None, key_id: str | None) -> bool:
         """Return whether the issuer/key-id pair has trusted verifier material."""
@@ -110,7 +110,3 @@ class TrustStore:
 
     def __len__(self) -> int:
         return len(self._keys)
-
-    @staticmethod
-    def _lookup_key(issuer_id: str, key_id: str) -> str:
-        return f"{issuer_id}:{key_id}"

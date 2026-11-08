@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
+from ..serializer import QRSerializer
 from .exceptions import HMACError
 
 
@@ -131,16 +132,19 @@ class HMACManager:
         Returns:
             True if HMAC is valid
         """
-        if '_hmac' not in qr_data:
-            return False
-
-        hmac_hex = qr_data['_hmac']
-        if not hmac_hex:
-            return False
-
+        hmac_hex = qr_data.get('_hmac')
         key_id = qr_data.get('_hmac_key_id')
+        if not isinstance(hmac_hex, str) or not hmac_hex:
+            return False
+        if key_id is not None and not isinstance(key_id, str):
+            return False
+        if qr_data.get('_hmac_algorithm', 'sha256') != 'sha256':
+            return False
 
-        hmac_value = bytes.fromhex(hmac_hex)
+        try:
+            hmac_value = bytes.fromhex(hmac_hex)
+        except ValueError:
+            return False
 
         # Remove HMAC fields for verification
         verification_data = qr_data.copy()
@@ -148,9 +152,6 @@ class HMACManager:
         verification_data.pop('_hmac_key_id', None)
         verification_data.pop('_hmac_algorithm', None)
         verification_data.pop('_integrity_checked_at', None)
-
-        # Also filter out None values to match serialization during creation
-        verification_data = {k: v for k, v in verification_data.items() if v is not None}
 
         return self.verify_hmac(verification_data, hmac_value, key_id)
 
@@ -177,17 +178,7 @@ class HMACManager:
 
     def _serialize_data(self, data: Any) -> bytes:
         """Consistently serialize data for HMAC."""
-        import json
-
-        # Filter to exclude None values for consistent serialization
-        if isinstance(data, dict):
-            data_filtered = {k: v for k, v in data.items() if v is not None}
-        else:
-            data_filtered = data
-
-        # Convert to JSON with consistent formatting
-        json_str = json.dumps(data_filtered, sort_keys=True, separators=(',', ':'))
-        return json_str.encode('utf-8')
+        return QRSerializer.serialize_for_signature(data).encode("utf-8")
 
     def _generate_key_id(self) -> str:
         """Generate unique key identifier."""

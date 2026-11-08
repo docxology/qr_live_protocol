@@ -71,14 +71,18 @@ def test_stale_frame_dropped(controller):
 def test_small_gap_recovered_within_window(controller):
     controller.feed_frame(Frame(0))
     result = controller.feed_frame(Frame(3))
-    assert result["decision"] == RecoveryDecision.GAP_RECOVERED.value
+    assert result["decision"] == RecoveryDecision.GAP.value
     assert result["gap_start"] == 1
     assert result["gap_end"] == 2
+    assert controller.get_stats().gaps_recovered == 0
+
+    for frame in (2, 1):
+        assert controller.feed_frame(Frame(frame))["decision"] == RecoveryDecision.GAP_RECOVERED.value
     stats = controller.get_stats()
     assert stats.gaps_detected == 2
     assert stats.gaps_recovered == 2
+    assert stats.frames_reordered == 2
     assert stats.recovery_rate == 1.0
-
 
 def test_gap_outside_window_reported_as_gap(controller):
     controller.feed_frame(Frame(0))
@@ -103,15 +107,26 @@ def test_large_gap_triggers_stream_reset(controller):
     assert stats.frames_accepted == 3  # 0, 1, 14
 
 
-def test_out_of_order_then_recovery(controller):
-    first = controller.feed_frame(Frame(0))
-    assert first["decision"] == RecoveryDecision.ACCEPT.value
-    # Missing 1,2,3 -> gap recovered (within window).
-    late = controller.feed_frame(Frame(4))
-    assert late["decision"] == RecoveryDecision.GAP_RECOVERED.value
-    # Now the missing frames arrive late; they are now stale -> duplicate.
-    stale = controller.feed_frame(Frame(2))
-    assert stale["decision"] == RecoveryDecision.DUPLICATE.value
+def test_expired_and_repeated_frames_are_dropped(controller):
+    controller.feed_frame(Frame(0))
+    controller.feed_frame(Frame(3))
+    assert controller.feed_frame(Frame(2))["decision"] == RecoveryDecision.GAP_RECOVERED.value
+    assert controller.feed_frame(Frame(2))["decision"] == RecoveryDecision.DUPLICATE.value
+    for number in (4, 5, 6):
+        controller.feed_frame(Frame(number))
+    assert controller.feed_frame(Frame(1))["decision"] == RecoveryDecision.DUPLICATE.value
+    assert controller.get_stats().frames_dropped == 1
+
+
+def test_buffer_size_caps_pending_frames():
+    controller = FrameRecoveryController(
+        FrameRecoveryConfig(buffer_size=1, retransmission_window=4)
+    )
+    for number in (0, 2, 4):
+        controller.feed_frame(Frame(number))
+    assert controller.feed_frame(Frame(1))["decision"] == RecoveryDecision.DUPLICATE.value
+    assert controller.feed_frame(Frame(3))["decision"] == RecoveryDecision.GAP_RECOVERED.value
+    assert controller.get_stats().frames_dropped == 1
 
 
 def test_negative_frame_number_rejected(controller):
@@ -159,6 +174,7 @@ def test_mixed_gap_and_recovery_rates(controller):
     # Frame sequence with a recoverable gap (1) and an out-of-window gap (2,3,4,5,6).
     controller.feed_frame(Frame(0))
     controller.feed_frame(Frame(2))  # recoverable 1-frame gap (window 4)
+    controller.feed_frame(Frame(1))
     controller.feed_frame(Frame(9))  # 6-frame gap, outside window -> GAP
     stats = controller.get_stats()
     assert stats.gaps_detected == (1 + 6)

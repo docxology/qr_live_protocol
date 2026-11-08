@@ -83,6 +83,13 @@ class TestTrustStoreAdd:
         store.add_public_key("issuer2", "key1", b"pem3")
         assert len(store) == 3
 
+    def test_colons_do_not_alias_issuer_key_pairs(self):
+        store = TrustStore()
+        store.add_public_key("issuer:region", "key", b"first")
+        store.add_public_key("issuer", "region:key", b"second")
+        assert store.get_public_key("issuer:region", "key").public_key_pem == b"first"
+        assert store.get_public_key("issuer", "region:key").public_key_pem == b"second"
+
     def test_add_public_key_file(self, tmp_path):
         """add_public_key_file reads PEM from file."""
         pem_file = tmp_path / "pub.pem"
@@ -143,7 +150,7 @@ class TestTrustStoreQuery:
         store.add_public_key("issuer_a", "key_b", b"pem")
         keys = store.list_public_keys()
         assert len(keys) == 3
-        # Sorted by lookup_key "issuer:key_id"
+        # Sorted by issuer, then key ID.
         assert keys[0].issuer_id == "issuer_a"
         assert keys[0].key_id == "key_a"
         assert keys[1].issuer_id == "issuer_a"

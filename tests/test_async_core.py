@@ -3,12 +3,10 @@ Tests for async_core.py AsyncQRLiveProtocol.
 
 Covers async QR generation, verification, batch operations,
 blockchain/time data, performance stats, and sync wrappers.
-Network-dependent tests use a real local HTTP server.
+Provider tests use controlled observations from the shared synchronous providers.
 """
 
 import asyncio
-import http.server
-import json
 import threading
 
 import pytest
@@ -29,48 +27,6 @@ def async_config(tmp_path):
     return config
 
 
-@pytest.fixture
-def local_http_server():
-    """Start a real local HTTP server that returns blockchain/time data."""
-    class TestHandler(http.server.BaseHTTPRequestHandler):
-        def do_GET(self):
-            if "blocks/tip/hash" in self.path or "bitcoin" in self.path:
-                self.send_response(200)
-                self.send_header("Content-Type", "text/plain")
-                self.end_headers()
-                self.wfile.write(b"00000000000000000008a15c")
-            elif "worldtimeapi" in self.path or "timezone" in self.path:
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self.end_headers()
-                self.wfile.write(json.dumps({
-                    "datetime": "2025-01-11T15:30:45.123456+00:00"
-                }).encode())
-            else:
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self.end_headers()
-                self.wfile.write(json.dumps({
-                    "height": 800000,
-                    "hash": "00000000000000000008a15c",
-                }).encode())
-
-        def log_message(self, format, *args):
-            pass
-
-    server = http.server.HTTPServer(("127.0.0.1", 0), TestHandler)
-    port = server.server_address[1]
-    url = f"http://127.0.0.1:{port}"
-
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-
-    yield url
-
-    server.shutdown()
-    thread.join(timeout=2)
-
-
 class TestAsyncInit:
     """Test AsyncQRLiveProtocol initialization."""
 
@@ -79,7 +35,6 @@ class TestAsyncInit:
         assert async_qrlp.config is async_config
         assert async_qrlp.sync_qrlp is not None
         assert async_qrlp._executor is not None
-        assert len(async_qrlp._session_pool) == 0
 
     def test_init_default_config(self):
         async_qrlp = AsyncQRLiveProtocol()
@@ -91,7 +46,10 @@ class TestAsyncContextManager:
 
     async def test_aenter_aexit(self, async_config):
         async with AsyncQRLiveProtocol(async_config) as qrlp:
-            assert len(qrlp._session_pool) == 3
+            assert isinstance(qrlp, AsyncQRLiveProtocol)
+        with pytest.raises(RuntimeError, match="closed"):
+            await qrlp.generate_single_qr_async()
+        await qrlp.aclose()
 
 
 class TestAsyncQRGeneration:
@@ -174,46 +132,29 @@ class TestAsyncStream:
             assert len(received) == 2
 
 
-class TestAsyncBlockchainData:
-    """Test async blockchain data retrieval using a real local HTTP server."""
+class TestAsyncProviders:
+    async def test_blockchain_data_uses_shared_provider(self, async_config, monkeypatch):
+        loop_thread = threading.get_ident()
 
-    async def test_get_blockchain_data_async_no_chains(self, async_config):
+        def observe():
+            assert threading.get_ident() != loop_thread
+            return {"bitcoin": "00000000000000000008a15c"}
+
         async with AsyncQRLiveProtocol(async_config) as qrlp:
-            result = await qrlp.get_blockchain_data_async()
-            assert result == {}
+            monkeypatch.setattr(qrlp.sync_qrlp.blockchain_verifier, "get_blockchain_hashes", observe)
+            assert await qrlp.get_blockchain_data_async() == {"bitcoin": "00000000000000000008a15c"}
 
-    async def test_get_blockchain_data_async_with_real_server(self, async_config, local_http_server):
-        """Test async HTTP retrieval against a real local server."""
-        qrlp = AsyncQRLiveProtocol(async_config)
-        await qrlp._initialize_async_resources()
-        session = qrlp._session_pool[0]
-
-        try:
-            async with session.get(f"{local_http_server}/blocks/tip/hash") as response:
-                assert response.status == 200
-                data = await response.text()
-                assert "0000" in data
-        finally:
-            await qrlp._cleanup_async_resources()
-
-
-class TestAsyncTimeData:
-    """Test async time data retrieval using a real local HTTP server."""
-
-    async def test_get_time_data_async_with_real_server(self, async_config, local_http_server):
-        """Test async HTTP time retrieval against a real local server."""
-        async_config.time_settings.time_servers = ["test-server"]
-        qrlp = AsyncQRLiveProtocol(async_config)
-        await qrlp._initialize_async_resources()
-        session = qrlp._session_pool[0]
-
-        try:
-            async with session.get(f"{local_http_server}/timezone/UTC") as response:
-                assert response.status == 200
-                data = await response.json()
-                assert "datetime" in data
-        finally:
-            await qrlp._cleanup_async_resources()
+    async def test_time_data_uses_actual_observed_sources(self, async_config, monkeypatch):
+        timestamp = "2025-01-11T15:30:45.123456+00:00"
+        async with AsyncQRLiveProtocol(async_config) as qrlp:
+            monkeypatch.setattr(
+                qrlp.sync_qrlp.time_provider,
+                "get_time_server_verification",
+                lambda: {"test-server": {"timestamp": timestamp, "offset": 0.25, "last_sync": 1.0}},
+            )
+            assert await qrlp.get_time_data_async() == {
+                "test-server": {"timestamp": timestamp, "offset": "0.25", "server": "test-server"}
+            }
 
 
 class TestAsyncLiveGeneration:
@@ -222,11 +163,13 @@ class TestAsyncLiveGeneration:
     async def test_start_stop_live_generation(self, async_config):
         async_config.update_interval = 0.05
         async with AsyncQRLiveProtocol(async_config) as qrlp:
+            ready = asyncio.Event()
+            await qrlp.start_live_generation_async(lambda *_: ready.set())
+            generation_task = qrlp._generation_task
             await qrlp.start_live_generation_async()
-            assert qrlp._generation_task is not None
-            await asyncio.sleep(0.15)
-            await qrlp.stop_live_generation_async()
-            assert qrlp._generation_task.cancelled() or qrlp._generation_task.done()
+            assert qrlp._generation_task is generation_task
+            await asyncio.wait_for(ready.wait(), timeout=5)
+        assert generation_task.done()
 
 
 class TestAsyncPerformanceStats:
@@ -245,15 +188,25 @@ class TestAsyncPerformanceStats:
         async with AsyncQRLiveProtocol(async_config) as qrlp:
             await qrlp.cache_qr_image_async("key1", b"image", ttl=60)
             await qrlp.get_cached_qr_async("key1")
+            await qrlp.get_cached_qr_async("missing")
             stats = await qrlp.get_performance_stats_async()
-            assert stats["cache_stats"]["hits"] >= 1
-            assert stats["cache_stats"]["misses"] >= 1
+            assert stats["cache_stats"]["hits"] == 1
+            assert stats["cache_stats"]["misses"] == 1
 
     async def test_cache_and_retrieve(self, async_config):
         async with AsyncQRLiveProtocol(async_config) as qrlp:
             await qrlp.cache_qr_image_async("test-key", b"qr-image-data", ttl=60)
             result = await qrlp.get_cached_qr_async("test-key")
-            assert result is None  # Cache miss (cache not yet implemented)
+            assert result == b"qr-image-data"
+            await qrlp.cache_qr_image_async("test-key", b"expired", ttl=0)
+            assert await qrlp.get_cached_qr_async("test-key") is None
+
+    async def test_cache_evicts_oldest_when_full(self, async_config):
+        async with AsyncQRLiveProtocol(async_config) as qrlp:
+            for index in range(101):
+                await qrlp.cache_qr_image_async(str(index), b"image")
+            assert await qrlp.get_cached_qr_async("0") is None
+            assert await qrlp.get_cached_qr_async("100") == b"image"
 
 
 class TestAsyncOptimize:

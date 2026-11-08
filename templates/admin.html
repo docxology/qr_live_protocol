@@ -76,299 +76,107 @@
             color: #ccc;
         }
         
-        .status-indicator {
-            display: inline-block;
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            margin-right: 8px;
-        }
-        
-        .status-online {
-            background: #00ff00;
-            box-shadow: 0 0 10px #00ff00;
-        }
-        
-        .status-offline {
-            background: #ff0000;
-            box-shadow: 0 0 10px #ff0000;
-        }
-        
-        .status-warning {
-            background: #ffaa00;
-            box-shadow: 0 0 10px #ffaa00;
-        }
-        
         .section {
             background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(0, 255, 255, 0.3);
             border-radius: 15px;
             padding: 25px;
-            margin-bottom: 20px;
-            border: 1px solid rgba(0, 255, 255, 0.3);
-            backdrop-filter: blur(10px);
         }
-        
-        .section h2 {
-            color: #00ffff;
-            margin-bottom: 15px;
-            font-size: 1.5rem;
-        }
-        
-        .log-entry {
-            background: rgba(0, 0, 0, 0.3);
-            padding: 10px;
-            margin: 5px 0;
-            border-radius: 5px;
-            font-family: monospace;
-            border-left: 3px solid #00ffff;
-        }
-        
-        .log-timestamp {
-            color: #888;
-            margin-right: 10px;
-        }
-        
+
         .controls {
             display: flex;
-            gap: 15px;
             flex-wrap: wrap;
-            margin: 20px 0;
+            gap: 12px;
+            margin-bottom: 10px;
         }
-        
+
         .btn {
-            background: linear-gradient(45deg, #00ffff, #0080ff);
-            color: #000;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 8px;
+            background: #17363d;
+            border: 1px solid #00ffff;
+            border-radius: 6px;
+            color: white;
             cursor: pointer;
-            font-weight: bold;
-            transition: all 0.3s ease;
+            display: inline-block;
+            font: inherit;
+            padding: 8px 14px;
+            text-decoration: none;
         }
-        
+
         .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0, 255, 255, 0.4);
+            background: #215460;
         }
-        
-        .btn-danger {
-            background: linear-gradient(45deg, #ff4444, #cc0000);
-            color: #fff;
-        }
-        
-        .progress-bar {
-            background: rgba(0, 0, 0, 0.3);
-            border-radius: 10px;
-            overflow: hidden;
-            height: 20px;
-            margin: 10px 0;
-        }
-        
-        .progress-fill {
-            background: linear-gradient(90deg, #00ffff, #0080ff);
-            height: 100%;
-            transition: width 0.3s ease;
-        }
-        
-        .data-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 15px 0;
-        }
-        
-        .data-table th,
-        .data-table td {
-            padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid rgba(0, 255, 255, 0.3);
-        }
-        
-        .data-table th {
-            background: rgba(0, 255, 255, 0.2);
-            color: #00ffff;
-            font-weight: bold;
-        }
-        
-        @media (max-width: 768px) {
-            .dashboard {
-                padding: 15px;
-            }
-            
-            .stats-grid {
-                grid-template-columns: 1fr;
-            }
-            
-            .controls {
-                flex-direction: column;
-            }
+
+        @media (max-width: 500px) {
+            .dashboard { padding: 16px; }
+            .stats-grid { grid-template-columns: 1fr; }
         }
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>🔲 QRLP Admin Dashboard</h1>
-        <p>Real-time monitoring and control for QR Live Protocol</p>
-    </div>
-    
-    <div class="dashboard">
-        <!-- Statistics Cards -->
+    <header class="header">
+        <h1>QRLP Admin Dashboard</h1>
+        <p>Live server and overlay status</p>
+    </header>
+    <main class="dashboard">
         <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-title">System Status</div>
-                <div class="stat-value">
-                    <span class="status-indicator status-online" id="systemStatus"></span>
-                    <span id="systemStatusText">Online</span>
-                </div>
-                <div class="stat-description">Server and services running</div>
-            </div>
-            
-            <div class="stat-card">
-                <div class="stat-title">QR Codes Generated</div>
-                <div class="stat-value" id="qrGenerated">0</div>
-                <div class="stat-description">Total since startup</div>
-            </div>
-            
-            <div class="stat-card">
-                <div class="stat-title">Active Connections</div>
-                <div class="stat-value" id="activeConnections">0</div>
-                <div class="stat-description">WebSocket and web clients</div>
-            </div>
-            
-            <div class="stat-card">
-                <div class="stat-title">Blockchain Verified</div>
-                <div class="stat-value" id="blockchainCount">0</div>
-                <div class="stat-description">Active blockchain connections</div>
-            </div>
+            <section class="stat-card">
+                <h2 class="stat-title">Current QR</h2>
+                <div class="stat-value" id="currentFrame">—</div>
+                <p class="stat-description">Availability of the latest frame</p>
+            </section>
+            <section class="stat-card">
+                <h2 class="stat-title">QR broadcasts</h2>
+                <div class="stat-value" id="qrGenerated">—</div>
+                <p class="stat-description">Socket.IO broadcasts since startup</p>
+            </section>
+            <section class="stat-card">
+                <h2 class="stat-title">Live connections</h2>
+                <div class="stat-value" id="activeConnections">—</div>
+                <p class="stat-description">Browser streams and Socket.IO clients</p>
+            </section>
+            <section class="stat-card">
+                <h2 class="stat-title">Live display views</h2>
+                <div class="stat-value" id="pageViews">—</div>
+                <p class="stat-description">Main overlay page requests since startup</p>
+            </section>
         </div>
-        
-        <!-- Controls -->
-        <div class="section">
-            <h2>System Controls</h2>
+        <section class="section" aria-label="Dashboard controls">
             <div class="controls">
-                <button class="btn" onclick="refreshData()">🔄 Refresh Data</button>
-                <button class="btn" onclick="testBlockchain()">🔗 Test Blockchain</button>
-                <button class="btn" onclick="viewLogs()">📄 View Logs</button>
-                <button class="btn btn-danger" onclick="restartServices()">🔄 Restart Services</button>
+                <button type="button" class="btn" id="refreshButton">Refresh status</button>
+                <a class="btn" href="{{ url_for('index') }}">Live display</a>
+                <a class="btn" href="{{ url_for('improve_dashboard') }}">Readiness checks</a>
             </div>
-        </div>
-        
-        <!-- Blockchain Status -->
-        <div class="section">
-            <h2>Blockchain Services</h2>
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>Chain</th>
-                        <th>Status</th>
-                        <th>Block Height</th>
-                        <th>Last Hash</th>
-                        <th>Last Update</th>
-                    </tr>
-                </thead>
-                <tbody id="blockchainTable">
-                    <tr>
-                        <td>Bitcoin</td>
-                        <td><span class="status-indicator status-warning"></span>Connecting...</td>
-                        <td>-</td>
-                        <td>-</td>
-                        <td>-</td>
-                    </tr>
-                    <tr>
-                        <td>Ethereum</td>
-                        <td><span class="status-indicator status-warning"></span>Connecting...</td>
-                        <td>-</td>
-                        <td>-</td>
-                        <td>-</td>
-                    </tr>
-                    <tr>
-                        <td>Litecoin</td>
-                        <td><span class="status-indicator status-warning"></span>Connecting...</td>
-                        <td>-</td>
-                        <td>-</td>
-                        <td>-</td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-        
-        <!-- Recent Activity -->
-        <div class="section">
-            <h2>Recent Activity</h2>
-            <div id="activityLog">
-                <div class="log-entry">
-                    <span class="log-timestamp">[{{ current_time }}]</span>
-                    Admin dashboard loaded
-                </div>
-            </div>
-        </div>
-    </div>
+            <p id="systemStatus" role="status">Waiting for server status…</p>
+        </section>
+    </main>
 
-    <script>
-        // Dashboard functionality
-        function refreshData() {
-            fetch('/api/status')
-                .then(response => response.json())
-                .then(data => {
-                    updateDashboard(data);
-                    addLogEntry('Dashboard data refreshed');
-                })
-                .catch(error => {
-                    addLogEntry('Error refreshing data: ' + error.message);
-                });
-        }
-        
-        function updateDashboard(data) {
-            // Update statistics if available
-            if (data.qr_updates_sent !== undefined) {
-                document.getElementById('qrGenerated').textContent = data.qr_updates_sent;
-            }
-            
-            if (data.websocket_connections !== undefined) {
-                document.getElementById('activeConnections').textContent = data.websocket_connections;
-            }
-        }
-        
-        function testBlockchain() {
-            addLogEntry('Testing blockchain connections...');
-            // This would trigger blockchain verification test
-        }
-        
-        function viewLogs() {
-            addLogEntry('Opening detailed logs...');
-            // This would show detailed system logs
-        }
-        
-        function restartServices() {
-            if (confirm('Are you sure you want to restart QRLP services?')) {
-                addLogEntry('Restarting services...');
-                // This would restart the services
+    <script nonce="{{ script_nonce }}">
+        const byId = id => document.getElementById(id);
+        const statusUrl = {{ url_for('get_status') | tojson }};
+        const refreshButton = byId('refreshButton');
+
+        async function refreshData() {
+            if (refreshButton.disabled) return;
+            refreshButton.disabled = true;
+            try {
+                const response = await fetch(statusUrl);
+                if (!response.ok) throw new Error('HTTP ' + response.status);
+                const data = await response.json();
+                byId('currentFrame').textContent = data.current_qr_available ? 'Available' : 'Waiting';
+                byId('qrGenerated').textContent = data.qr_updates_sent;
+                byId('activeConnections').textContent = data.websocket_connections + data.event_stream_connections;
+                byId('pageViews').textContent = data.page_views;
+                byId('systemStatus').textContent = 'Updated at ' + new Date().toLocaleTimeString();
+            } catch (error) {
+                byId('systemStatus').textContent = 'Could not refresh status: ' + error.message;
+            } finally {
+                refreshButton.disabled = false;
             }
         }
-        
-        function addLogEntry(message) {
-            const log = document.getElementById('activityLog');
-            const timestamp = new Date().toLocaleTimeString();
-            
-            const entry = document.createElement('div');
-            entry.className = 'log-entry';
-            entry.innerHTML = `<span class="log-timestamp">[${timestamp}]</span>${message}`;
-            
-            log.insertBefore(entry, log.firstChild);
-            
-            // Keep only last 10 entries
-            while (log.children.length > 10) {
-                log.removeChild(log.lastChild);
-            }
-        }
-        
-        // Auto-refresh every 10 seconds
+
+        refreshButton.addEventListener('click', refreshData);
+        refreshData();
         setInterval(refreshData, 10000);
-        
-        // Initialize on page load
-        document.addEventListener('DOMContentLoaded', function() {
-            addLogEntry('Admin dashboard initialized');
-            refreshData();
-        });
     </script>
 </body>
-</html> 
+</html>

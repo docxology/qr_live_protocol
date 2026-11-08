@@ -68,6 +68,22 @@ class TestBlockchainVerifierStats:
         assert hashes["bitcoin"] == "00000000000000000008a15c"
 
 
+    def test_expired_tip_is_not_returned_or_verified(self):
+        settings = BlockchainSettings(enabled_chains=set(), cache_duration=30)
+        verifier = BlockchainVerifier(settings)
+        verifier.cached_blocks["bitcoin"] = BlockchainInfo(
+            chain="bitcoin",
+            block_number=800000,
+            block_hash="old-hash",
+            timestamp=datetime.now(UTC),
+            retrieved_at=time.time() - 60,
+        )
+        settings.enabled_chains = {"bitcoin"}
+        verifier.chain_handlers["bitcoin"] = lambda: None
+        assert verifier.get_blockchain_hashes() == {}
+        assert not verifier.verify_blockchain_hash("bitcoin", "old-hash")["valid"]
+
+
 class TestBlockchainVerifierVerify:
     """Test verification logic."""
 
@@ -170,11 +186,9 @@ class TestBlockchainVerifierForceUpdate:
 
     def test_force_update_specific_chain_real_handler(self):
         """force_update with a real chain handler function override."""
-        settings = BlockchainSettings(enabled_chains={"bitcoin"})
+        settings = BlockchainSettings(enabled_chains=set())
         verifier = BlockchainVerifier(settings)
-        # Wait for initial background update to finish (it will fail on network)
-        import time as _time
-        _time.sleep(0.5)
+        settings.enabled_chains = {"bitcoin"}
 
         real_info = BlockchainInfo(
             chain="bitcoin", block_number=800000, block_hash="abc",
@@ -192,3 +206,8 @@ class TestBlockchainVerifierForceUpdate:
         assert result is True
         assert "bitcoin" in verifier.cached_blocks
         assert verifier.cached_blocks["bitcoin"].block_hash == "abc"
+
+    def test_force_update_reports_busy_as_no_update(self):
+        verifier = BlockchainVerifier(BlockchainSettings(enabled_chains=set()))
+        with verifier.update_lock:
+            assert verifier.force_update("bitcoin") is False

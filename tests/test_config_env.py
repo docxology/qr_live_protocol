@@ -177,3 +177,29 @@ class TestConfigValidation:
         config.security_settings.signature_algorithm = "dsa"
         issues = config.validate()
         assert any("signature_algorithm" in i for i in issues)
+
+
+def test_json_round_trip_preserves_enabled_chains(tmp_path):
+    import json
+
+    original = QRLPConfig()
+    path = tmp_path / "qrlp.json"
+    path.write_text(json.dumps(original.to_dict()), encoding="utf-8")
+    assert QRLPConfig.from_file(path) == original
+
+
+def test_wrong_config_section_shape_fails_at_load(tmp_path):
+    import pytest
+
+    path = tmp_path / "qrlp.json"
+    path.write_text('{"web_settings": false}', encoding="utf-8")
+    with pytest.raises(ValueError, match="web_settings must be an object"):
+        QRLPConfig.from_file(path)
+
+
+def test_bad_environment_number_does_not_echo_value(monkeypatch):
+    import pytest
+
+    monkeypatch.setenv("QRLP_WEB_PORT", "sentinel")
+    with pytest.raises(ValueError, match="^QRLP_WEB_PORT must be numeric$"):
+        QRLPConfig.from_env()

@@ -5,12 +5,15 @@ Uses Flask test_client() -- no actual server thread is started.
 """
 
 import json
+import re
+from urllib.error import URLError
+from urllib.request import urlopen
 
 import pytest
 from werkzeug.exceptions import BadRequest
 
 from src.config import QRLPConfig, WebSettings
-from src.core import QRLiveProtocol
+from src.core import QRData, QRLiveProtocol
 from src.web_server import QRLiveWebServer, SecurityValidator
 
 
@@ -41,9 +44,7 @@ class TestSecurityValidatorUserText:
             SecurityValidator.validate_user_text(long_text)
 
     def test_empty_string_passes(self):
-        """Valid text passes validation."""
-        result = SecurityValidator.validate_user_text("abc")
-        assert result == "abc"
+        assert SecurityValidator.validate_user_text("  ") == ""
 
     def test_invalid_chars_rejected(self):
         """Characters outside the allowed pattern are rejected."""
@@ -132,14 +133,71 @@ class TestQRLiveWebServerRoutes:
 
     def test_current_qr_with_data(self, web_server):
         """After update_qr_display, /api/qr/current returns data."""
-        qr_data, qr_image = web_server.verifier.generate_single_qr()
+        qr_data, qr_image = web_server.verifier.generate_single_qr({"z": "first", "a": "second"})
+        qr_data.ots_proof_path = "/local/test-proof.ots"
         web_server.update_qr_display(qr_data, qr_image)
         client = web_server.app.test_client()
         response = client.get('/api/qr/current')
         assert response.status_code == 200
         data = response.get_json()
-        assert "qr_data" in data
+        assert data["qr_json"] == qr_data.to_json()
+        assert data["qr_data"] == json.loads(qr_data.to_json())
+        assert b"/local/test-proof.ots" not in response.data
+        assert b"/local/test-proof.ots" not in client.get("/api/improve/status").data
         assert "qr_image" in data
+
+    def test_event_stream_sends_current_and_subsequent_frames(self, web_server):
+        first = QRData("2026-01-01T00:00:00Z", "first", {}, {}, sequence_number=1)
+        second = QRData("2026-01-01T00:00:05Z", "second", {}, {}, sequence_number=2)
+        web_server.update_qr_display(first, b"first image")
+        response = web_server.app.test_client().get("/api/qr/events", buffered=False)
+        try:
+            assert response.mimetype == "text/event-stream"
+            assert response.headers["Cache-Control"] == "no-store"
+            assert web_server.get_statistics()["event_stream_connections"] == 1
+            frames = iter(response.response)
+            first_event = next(frames)
+            assert json.loads(first_event.removeprefix(b"data: "))["qr_data"]["sequence_number"] == 1
+            web_server.update_qr_display(second, b"second image")
+            assert json.loads(next(frames).removeprefix(b"data: ")) == (
+                web_server.app.test_client().get("/api/qr/current").get_json()
+            )
+        finally:
+            response.close()
+        assert web_server.get_statistics()["event_stream_connections"] == 0
+
+    def test_failed_worker_start_closes_listener(self, monkeypatch):
+        from unittest.mock import Mock
+
+        listener = Mock()
+        monkeypatch.setattr("src.web_server.make_server", lambda *args, **kwargs: listener)
+        monkeypatch.setattr("threading.Thread.start", Mock(side_effect=RuntimeError("no threads")))
+        server = QRLiveWebServer(WebSettings(host="127.0.0.1", port=0, auto_open_browser=False))
+
+        with pytest.raises(RuntimeError, match="no threads"):
+            server.start_server()
+        assert server.get_statistics()["is_running"] is False
+        listener.server_close.assert_called_once()
+        server.stop_server()
+        listener.shutdown.assert_not_called()
+
+    def test_http_server_releases_port_on_stop(self):
+        server = QRLiveWebServer(WebSettings(host="127.0.0.1", port=0, auto_open_browser=False))
+        server.start_server()
+        status_url = f"{server.get_server_url()}/api/status"
+        try:
+            with urlopen(status_url, timeout=2) as response:
+                assert json.load(response)["is_running"] is True
+        finally:
+            server.stop_server()
+        with pytest.raises(URLError):
+            urlopen(status_url, timeout=2)
+        server.start_server()
+        try:
+            with urlopen(f"{server.get_server_url()}/api/status", timeout=2) as response:
+                assert response.status == 200
+        finally:
+            server.stop_server()
 
     def test_verify_route(self, web_server):
         """Verify endpoint accepts QR JSON."""
@@ -171,6 +229,24 @@ class TestQRLiveWebServerRoutes:
         response = client.get('/viewer')
         assert response.status_code == 200
 
+    @pytest.mark.parametrize("path", ["/", "/viewer", "/admin", "/improve"])
+    def test_dashboard_scripts_use_the_response_nonce(self, web_server, path):
+        response = web_server.app.test_client().get(path)
+        policy = response.headers["Content-Security-Policy"]
+        match = re.search(r"script-src 'self' 'nonce-([^']+)';", policy)
+        assert match
+        html = response.get_data(as_text=True)
+        assert re.findall(r"<script[^>]+>", html)
+        assert all(
+            f'nonce="{match[1]}"' in script
+            for script in re.findall(r"<script[^>]+>", html)
+        )
+        if path in {"/", "/viewer"}:
+            assert "EventSource" in html
+            assert "https://cdnjs.cloudflare.com" not in html
+        if path == "/viewer":
+            assert "/api/user-data" in html
+
     def test_admin_route(self, web_server):
         client = web_server.app.test_client()
         response = client.get('/admin')
@@ -196,7 +272,25 @@ class TestQRLiveWebServerRoutes:
                               content_type='application/json')
         assert response.status_code == 200
         data = response.get_json()
-        assert "success" in data
+        assert data["success"] is True
+        assert data["signed_round_trip"]["trust_mode"] == "public_signature"
+        assert data["verification"]["hmac_verified"] is False
+
+    @pytest.mark.parametrize("body", ["[", "[]", "null", "false"])
+    def test_improve_smoke_test_rejects_malformed_bodies(self, web_server, body):
+        response = web_server.app.test_client().post(
+            "/api/improve/smoke-test", data=body, content_type="application/json"
+        )
+        assert response.status_code == 400
+
+    def test_improve_smoke_test_does_not_leak_exception(self, web_server, monkeypatch):
+        def fail_smoke_test():
+            raise RuntimeError("internal details")
+
+        monkeypatch.setattr(web_server, "_run_improvement_smoke_test", fail_smoke_test)
+        response = web_server.app.test_client().post("/api/improve/smoke-test", json={})
+        assert response.status_code == 500
+        assert b"internal details" not in response.data
 
 
 class TestUserDataRoutes:
@@ -223,6 +317,19 @@ class TestUserDataRoutes:
                               content_type='application/json')
         assert response.status_code == 200
         assert response.get_json()["success"] is True
+
+    def test_post_user_data_clears_existing_message(self, web_server):
+        client = web_server.app.test_client()
+        client.post("/api/user-data", json={"user_text": "test message"})
+        assert client.get("/api/user-data").get_json()["user_data"] == "test message"
+        assert client.post("/api/user-data", json={"user_text": ""}).status_code == 200
+        assert client.get("/api/user-data").get_json()["user_data"] is None
+
+    def test_oversized_json_body_is_rejected(self, web_server):
+        response = web_server.app.test_client().post(
+            "/api/user-data", json={"user_text": "x", "padding": "x" * (128 * 1024)}
+        )
+        assert response.status_code == 413
 
     def test_post_user_data_invalid(self, web_server):
         client = web_server.app.test_client()
@@ -260,6 +367,42 @@ class TestAdminToken:
                               content_type='application/json')
         assert response.status_code == 401
 
+    @pytest.mark.parametrize("host,request_options", [
+        ("0.0.0.0", {}),
+        ("localhost", {"environ_overrides": {"REMOTE_ADDR": "192.0.2.1"}}),
+        ("localhost", {"base_url": "http://outside.test"}),
+        ("localhost", {"headers": {"Origin": "https://outside.test"}}),
+    ])
+    def test_tokenless_controls_reject_nonlocal_and_cross_origin_requests(self, host, request_options):
+        server = QRLiveWebServer(WebSettings(host=host))
+        client = server.app.test_client()
+        assert client.post("/api/user-data", json={"user_text": "message"}, **request_options).status_code == 401
+
+    def test_public_views_do_not_expose_secrets(self, web_server_with_token):
+        security = web_server_with_token.verifier.config.security_settings
+        security.encryption_key = "test-encryption-key"
+        security.private_key_file = "/local/test-private-key.pem"
+        client = web_server_with_token.app.test_client()
+        for route in ("/", "/viewer", "/improve", "/api/improve/status"):
+            response = client.get(route)
+            assert response.status_code == 200
+            assert b"secret-token" not in response.data
+            assert b"test-encryption-key" not in response.data
+            assert b"/local/test-private-key.pem" not in response.data
+
+    def test_socket_invalid_payload_is_rejected_and_text_can_be_cleared(self, web_server_with_token):
+        socket = web_server_with_token.socketio.test_client(web_server_with_token.app)
+        try:
+            socket.emit("update_user_data", ["not", "an", "object"])
+            assert socket.get_received()[0]["name"] == "user_data_error"
+            socket.emit("update_user_data", {"admin_token": "secret-token", "user_text": "message"})
+            assert socket.get_received()[0]["name"] == "user_data_updated"
+            assert web_server_with_token.get_user_data() == "message"
+            socket.emit("update_user_data", {"admin_token": "secret-token", "user_text": ""})
+            assert socket.get_received()[0]["args"][0]["user_data"] is None
+        finally:
+            socket.disconnect()
+
     def test_post_user_data_with_header_token(self, web_server_with_token):
         client = web_server_with_token.app.test_client()
         response = client.post('/api/user-data',
@@ -285,13 +428,14 @@ class TestAdminToken:
         assert response.status_code == 401
 
     def test_authorized_socket_without_token(self):
-        """_authorized_socket returns True when no admin_token set."""
+        """A loopback socket may write without a configured token."""
         settings = WebSettings(admin_token=None)
         config = QRLPConfig()
         config.blockchain_settings.enabled_chains = set()
         config.time_settings.time_servers = []
         server = QRLiveWebServer(settings, verifier=QRLiveProtocol(config))
-        assert server._authorized_socket({}) is True
+        with server.app.test_request_context("/", environ_overrides={"REMOTE_ADDR": "127.0.0.1"}):
+            assert server._authorized_socket({}) is True
 
     def test_authorized_socket_with_token(self):
         """_authorized_socket checks token in data."""
@@ -442,3 +586,8 @@ class TestCORS:
         client = server.app.test_client()
         resp = client.get('/api/status')
         assert resp.status_code == 200
+
+    def test_cors_requires_an_explicit_origin(self):
+        server = QRLiveWebServer(WebSettings(cors_enabled=True))
+        response = server.app.test_client().get("/api/status", headers={"Origin": "https://example.com"})
+        assert "Access-Control-Allow-Origin" not in response.headers

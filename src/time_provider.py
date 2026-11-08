@@ -5,19 +5,25 @@ Handles time synchronization with multiple time servers and provides
 accurate timestamp verification for QR codes.
 """
 
-import logging
 import threading
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from math import isfinite
+from statistics import median
+from typing import TypedDict
+from urllib.parse import urlsplit, urlunsplit
 
 import ntplib
 import requests
 
 from .config import TimeSettings
 
-_logger = logging.getLogger("qrlp.time")
 
+class TimeServerObservation(TypedDict):
+    timestamp: str
+    offset: float
+    last_sync: float
 
 
 @dataclass
@@ -49,7 +55,8 @@ class TimeProvider:
         """
         self.settings = settings
         self.time_offsets: dict[str, float] = {}
-        self.last_sync_time = 0
+        self.last_sync_time = 0.0
+        self._last_sync_attempt: float | None = None
         self.sync_lock = threading.Lock()
         self.ntp_client = ntplib.NTPClient()
 
@@ -58,9 +65,6 @@ class TimeProvider:
         self.successful_syncs = 0
         self.failed_syncs = 0
 
-        # Perform initial synchronization
-        self._sync_with_servers()
-
     def get_current_time(self) -> datetime:
         """
         Get current time with best available synchronization.
@@ -68,51 +72,39 @@ class TimeProvider:
         Returns:
             datetime object in UTC timezone
         """
-        # Use averaged offset from time servers
-        current_time = time.time()
-
-        if self.time_offsets:
-            # Calculate median offset for robustness
-            offsets = list(self.time_offsets.values())
-            offsets.sort()
-            n = len(offsets)
-            if n % 2 == 0:
-                median_offset = (offsets[n//2 - 1] + offsets[n//2]) / 2
-            else:
-                median_offset = offsets[n//2]
-
-            adjusted_time = current_time + median_offset
+        self._refresh_if_needed()
+        with self.sync_lock:
+            offsets = tuple(self.time_offsets.values())
+        if offsets:
+            offset = median(offsets)
+        elif self.settings.local_fallback:
+            offset = 0.0
         else:
-            # Fall back to local time if no servers available
-            adjusted_time = current_time
+            raise RuntimeError("No configured time source is available")
+        return datetime.fromtimestamp(time.time() + offset, UTC)
 
-        return datetime.fromtimestamp(adjusted_time, UTC)
+    def get_time_server_verification(self) -> dict[str, TimeServerObservation]:
+        """Return the latest successful observations from configured sources."""
+        self._refresh_if_needed()
+        with self.sync_lock:
+            offsets = self.time_offsets.copy()
+            last_sync = self.last_sync_time
 
-    def get_time_server_verification(self) -> dict[str, str]:
-        """
-        Get verification data from time servers.
-
-        Returns:
-            Dictionary with server verification information
-        """
-        # Refresh sync if needed
-        if time.time() - self.last_sync_time > self.settings.update_interval:
-            self._sync_with_servers()
-
-        verification = {}
         current_time = time.time()
-
-        for server, offset in self.time_offsets.items():
-            server_time = current_time + offset
-            verification[server] = {
-                "timestamp": datetime.fromtimestamp(server_time, UTC).isoformat(),
+        return {
+            server: {
+                "timestamp": datetime.fromtimestamp(current_time + offset, UTC).isoformat(),
                 "offset": offset,
-                "last_sync": self.last_sync_time
+                "last_sync": last_sync,
             }
+            for server, offset in offsets.items()
+        }
 
-        return verification
+    def _refresh_if_needed(self) -> None:
+        if self.settings.time_servers:
+            self._sync_with_servers(force=False)
 
-    def verify_timestamp(self, timestamp_str: str, tolerance: float = 30.0) -> dict[str, bool]:
+    def verify_timestamp(self, timestamp_str: str, tolerance: float = 30.0) -> dict[str, str | bool | float]:
         """
         Verify if a timestamp is within acceptable range of current time.
 
@@ -137,7 +129,7 @@ class TimeProvider:
                 "given_time": given_time.isoformat()
             }
 
-        except (ValueError, TypeError) as e:
+        except (AttributeError, RuntimeError, ValueError, TypeError) as e:
             return {
                 "valid": False,
                 "error": str(e)
@@ -176,7 +168,7 @@ class TimeProvider:
                 error=str(e)
             )
 
-    def get_http_time(self, url: str = "http://worldtimeapi.org/api/timezone/UTC") -> TimeServerResponse | None:
+    def get_http_time(self, url: str = "https://worldtimeapi.org/api/timezone/UTC") -> TimeServerResponse | None:
         """
         Get time from HTTP time API.
 
@@ -186,18 +178,23 @@ class TimeProvider:
         Returns:
             TimeServerResponse object or None if failed
         """
+        source = ""
         try:
+            parsed = urlsplit(url)
+            source = urlunsplit((parsed.scheme, parsed.netloc.rsplit("@", 1)[-1], parsed.path, "", ""))
             response = requests.get(url, timeout=self.settings.timeout)
             response.raise_for_status()
 
             data = response.json()
             server_time = datetime.fromisoformat(data['datetime'].replace('Z', '+00:00'))
+            if server_time.tzinfo is None:
+                raise ValueError("HTTP time source did not provide a UTC offset")
             timestamp = server_time.timestamp()
             local_time = time.time()
             offset = timestamp - local_time
 
             return TimeServerResponse(
-                server=url,
+                server=source,
                 timestamp=timestamp,
                 offset=offset,
                 delay=0,  # HTTP doesn't provide delay measurement
@@ -207,7 +204,7 @@ class TimeProvider:
 
         except Exception as e:
             return TimeServerResponse(
-                server=url,
+                server=source,
                 timestamp=0,
                 offset=0,
                 delay=0,
@@ -224,27 +221,13 @@ class TimeProvider:
             List of TimeServerResponse objects
         """
         responses = []
-
-        if not self.settings.time_servers:
-            return responses
-
-        # NTP servers
-        for server in self.settings.time_servers:
-            response = self.get_ntp_time(server)
-            if response:
+        for server in dict.fromkeys(self.settings.time_servers):
+            if server.startswith(("https://", "http://")):
+                response = self.get_http_time(server)
+            else:
+                response = self.get_ntp_time(server)
+            if response is not None:
                 responses.append(response)
-
-        # HTTP time APIs
-        http_apis = [
-            "http://worldtimeapi.org/api/timezone/UTC",
-            "https://timeapi.io/api/Time/current/zone?timeZone=UTC"
-        ]
-
-        for api_url in http_apis:
-            response = self.get_http_time(api_url)
-            if response:
-                responses.append(response)
-
         return responses
 
     def get_statistics(self) -> dict:
@@ -259,42 +242,38 @@ class TimeProvider:
             "success_rate": self.successful_syncs / max(1, self.total_syncs)
         }
 
-    def _sync_with_servers(self) -> None:
-        """Internal method to synchronize with time servers."""
+    def _sync_with_servers(self, *, force: bool) -> bool:
+        """Refresh once and throttle scheduled attempts, including failures."""
         if not self.sync_lock.acquire(blocking=False):
-            return  # Already syncing
+            return False
 
         try:
+            if (
+                not force and self._last_sync_attempt is not None
+                and time.monotonic() - self._last_sync_attempt < self.settings.update_interval
+            ):
+                return False
+
             self.total_syncs += 1
-            responses = self.sync_all_servers()
+            try:
+                responses = self.sync_all_servers()
+            finally:
+                self._last_sync_attempt = time.monotonic()
 
-            # Update offsets for successful responses
-            new_offsets = {}
-            successful_count = 0
-
-            for response in responses:
-                if response.success:
-                    new_offsets[response.server] = response.offset
-                    successful_count += 1
-
-            if new_offsets:
-                self.time_offsets = new_offsets
+            self.time_offsets = {
+                response.server: response.offset
+                for response in responses
+                if response.success and isfinite(response.offset)
+            }
+            if self.time_offsets:
                 self.successful_syncs += 1
                 self.last_sync_time = time.time()
-            else:
-                self.failed_syncs += 1
-                # Keep old offsets if all servers fail
-
+                return True
+            self.failed_syncs += 1
+            return False
         finally:
             self.sync_lock.release()
 
     def force_sync(self) -> bool:
-        """
-        Force immediate synchronization with time servers.
-
-        Returns:
-            True if sync was successful, False otherwise
-        """
-        old_count = self.successful_syncs
-        self._sync_with_servers()
-        return self.successful_syncs > old_count
+        """Refresh immediately, returning whether any source succeeded."""
+        return self._sync_with_servers(force=True)

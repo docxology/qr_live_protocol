@@ -4,9 +4,15 @@ QR Code Generation module for QRLP.
 Handles QR code creation, optimization, and image generation based on the qrkey protocol.
 """
 
+import base64
 import binascii
 import hashlib
+import json
 import logging
+import string
+from dataclasses import dataclass
+from io import BytesIO
+from threading import Lock
 
 import qrcode
 import qrcode.constants
@@ -24,11 +30,6 @@ except ImportError:
     StyledPilImage = None
     RoundedModuleDrawer = None
     SquareModuleDrawer = None
-
-import base64
-import json
-from dataclasses import dataclass
-from io import BytesIO
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -92,8 +93,9 @@ class QRGenerator:
             settings: QRSettings configuration object
         """
         self.settings = settings
-        self.cache = {}  # Cache for recently generated QR codes
+        self.cache: dict[tuple, bytes] = {}
         self.generation_count = 0
+        self._cache_lock = Lock()
 
     def generate_qr_image(self, data: str, style: str | None = None) -> bytes:
         """
@@ -106,24 +108,34 @@ class QRGenerator:
         Returns:
             QR code image as bytes (PNG format)
         """
-        # Check cache first
-        cache_key = f"{hash(data)}_{style}_{self.settings.error_correction_level}"
-        if cache_key in self.cache:
-            return self.cache[cache_key]
+        settings = self.settings
+        cache_key = (
+            data, style, settings.error_correction_level, settings.box_size,
+            settings.border_size, settings.fill_color, settings.back_color,
+            settings.image_format,
+        )
+        with self._cache_lock:
+            cached = self.cache.get(cache_key)
+        if cached is not None:
+            return cached
 
-        # Check if data is too large for single QR code
-        estimated_version = self._estimate_qr_version(data)
-        if estimated_version > 40:
+        # A version 40 QR holds at most 7,089 numeric characters. Let the
+        # encoder decide the actual capacity for the input's character modes.
+        if len(data) > 7089:
             raise QRDataTooLargeError(self._large_payload_error_message(data))
 
         # Create QR code instance
         qr = self._create_qr_instance()
 
-        # Add data and optimize
+        qr.add_data(data)
         try:
-            qr.add_data(data)
             qr.make(fit=True)
         except qrcode.exceptions.DataOverflowError as exc:
+            raise QRDataTooLargeError(self._large_payload_error_message(data)) from exc
+        except ValueError as exc:
+            # qrcode 8.2 validates the overflow sentinel before raising DataOverflowError.
+            if exc.args != ("Invalid version (was 41, expected 1 to 40)",):
+                raise
             raise QRDataTooLargeError(self._large_payload_error_message(data)) from exc
 
         # Generate image with styling
@@ -132,14 +144,11 @@ class QRGenerator:
         # Convert to bytes
         img_bytes = self._image_to_bytes(img)
 
-        # Cache result (limit cache size)
-        if len(self.cache) > 100:
-            # Remove oldest entries
-            oldest_key = next(iter(self.cache))
-            del self.cache[oldest_key]
-
-        self.cache[cache_key] = img_bytes
-        self.generation_count += 1
+        with self._cache_lock:
+            if cache_key not in self.cache and len(self.cache) >= 100:
+                del self.cache[next(iter(self.cache))]
+            self.cache[cache_key] = img_bytes
+            self.generation_count += 1
 
         return img_bytes
 
@@ -215,30 +224,27 @@ class QRGenerator:
         if not payloads:
             raise ValueError("No QR chunk payloads provided for reassembly")
 
-        parsed_payloads = [cls._decode_chunk_payload(payload) for payload in payloads]
-        first = parsed_payloads[0]
+        first = cls._decode_chunk_payload(payloads[0])
         total_chunks = first["total_chunks"]
-
-        chunks_by_index = {}
-        for payload in parsed_payloads:
+        chunks_by_index = {first["chunk_index"]: first["chunk"]}
+        for raw_payload in payloads[1:]:
+            payload = cls._decode_chunk_payload(raw_payload)
             cls._validate_compatible_chunk_payload(first, payload)
             chunk_index = payload["chunk_index"]
             if chunk_index in chunks_by_index:
                 raise ValueError(f"Duplicate QR chunk index {chunk_index}")
             chunks_by_index[chunk_index] = payload["chunk"]
 
-        expected_indexes = set(range(total_chunks))
-        actual_indexes = set(chunks_by_index)
-        if actual_indexes != expected_indexes:
-            missing = sorted(expected_indexes - actual_indexes)
-            extra = sorted(actual_indexes - expected_indexes)
-            raise ValueError(f"Incomplete QR chunks; missing={missing}, unexpected={extra}")
+        # Every decoded index is unique and in range. Compare counts before
+        # traversing the advertised range, which is controlled by the sender.
+        if len(chunks_by_index) != total_chunks:
+            raise ValueError(f"Incomplete QR chunks; expected {total_chunks}, got {len(chunks_by_index)}")
 
         encoded_data = ''.join(chunks_by_index[index] for index in range(total_chunks))
         try:
             data_bytes = base64.b64decode(encoded_data.encode('ascii'), validate=True)
             data = data_bytes.decode('utf-8')
-        except (binascii.Error, UnicodeDecodeError) as exc:
+        except (binascii.Error, UnicodeError) as exc:
             raise ValueError("QR chunk payload data is not valid base64-encoded UTF-8") from exc
 
         if len(data_bytes) != first["data_size"]:
@@ -288,7 +294,11 @@ class QRGenerator:
             return qr_img_bytes
 
         # Add text overlay
-        return self._add_text_overlay(qr_img_bytes, qr_data)
+        return self.add_text_overlay(qr_img_bytes, qr_data)
+
+    def add_text_overlay(self, qr_image: bytes, metadata: dict) -> bytes:
+        """Add a human-readable label without changing the encoded QR data."""
+        return self._add_text_overlay(qr_image, metadata)
 
     def verify_qr_readability(self, qr_image: bytes) -> dict[str, bool | float]:
         """
@@ -339,11 +349,12 @@ class QRGenerator:
 
     def get_statistics(self) -> dict:
         """Get generator statistics."""
-        return {
-            "total_generated": self.generation_count,
-            "cache_size": len(self.cache),
-            "settings": self.settings.__dict__
-        }
+        with self._cache_lock:
+            return {
+                "total_generated": self.generation_count,
+                "cache_size": len(self.cache),
+                "settings": vars(self.settings).copy(),
+            }
 
     def _create_qr_instance(self) -> qrcode.QRCode:
         """Create QR code instance with current settings."""
@@ -391,7 +402,7 @@ class QRGenerator:
     ) -> int:
         """Find the largest requested chunk size that still fits QR payload metadata."""
         requested_size = max_chunk_size if max_chunk_size is not None else self.settings.max_data_size
-        if requested_size <= 0:
+        if type(requested_size) is not int or requested_size <= 0:
             raise ValueError("max_chunk_size must be a positive integer")
 
         high = max(1, min(requested_size, self._max_single_qr_size()))
@@ -421,20 +432,17 @@ class QRGenerator:
         data_hash: str,
     ) -> bool:
         """Return whether every chunk payload fits into one QR code."""
-        chunks = self._split_encoded_data(encoded_data, chunk_size)
-        total_chunks = len(chunks)
-        return all(
-            self._estimate_qr_version(
-                self._encode_chunk_payload(
-                    chunk=chunk,
-                    chunk_index=index,
-                    total_chunks=total_chunks,
-                    data_size=data_size,
-                    data_hash=data_hash,
-                )
-            ) <= 40
-            for index, chunk in enumerate(chunks)
+        # Base64 contributes one ASCII byte per character and never needs JSON
+        # escaping. Test a maximum-width index and payload once per candidate.
+        total_chunks = max(1, (len(encoded_data) + chunk_size - 1) // chunk_size)
+        largest_payload = self._encode_chunk_payload(
+            chunk=encoded_data[:chunk_size],
+            chunk_index=total_chunks - 1,
+            total_chunks=total_chunks,
+            data_size=data_size,
+            data_hash=data_hash,
         )
+        return len(largest_payload) <= self._max_single_qr_size()
 
     def _encode_chunk_payload(
         self,
@@ -534,10 +542,8 @@ class QRGenerator:
         data_sha256 = decoded.get("data_sha256")
         if not isinstance(data_sha256, str) or len(data_sha256) != 64:
             raise ValueError("QR chunk payload data_sha256 must be a SHA-256 hex digest")
-        try:
-            int(data_sha256, 16)
-        except ValueError as exc:
-            raise ValueError("QR chunk payload data_sha256 must be hexadecimal") from exc
+        if any(character not in string.hexdigits for character in data_sha256):
+            raise ValueError("QR chunk payload data_sha256 must be hexadecimal")
 
         if not isinstance(decoded.get("chunk"), str):
             raise ValueError("QR chunk payload field chunk must be a string")
@@ -588,7 +594,7 @@ class QRGenerator:
 
             # Create larger canvas for text
             canvas_width = qr_img.width + 400  # Extra space for text
-            canvas_height = qr_img.height + 100
+            canvas_height = max(qr_img.height + 100, 270)
             canvas = Image.new('RGB', (canvas_width, canvas_height), 'white')
 
             # Paste QR code
@@ -639,7 +645,7 @@ class QRGenerator:
 
             # Blockchain info
             if qr_data.get('blockchain_hashes'):
-                draw.text((text_x, text_y), "Blockchain Verified:", fill='green', font=font_small)
+                draw.text((text_x, text_y), "Blockchain anchors:", fill='green', font=font_small)
                 text_y += 20
                 for chain in list(qr_data['blockchain_hashes'].keys())[:3]:  # Show max 3
                     draw.text((text_x + 10, text_y), f"• {chain.title()}", fill='green', font=font_small)

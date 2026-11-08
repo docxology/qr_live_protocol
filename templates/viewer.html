@@ -265,7 +265,7 @@
     </style>
 </head>
 <body>
-    <div class="status-indicator" id="statusIndicator"></div>
+    <div class="status-indicator disconnected" id="statusIndicator" title="Connecting"></div>
     <div class="sequence-number" id="sequenceNumber">#0</div>
     <div class="timestamp" id="timestamp">Loading...</div>
     
@@ -275,20 +275,23 @@
             <p>🔄 Waiting for QR code...</p>
         </div>
         
-        <!-- Custom Input Section -->
-        <div class="custom-input-section">
-            <div class="custom-input-title">📝 Custom QR Information</div>
+        <form id="messageForm" method="post" class="custom-input-section">
+            <div class="custom-input-title">📝 Custom QR Message</div>
             <div class="input-group">
-                <label class="input-label">Custom Message:</label>
-                <input type="text" id="customMessage" class="input-field" placeholder="Enter custom message for QR code..." />
+                <label class="input-label" for="customMessage">Message</label>
+                <input type="text" id="customMessage" class="input-field" maxlength="1000"
+                       placeholder="Leave blank to clear the message">
             </div>
+            {% if requires_admin_token %}
             <div class="input-group">
-                <label class="input-label">Additional Data:</label>
-                <input type="text" id="additionalData" class="input-field" placeholder="Enter additional data (optional)..." />
+                <label class="input-label" for="adminToken">Admin token</label>
+                <input type="password" id="adminToken" class="input-field" autocomplete="off" required>
             </div>
-            <button class="submit-button" onclick="sendCustomData()">🔄 Update QR Code</button>
-        </div>
-        
+            {% endif %}
+            <button class="submit-button" type="submit">Update next QR</button>
+            <p id="messageStatus" role="status" aria-live="polite"></p>
+        </form>
+
         <!-- QR Information Display -->
         <div class="qr-info" id="qrInfo" style="display: none;">
             <div class="info-item">
@@ -296,7 +299,7 @@
                 <span class="info-value" id="identityHash">-</span>
             </div>
             <div class="info-item">
-                <span class="info-label">Blockchain Verified:</span>
+                <span class="info-label">Block Hashes Included:</span>
                 <span class="info-value" id="blockchainInfo">-</span>
             </div>
             <div class="info-item">
@@ -321,219 +324,85 @@
         </div>
     </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
-    <script>
-        // Initialize WebSocket connection
-        const socket = io();
-        
-        // Elements
-        const qrDisplay = document.getElementById('qrDisplay');
-        const qrInfo = document.getElementById('qrInfo');
-        const qrDataDetails = document.getElementById('qrDataDetails');
-        const statusIndicator = document.getElementById('statusIndicator');
-        const timestamp = document.getElementById('timestamp');
-        const sequenceNumber = document.getElementById('sequenceNumber');
-        
-        // Connection status
-        let isConnected = false;
-        
-        // Update timestamp every second
-        function updateTimestamp() {
-            const now = new Date();
-            timestamp.textContent = now.toISOString().slice(0, 19).replace('T', ' ') + ' UTC';
+    {% include "_live_qr.html" %}
+    <script nonce="{{ script_nonce }}">
+        const byId = id => document.getElementById(id);
+        const { connect, formatValue, renderImage, textElement } = qrlpLive;
+        const form = byId('messageForm');
+
+        function updateClock() {
+            byId('timestamp').textContent = new Date().toISOString().slice(0, 19).replace('T', ' ') + ' UTC';
         }
-        
-        setInterval(updateTimestamp, 1000);
-        updateTimestamp();
-        
-        // Socket event handlers
-        socket.on('connect', function() {
-            console.log('Connected to QRLP server');
-            isConnected = true;
-            statusIndicator.classList.remove('disconnected');
-            socket.emit('request_qr_update');
-        });
-        
-        socket.on('disconnect', function() {
-            console.log('Disconnected from QRLP server');
-            isConnected = false;
-            statusIndicator.classList.add('disconnected');
-        });
-        
-        socket.on('qr_update', function(data) {
-            console.log('Received QR update:', data);
-            updateQRDisplay(data);
-        });
-        
-        // Send custom data to server
-        function sendCustomData() {
-            const customMessage = document.getElementById('customMessage').value;
-            const additionalData = document.getElementById('additionalData').value;
-            
-            const userData = {
-                user_text: customMessage || 'QRLP Viewer',
-                additional_data: additionalData || ''
-            };
-            
-            // Send to server via WebSocket
-            if (isConnected) {
-                socket.emit('update_user_data', userData);
-                console.log('Sent custom data:', userData);
-            } else {
-                // Fallback to HTTP POST
-                fetch('/api/user_input', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ user_input: customMessage })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    console.log('User data updated via HTTP:', data);
-                })
-                .catch(error => {
-                    console.error('Failed to update user data:', error);
-                });
-            }
+
+        function detailRow(label, value) {
+            const row = document.createElement('div');
+            row.className = 'qr-data-field';
+            row.append(
+                textElement('span', 'qr-data-key', label + ':'),
+                textElement('span', 'qr-data-value', value)
+            );
+            return row;
         }
-        
-        // Update QR display
-        function updateQRDisplay(data) {
-            if (data.qr_image && data.qr_data) {
-                // Update QR image
-                qrDisplay.innerHTML = `<img src="${data.qr_image}" class="qr-image" alt="QRLP QR Code">`;
-                
-                // Update sequence number
-                sequenceNumber.textContent = `#${data.qr_data.sequence_number || 0}`;
-                
-                // Update info
-                document.getElementById('identityHash').textContent = 
-                    (data.qr_data.identity_hash || '').substring(0, 16) + '...';
-                
-                // Blockchain info
-                const blockchains = data.qr_data.blockchain_hashes || {};
-                const blockchainList = Object.keys(blockchains).join(', ') || 'None';
-                document.getElementById('blockchainInfo').textContent = blockchainList;
-                
-                // Time servers
-                const timeServers = data.qr_data.time_server_verification || {};
-                const serverCount = Object.keys(timeServers).length;
-                document.getElementById('timeServers').textContent = `${serverCount} servers`;
-                
-                // Generated time
-                const genTime = data.qr_data.timestamp || '';
-                document.getElementById('generatedTime').textContent = 
-                    genTime.slice(0, 19).replace('T', ' ');
-                
-                // Show info panel
-                qrInfo.style.display = 'grid';
-                
-                // Update detailed QR data display
-                updateQRDataDetails(data.qr_data);
-            }
-        }
-        
-        // Update detailed QR data display
-        function updateQRDataDetails(qrData) {
-            let html = '';
-            
-            // Display key fields
+
+        function renderFrame(frame) {
+            if (!frame.qr_data || !renderImage(byId('qrDisplay'), frame.qr_image)) return;
+            const data = frame.qr_data;
+            byId('sequenceNumber').textContent = '#' + (data.sequence_number ?? 0);
+            byId('identityHash').textContent = data.identity_hash ? data.identity_hash.slice(0, 16) + '…' : 'None';
+            const chains = Object.entries(data.blockchain_hashes ?? {});
+            const sources = Object.entries(data.time_server_verification ?? {});
+            byId('blockchainInfo').textContent = chains.map(([chain]) => chain).join(', ') || 'None';
+            byId('timeServers').textContent = sources.length + ' sources recorded';
+            byId('generatedTime').textContent = data.timestamp ?? 'Unavailable';
+            byId('qrInfo').style.display = 'grid';
+
+            const rows = [detailRow('Timestamp', data.timestamp ?? 'Unavailable')];
             const fields = [
-                { key: 'sequence_number', label: 'Sequence Number' },
-                { key: 'timestamp', label: 'Timestamp' },
-                { key: 'identity_hash', label: 'Identity Hash' },
-                { key: '_hmac', label: 'HMAC Integrity' },
-                { key: '_hmac_algorithm', label: 'HMAC Algorithm' },
-                { key: 'user_data', label: 'User Data' },
-                { key: '_encrypted_fields', label: 'Encrypted Fields' },
-                { key: 'digital_signature', label: 'Digital Signature' }
+                ['Issuer', data.issuer_id],
+                ['HMAC algorithm', data._hmac_algorithm],
+                ['Signature algorithm', data.signature_algorithm],
+                ['Encrypted fields', data._encrypted_fields?.join(', ')]
             ];
-            
-            fields.forEach(field => {
-                if (qrData[field.key] !== undefined && qrData[field.key] !== null) {
-                    let value = qrData[field.key];
-                    
-                    // Format complex objects
-                    if (typeof value === 'object') {
-                        value = JSON.stringify(value, null, 2);
-                    }
-                    
-                    // Truncate long values
-                    const displayValue = String(value).length > 100 
-                        ? String(value).substring(0, 100) + '...'
-                        : String(value);
-                    
-                    html += `
-                        <div class="qr-data-field">
-                            <span class="qr-data-key">${field.label}:</span>
-                            <span class="qr-data-value">${displayValue}</span>
-                        </div>
-                    `;
-                }
-            });
-            
-            // Display blockchain hashes
-            if (qrData.blockchain_hashes) {
-                html += `
-                    <div class="qr-data-field">
-                        <span class="qr-data-key">Blockchain Hashes:</span>
-                    </div>
-                `;
-                Object.entries(qrData.blockchain_hashes).forEach(([chain, hash]) => {
-                    html += `
-                        <div class="qr-data-field" style="margin-left: 20px;">
-                            <span class="qr-data-key">${chain}:</span>
-                            <span class="qr-data-value">${hash ? hash.substring(0, 32) + '...' : 'N/A'}</span>
-                        </div>
-                    `;
-                });
+            if (!data._encrypted_fields?.includes('user_data')) fields.push(['User data', data.user_data]);
+            for (const [label, value] of fields) {
+                if (value != null) rows.push(detailRow(label, formatValue(value)));
             }
-            
-            // Display time server verification
-            if (qrData.time_server_verification) {
-                html += `
-                    <div class="qr-data-field">
-                        <span class="qr-data-key">Time Server Verification:</span>
-                    </div>
-                `;
-                Object.entries(qrData.time_server_verification).forEach(([server, status]) => {
-                    html += `
-                        <div class="qr-data-field" style="margin-left: 20px;">
-                            <span class="qr-data-key">${server}:</span>
-                            <span class="qr-data-value">${status}</span>
-                        </div>
-                    `;
-                });
-            }
-            
-            qrDataDetails.innerHTML = html || '<div class="qr-data-field"><span class="qr-data-value">No data available</span></div>';
+            for (const [chain, hash] of chains) rows.push(detailRow(chain, hash));
+            for (const [source, status] of sources) rows.push(detailRow(source, formatValue(status)));
+            byId('qrDataDetails').replaceChildren(...rows);
         }
-        
-        // Fallback: Poll for updates if WebSocket fails
-        function pollForUpdates() {
-            if (!isConnected) {
-                fetch('/api/qr/current')
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.qr_image && data.qr_data) {
-                            updateQRDisplay(data);
-                        }
-                    })
-                    .catch(error => console.log('Poll failed:', error));
+
+        form.addEventListener('submit', async event => {
+            event.preventDefault();
+            const button = form.querySelector('button');
+            const status = byId('messageStatus');
+            button.disabled = true;
+            status.textContent = 'Updating…';
+            const headers = {'Content-Type': 'application/json'};
+            if (byId('adminToken')) headers['X-QRLP-Admin-Token'] = byId('adminToken').value;
+            try {
+                const response = await fetch({{ url_for('update_user_data') | tojson }}, {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify({user_text: byId('customMessage').value})
+                });
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.message || result.error || 'Update failed');
+                status.textContent = result.user_data ? 'Message saved for the next QR.' : 'Message cleared.';
+            } catch (error) {
+                status.textContent = error.message;
+            } finally {
+                button.disabled = false;
             }
-        }
-        
-        setInterval(pollForUpdates, 5000);
-        
-        // Request initial update
-        setTimeout(() => {
-            if (isConnected) {
-                socket.emit('request_qr_update');
-            } else {
-                pollForUpdates();
-            }
-        }, 1000);
+        });
+
+        updateClock();
+        setInterval(updateClock, 1000);
+        connect(renderFrame, connected => {
+            const indicator = byId('statusIndicator');
+            indicator.classList.toggle('disconnected', !connected);
+            indicator.title = connected ? 'Connected' : 'Reconnecting…';
+        });
     </script>
 </body>
 </html>

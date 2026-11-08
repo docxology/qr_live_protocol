@@ -44,16 +44,16 @@ def test_perfect_channel_no_loss():
     assert report.recovery_rate == 1.0
 
 
-def test_lossy_channel_recovers_small_gaps():
-    # Drops <= retransmission window are recovered.
+def test_lossy_channel_reports_exact_losses_without_inventing_retransmissions():
     sim = _new_simulator(drop_rate=0.1)
     report = sim.run(200)
     assert report.frames_produced == 200
     assert report.frames_dropped > 0
     assert report.frames_received == report.frames_produced - report.frames_dropped
-    # All detected gaps should be within the recovery window at 10% drop.
-    assert report.gaps_recovered == report.gaps_detected
-    assert report.recovery_rate == 1.0
+    assert report.frames_dropped == len(report.loss_pattern)
+    assert report.gaps_detected > 0
+    assert report.gaps_recovered == 0
+    assert report.recovery_rate == 0.0
 
 
 def test_heavier_loss_lowers_recovery_rate():
@@ -73,14 +73,13 @@ def test_deterministic_seed_reproducibility():
     assert report_a.frames_dropped == report_b.frames_dropped
 
 
-def test_reordering_produces_duplicates_at_receiver():
-    # Reordered frames arrive after their sequence was already accepted,
-    # which the recovery layer treats as duplicates.
+def test_reordering_delivers_frames_after_a_gap():
     sim = _new_simulator(drop_rate=0.0, reorder_rate=0.5)
     report = sim.run(50)
-    assert report.frames_received > 0
-    # No frames are dropped, so delivery is complete.
+    assert report.frames_received == 50
     assert report.frames_dropped == 0
+    assert report.gaps_detected > 0
+    assert report.gaps_recovered > 0
 
 
 def test_report_shape():
@@ -130,6 +129,17 @@ def test_custom_encoder_is_used():
     report = sim.run(10)
     assert len(calls) == 10
     assert report.frames_produced == 10
+
+
+def test_plain_byte_encoder_and_repeated_runs_have_consistent_totals():
+    simulator = LiveSimulator(
+        encoder=lambda n: str(n).encode(),
+        channel=OpticalChannelModel(drop_rate=0, seed=5),
+    )
+    for frame_count in (10, 4):
+        report = simulator.run(frame_count)
+        assert report.frames_produced == report.frames_received == frame_count
+        assert report.frames_dropped == 0
 
 
 def test_summary_string_renderable(sim=None):
