@@ -7,7 +7,7 @@ accurate timestamp verification for QR codes.
 
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from math import isfinite
 from statistics import median
@@ -18,6 +18,8 @@ import ntplib
 import requests
 
 from .config import TimeSettings
+
+_NIST_MIN_POLL_SECONDS = 4.0
 
 
 class TimeServerObservation(TypedDict):
@@ -36,6 +38,7 @@ class TimeServerResponse:
     stratum: int
     success: bool
     error: str | None = None
+    observed_at: float | None = None
 
 
 class TimeProvider:
@@ -57,7 +60,11 @@ class TimeProvider:
         self.time_offsets: dict[str, float] = {}
         self.last_sync_time = 0.0
         self._last_sync_attempt: float | None = None
+        self._last_sync_sources: tuple[str, ...] = ()
+        self._source_sync_times: dict[str, float] = {}
         self.sync_lock = threading.Lock()
+        self._nist_lock = threading.Lock()
+        self._nist_observations: dict[str, tuple[float, TimeServerResponse]] = {}
         self.ntp_client = ntplib.NTPClient()
 
         # Statistics
@@ -88,6 +95,7 @@ class TimeProvider:
         self._refresh_if_needed()
         with self.sync_lock:
             offsets = self.time_offsets.copy()
+            sync_times = self._source_sync_times.copy()
             last_sync = self.last_sync_time
 
         current_time = time.time()
@@ -95,13 +103,13 @@ class TimeProvider:
             server: {
                 "timestamp": datetime.fromtimestamp(current_time + offset, UTC).isoformat(),
                 "offset": offset,
-                "last_sync": last_sync,
+                "last_sync": sync_times.get(server, last_sync),
             }
             for server, offset in offsets.items()
         }
 
     def _refresh_if_needed(self) -> None:
-        if self.settings.time_servers:
+        if self.settings.time_servers or self._last_sync_sources:
             self._sync_with_servers(force=False)
 
     def verify_timestamp(self, timestamp_str: str, tolerance: float = 30.0) -> dict[str, str | bool | float]:
@@ -135,38 +143,42 @@ class TimeProvider:
                 "error": str(e)
             }
 
-    def get_ntp_time(self, server: str) -> TimeServerResponse | None:
-        """
-        Get time from specific NTP server.
+    def get_ntp_time(self, server: str) -> TimeServerResponse:
+        """Query an NTP server, reusing a recent NIST response within its poll limit."""
+        host = server.rstrip(".").lower()
+        if not host.endswith(".nist.gov"):
+            return self._request_ntp(server)
 
-        Args:
-            server: NTP server hostname
+        # Keep the limit on the actual request, including explicit force_sync
+        # and direct API calls, without slowing other configured sources.
+        with self._nist_lock:
+            now = time.monotonic()
+            previous = self._nist_observations.get(host)
+            if previous is not None and now - previous[0] < _NIST_MIN_POLL_SECONDS:
+                return replace(previous[1], server=server)
+            response = self._request_ntp(server)
+            self._nist_observations[host] = (time.monotonic(), replace(response))
+            return response
 
-        Returns:
-            TimeServerResponse object or None if failed
-        """
+    def _request_ntp(self, server: str) -> TimeServerResponse:
         try:
             response = self.ntp_client.request(server, timeout=self.settings.timeout)
-
+            if (
+                response.mode != 4 or response.leap == 3 or not 1 <= response.stratum <= 15
+                or not all(isfinite(value) for value in (response.tx_time, response.offset, response.delay))
+            ):
+                raise ValueError("NTP source returned an unusable time sample")
             return TimeServerResponse(
                 server=server,
                 timestamp=response.tx_time,
                 offset=response.offset,
                 delay=response.delay,
                 stratum=response.stratum,
-                success=True
+                success=True,
+                observed_at=time.time(),
             )
-
         except Exception as e:
-            return TimeServerResponse(
-                server=server,
-                timestamp=0,
-                offset=0,
-                delay=0,
-                stratum=0,
-                success=False,
-                error=str(e)
-            )
+            return TimeServerResponse(server, 0, 0, 0, 0, False, error=str(e))
 
     def get_http_time(self, url: str = "https://worldtimeapi.org/api/timezone/UTC") -> TimeServerResponse | None:
         """
@@ -198,8 +210,9 @@ class TimeProvider:
                 timestamp=timestamp,
                 offset=offset,
                 delay=0,  # HTTP doesn't provide delay measurement
-                stratum=1,  # Assume stratum 1 for HTTP APIs
-                success=True
+                stratum=0,  # NTP stratum does not apply to HTTP
+                success=True,
+                observed_at=local_time,
             )
 
         except Exception as e:
@@ -248,8 +261,10 @@ class TimeProvider:
             return False
 
         try:
+            sources = tuple(self.settings.time_servers)
             if (
-                not force and self._last_sync_attempt is not None
+                not force and sources == self._last_sync_sources
+                and self._last_sync_attempt is not None
                 and time.monotonic() - self._last_sync_attempt < self.settings.update_interval
             ):
                 return False
@@ -259,15 +274,21 @@ class TimeProvider:
                 responses = self.sync_all_servers()
             finally:
                 self._last_sync_attempt = time.monotonic()
+                self._last_sync_sources = sources
 
-            self.time_offsets = {
-                response.server: response.offset
-                for response in responses
+            now = time.time()
+            observations = [
+                response for response in responses
                 if response.success and isfinite(response.offset)
+            ]
+            self.time_offsets = {response.server: response.offset for response in observations}
+            self._source_sync_times = {
+                response.server: response.observed_at if response.observed_at is not None else now
+                for response in observations
             }
             if self.time_offsets:
                 self.successful_syncs += 1
-                self.last_sync_time = time.time()
+                self.last_sync_time = max(self._source_sync_times.values())
                 return True
             self.failed_syncs += 1
             return False

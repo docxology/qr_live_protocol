@@ -29,12 +29,10 @@ class QRSettings:
 @dataclass
 class TimeSettings:
     """Time provider settings."""
-    update_interval: float = 1.0  # Seconds between time updates
+    update_interval: float = 60.0  # Seconds between time source refreshes
     time_servers: list[str] = field(default_factory=lambda: [
         "time.nist.gov",
-        "pool.ntp.org",
-        "time.google.com",
-        "time.cloudflare.com"
+        "time.cloudflare.com",
     ])
     timeout: float = 5.0  # Timeout for time server requests
     local_fallback: bool = True  # Use local time if servers unavailable
@@ -51,17 +49,21 @@ class TimeSettings:
     ots_proof_dir: str = "output/timestamps"
 
 
+DEFAULT_BLOCKCHAIN_API_ENDPOINTS = {
+    "bitcoin": "https://blockstream.info/api",
+    "ethereum": "https://api.blockcypher.com/v1/eth/main",
+    "litecoin": "https://api.blockcypher.com/v1/ltc/main",
+}
+
+
 @dataclass
 class BlockchainSettings:
     """Blockchain verification settings."""
     enabled_chains: set[str] = field(default_factory=lambda: {
         "bitcoin", "ethereum", "litecoin"
     })
-    api_endpoints: dict[str, str] = field(default_factory=lambda: {
-        "bitcoin": "https://blockstream.info/api",
-        "ethereum": "https://api.etherscan.io/api",
-        "litecoin": "https://api.blockcypher.com/v1/ltc/main"
-    })
+    # Esplora base URL for Bitcoin and BlockCypher-compatible chain URLs for ETH/LTC.
+    api_endpoints: dict[str, str] = field(default_factory=DEFAULT_BLOCKCHAIN_API_ENDPOINTS.copy)
     cache_duration: int = 300  # Cache blockchain data for 5 minutes
     timeout: float = 10.0
     retry_attempts: int = 3

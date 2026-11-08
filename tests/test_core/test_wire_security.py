@@ -1,6 +1,7 @@
 """End-to-end regressions for encrypted and authenticated wire payloads."""
 
 import json
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from threading import Event
 from unittest.mock import Mock
@@ -9,6 +10,21 @@ import pytest
 
 from src.core import QRLiveProtocol
 from src.crypto import EncryptionError, KeyManager
+
+
+def test_expired_signed_qr_reports_expiry_without_hiding_authenticity(qrlp_instance):
+    qrlp_instance.time_provider.get_current_time = Mock(
+        return_value=datetime.now(UTC) - timedelta(minutes=1),
+    )
+    qr_data, _ = qrlp_instance.generate_signed_qr({"event": "opening"})
+    qrlp_instance.config.verification_settings.max_time_drift = 120
+
+    result = qrlp_instance.verify_qr_data(qr_data.to_json())
+
+    assert result["signature_verified"] is True
+    assert result["time_verified"] is False
+    assert result["valid"] is False
+    assert result["error"] == "QR payload has expired"
 
 
 def test_invalid_payload_cannot_consume_authenticated_nonce(qrlp_instance):

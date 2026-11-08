@@ -6,17 +6,49 @@ comparison against QR payloads.
 """
 
 import logging
+import re
 import threading
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 import requests
 
-from .config import BlockchainSettings
+from .config import DEFAULT_BLOCKCHAIN_API_ENDPOINTS, BlockchainSettings
 
 _logger = logging.getLogger("qrlp.blockchain")
+_BITCOIN_FALLBACKS = ("https://mempool.space/api", "https://api.blockcypher.com/v1/btc/main")
+_LEGACY_ETHEREUM_ENDPOINT = "https://api.etherscan.io/api"
+_BLOCK_HASH_PATTERN = re.compile(r"[0-9a-fA-F]{64}")
+
+
+def _provider_url(endpoint: str, suffix: str = "") -> str:
+    """Append a provider path ahead of the existing query, if any."""
+    if not isinstance(endpoint, str):
+        raise ValueError("Provider endpoint must be an HTTP(S) URL")
+    parts = urlsplit(endpoint)
+    if parts.scheme not in {"https", "http"} or not parts.hostname or parts.fragment:
+        raise ValueError("Provider endpoint must be an HTTP(S) URL without a fragment")
+    if not suffix:
+        return endpoint
+    return urlunsplit(parts._replace(path=parts.path.rstrip("/") + suffix))
+
+
+def _tip_hash(value: Any, *, ethereum: bool = False) -> str:
+    """Validate a provider hash before recording it or using it as a URL segment."""
+    if isinstance(value, str):
+        candidate = value.removeprefix("0x") if ethereum else value
+        if _BLOCK_HASH_PATTERN.fullmatch(candidate):
+            return value
+    raise ValueError("Invalid provider block hash")
+
+
+def _tip_height(value: Any) -> int:
+    if type(value) is not int or value < 0:
+        raise ValueError("Invalid provider block height")
+    return value
 
 
 @dataclass
@@ -69,22 +101,18 @@ class BlockchainVerifier:
             'litecoin': self._get_litecoin_info,
         }
 
-        # Multiple API endpoints for redundancy
         self.api_endpoints = {
-            'bitcoin': [
-                "https://blockstream.info/api",
-                "https://mempool.space/api",
-                "https://api.blockcypher.com/v1/btc/main"
-            ],
-            'ethereum': [
-                "https://api.etherscan.io/api",
-                "https://api.blockcypher.com/v1/eth/main"
-            ],
-            'litecoin': [
-                "https://api.blockcypher.com/v1/ltc/main",
-                "https://litecoinspace.org/api"
-            ]
+            chain: [settings.api_endpoints.get(chain, default)]
+            for chain, default in DEFAULT_BLOCKCHAIN_API_ENDPOINTS.items()
         }
+        bitcoin = self.api_endpoints["bitcoin"][0]
+        if isinstance(bitcoin, str) and bitcoin.rstrip("/") == DEFAULT_BLOCKCHAIN_API_ENDPOINTS["bitcoin"]:
+            self.api_endpoints["bitcoin"].extend(_BITCOIN_FALLBACKS)
+        ethereum = self.api_endpoints["ethereum"][0]
+        if isinstance(ethereum, str) and ethereum.rstrip("/") == _LEGACY_ETHEREUM_ENDPOINT:
+            # Older generated configurations listed Etherscan, but the
+            # Ethereum reader has always used the BlockCypher chain schema.
+            self.api_endpoints["ethereum"] = [DEFAULT_BLOCKCHAIN_API_ENDPOINTS["ethereum"]]
 
         self._update_if_needed()
 
@@ -225,8 +253,8 @@ class BlockchainVerifier:
             try:
                 if self._update_chain(chain):
                     success_count += 1
-            except Exception as e:
-                _logger.error(f"{chain.title()} API error: {e}")
+            except Exception:
+                _logger.warning("Blockchain refresh failed for %s", chain)
                 # Continue with other chains even if one fails
                 continue
 
@@ -275,7 +303,7 @@ class BlockchainVerifier:
 
         for endpoint in endpoints:
             try:
-                url = f"{endpoint}{path}"
+                url = _provider_url(endpoint, path)
                 response = session.get(url, timeout=self.settings.timeout)
                 response.raise_for_status()
 
@@ -285,119 +313,67 @@ class BlockchainVerifier:
                 else:
                     return {"text": response.text.strip()}
 
-            except Exception as e:
-                _logger.error(f"API request failed for {endpoint}: {e}")
-                continue
+            except Exception:
+                _logger.warning("Blockchain provider request failed")
 
         return None
 
     def _get_bitcoin_info(self) -> BlockchainInfo | None:
-        """Get Bitcoin blockchain information with improved API handling."""
-        try:
-            # Try blockstream.info API first
+        """Read a Bitcoin tip from the configured Esplora base or default fallbacks."""
+        for attempt, endpoint in enumerate(self.api_endpoints["bitcoin"], start=1):
             try:
-                # Get latest block
-                response = requests.get("https://blockstream.info/api/blocks/tip/hash", timeout=self.settings.timeout)
-                if response.status_code == 200:
-                    block_hash = response.text.strip()
-
-                    # Get block details
-                    block_response = requests.get(f"https://blockstream.info/api/block/{block_hash}", timeout=self.settings.timeout)
-                    if block_response.status_code == 200:
-                        block_data = block_response.json()
-
-                        return BlockchainInfo(
-                            chain="bitcoin",
-                            block_number=block_data["height"],
-                            block_hash=block_hash,
-                            timestamp=datetime.fromtimestamp(block_data["timestamp"], UTC),
-                            retrieved_at=time.time()
-                        )
-            except Exception as e:
-                _logger.error(f"Blockstream.info API failed: {e}")
-            # Fallback to mempool.space
-            try:
-                response = requests.get("https://mempool.space/api/blocks/tip/hash", timeout=self.settings.timeout)
-                if response.status_code == 200:
-                    block_hash = response.text.strip()
-
-                    block_response = requests.get(f"https://mempool.space/api/block/{block_hash}", timeout=self.settings.timeout)
-                    if block_response.status_code == 200:
-                        block_data = block_response.json()
-
-                        return BlockchainInfo(
-                            chain="bitcoin",
-                            block_number=block_data["height"],
-                            block_hash=block_hash,
-                            timestamp=datetime.fromtimestamp(block_data["timestamp"], UTC),
-                            retrieved_at=time.time()
-                        )
-            except Exception as e:
-                _logger.error(f"Mempool.space API failed: {e}")
-            # Final fallback to blockcypher
-            try:
-                response = requests.get("https://api.blockcypher.com/v1/btc/main", timeout=self.settings.timeout)
-                if response.status_code == 200:
-                    data = response.json()
-
-                    return BlockchainInfo(
-                        chain="bitcoin",
-                        block_number=data["height"],
-                        block_hash=data["hash"],
-                        timestamp=datetime.now(UTC),
-                        retrieved_at=time.time()
-                    )
+                if isinstance(endpoint, str) and endpoint.rstrip("/") == _BITCOIN_FALLBACKS[-1]:
+                    return self._read_blockcypher_tip("bitcoin", endpoint)
+                return self._read_esplora_tip(endpoint)
             except Exception:
-                pass
+                _logger.warning("Bitcoin provider attempt %d failed", attempt)
+        return None
 
-            _logger.error("All Bitcoin API endpoints failed")
-            return None
-
-        except Exception as e:
-            _logger.error(f"Bitcoin API error: {e}")
-            return None
+    def _read_esplora_tip(self, endpoint: str) -> BlockchainInfo:
+        tip = self._request_tip(endpoint, "/blocks/tip/hash")
+        block_hash = _tip_hash(tip.text.strip())
+        block = self._request_tip(endpoint, f"/block/{block_hash}").json()
+        if "id" in block and _tip_hash(block["id"]).lower() != block_hash.lower():
+            raise ValueError("Block details do not match the requested tip hash")
+        timestamp = block["timestamp"]
+        if type(timestamp) is not int or timestamp < 0:
+            raise ValueError("Invalid provider block timestamp")
+        return BlockchainInfo(
+            chain="bitcoin",
+            block_number=_tip_height(block["height"]),
+            block_hash=block_hash,
+            timestamp=datetime.fromtimestamp(timestamp, UTC),
+            retrieved_at=time.time(),
+        )
 
     def _get_ethereum_info(self) -> BlockchainInfo | None:
-        """Get Ethereum blockchain information with simplified API."""
-        try:
-            # Use blockcypher for Ethereum (no API key required)
-            response = requests.get("https://api.blockcypher.com/v1/eth/main", timeout=self.settings.timeout)
-            if response.status_code == 200:
-                data = response.json()
-
-                return BlockchainInfo(
-                    chain="ethereum",
-                    block_number=data["height"],
-                    block_hash=data["hash"],
-                    timestamp=datetime.now(UTC),
-                    retrieved_at=time.time()
-                )
-
-            _logger.error("Ethereum API request failed")
-            return None
-
-        except Exception as e:
-            _logger.error(f"Ethereum API error: {e}")
-            return None
+        """Read the Ethereum tip using the configured chain-info URL."""
+        return self._get_blockcypher_info("ethereum")
 
     def _get_litecoin_info(self) -> BlockchainInfo | None:
-        """Get Litecoin blockchain information."""
+        """Read the Litecoin tip using the configured chain-info URL."""
+        return self._get_blockcypher_info("litecoin")
+
+    def _get_blockcypher_info(self, chain: str) -> BlockchainInfo | None:
         try:
-            response = requests.get("https://api.blockcypher.com/v1/ltc/main", timeout=self.settings.timeout)
-            if response.status_code == 200:
-                data = response.json()
-
-                return BlockchainInfo(
-                    chain="litecoin",
-                    block_number=data["height"],
-                    block_hash=data["hash"],
-                    timestamp=datetime.now(UTC),
-                    retrieved_at=time.time()
-                )
-
-            _logger.error("Litecoin API request failed")
+            return self._read_blockcypher_tip(chain, self.api_endpoints[chain][0])
+        except Exception:
+            _logger.warning("%s provider request failed", chain.title())
             return None
 
-        except Exception as e:
-            _logger.error(f"Litecoin API error: {e}")
-            return None
+    def _read_blockcypher_tip(self, chain: str, endpoint: str) -> BlockchainInfo:
+        data = self._request_tip(endpoint).json()
+        return BlockchainInfo(
+            chain=chain,
+            block_number=_tip_height(data["height"]),
+            block_hash=_tip_hash(data["hash"], ethereum=chain == "ethereum"),
+            timestamp=datetime.now(UTC),
+            retrieved_at=time.time(),
+        )
+
+    def _request_tip(self, endpoint: str, path: str = "") -> requests.Response:
+        response = requests.get(_provider_url(endpoint, path), timeout=self.settings.timeout)
+        response.raise_for_status()
+        if response.status_code != 200:
+            raise ValueError("Unexpected provider status")
+        return response

@@ -17,6 +17,12 @@
   and package browser templates with the Python module.
 - Keep the minimum Flask and Flask-CORS versions in the package metadata so
   both pip installation paths use the security fixes.
+- Report why a scanned, authentic frame failed the freshness policy. The
+  streaming guide now walks through scanning and verifying a signed live frame.
+- Use the configured blockchain endpoints and align the Ethereum default with
+  the working BlockCypher API. Validate tip fields before adding them to a QR.
+- Refresh NIST and Cloudflare clock observations every 60 seconds by default,
+  enforce the NIST polling interval, and reject unusable NTP responses.
 
 All notable changes to QR Live Protocol (QRLP) will be documented in this file.
 

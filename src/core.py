@@ -495,7 +495,8 @@ class QRLiveProtocol:
             payload = self.encryptor.decrypt_qr_payload(raw_data) if result.encrypted else raw_data
             qr_data = QRData.from_dict(payload)
             self._validate_verification_fields(qr_data)
-            result.time_verified = self._verify_payload_time(qr_data)
+            result.error = self._payload_time_error(qr_data)
+            result.time_verified = result.error is None
         except EncryptionError:
             result.error = "Decryption failed"
             return result.to_dict()
@@ -576,15 +577,18 @@ class QRLiveProtocol:
         if not isinstance(qr_data.time_server_verification, dict):
             raise ValueError("time_server_verification must be an object")
 
-    def _verify_payload_time(self, qr_data: QRData) -> bool:
+    def _payload_time_error(self, qr_data: QRData) -> str | None:
         settings = self.config.verification_settings
         now = datetime.now(UTC)
         issued_at = self._parse_payload_time(qr_data.timestamp)
-        time_verified = abs((now - issued_at).total_seconds()) <= settings.max_time_drift
-        if qr_data.expires_at is not None:
-            expires_at = self._parse_payload_time(qr_data.expires_at)
-            time_verified = time_verified and now <= expires_at
-        return time_verified and (not settings.require_time_server or bool(qr_data.time_server_verification))
+        if qr_data.expires_at is not None and now > self._parse_payload_time(qr_data.expires_at):
+            return "QR payload has expired"
+        within_drift = abs((now - issued_at).total_seconds()) <= settings.max_time_drift
+        if not within_drift:
+            return "QR timestamp is outside the allowed clock drift"
+        if settings.require_time_server and not qr_data.time_server_verification:
+            return "QR payload lacks required time-source observations"
+        return None
 
     @staticmethod
     def _parse_payload_time(value: str) -> datetime:

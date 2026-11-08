@@ -18,6 +18,8 @@ def make_mock_ntp_response():
     """Create a mock NTP response."""
     resp = MagicMock()
     resp.tx_time = time.time()
+    resp.mode = 4
+    resp.leap = 0
     resp.offset = 0.001
     resp.delay = 0.05
     resp.stratum = 1
@@ -120,6 +122,16 @@ class TestGetNtpTime:
             assert result.success is False
             assert result.error is not None
 
+    @pytest.mark.parametrize(("field", "value"), [("stratum", 0), ("leap", 3), ("mode", 3)])
+    def test_unusable_server_reply(self, field, value):
+        provider = TimeProvider(TimeSettings(time_servers=[]))
+        response = make_mock_ntp_response()
+        setattr(response, field, value)
+        with patch.object(provider.ntp_client, "request", return_value=response):
+            result = provider.get_ntp_time("ntp.example")
+        assert result.success is False
+        assert result.error == "NTP source returned an unusable time sample"
+
 
 class TestGetHttpTime:
     """Test get_http_time."""
@@ -162,7 +174,6 @@ class TestSyncAllServers:
             result = provider.sync_all_servers()
             assert len(result) >= 1
             assert result[0].success is True
-
 
     def test_only_queries_configured_sources(self):
         provider = TimeProvider(TimeSettings(time_servers=["ntp.example", "https://clock.example"]))
@@ -207,6 +218,37 @@ class TestForceSync:
         with patch.object(provider.ntp_client, 'request', side_effect=Exception("fail")):
             result = provider.force_sync()
             assert result is False
+
+    def test_nist_poll_limit_preserves_observation_and_other_source_refresh(self, monkeypatch):
+        elapsed = [100.0]
+        monkeypatch.setattr("src.time_provider.time.monotonic", lambda: elapsed[0])
+        provider = TimeProvider(TimeSettings(
+            time_servers=["time.nist.gov", "other.example"], update_interval=1.0,
+        ))
+        with patch.object(
+            provider.ntp_client, "request", side_effect=lambda *_args, **_kwargs: make_mock_ntp_response(),
+        ) as query:
+            assert provider.force_sync()
+            first = provider.get_time_server_verification()
+            elapsed[0] += 1.0
+            assert provider.force_sync()
+            second = provider.get_time_server_verification()
+            assert first["time.nist.gov"]["last_sync"] == second["time.nist.gov"]["last_sync"]
+            assert [call.args[0] for call in query.call_args_list] == [
+                "time.nist.gov", "other.example", "other.example",
+            ]
+            elapsed[0] += 3.0
+            assert provider.force_sync()
+        assert [call.args[0] for call in query.call_args_list[-2:]] == ["time.nist.gov", "other.example"]
+
+    def test_removing_all_configured_sources_drops_observations(self):
+        settings = TimeSettings(time_servers=["ntp.example"])
+        provider = TimeProvider(settings)
+        with patch.object(provider.ntp_client, "request", return_value=make_mock_ntp_response()) as query:
+            assert "ntp.example" in provider.get_time_server_verification()
+            settings.time_servers.clear()
+            assert provider.get_time_server_verification() == {}
+        query.assert_called_once()
 
 
 class TestGetStatistics:

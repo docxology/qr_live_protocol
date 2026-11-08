@@ -55,7 +55,7 @@ In an independent receiver, load trusted key material from a controlled source w
 | `encrypted` | The payload declared encrypted fields. |
 | `replayed` | The nonce was accepted previously within the enabled replay window. |
 | `valid` | Authenticity and freshness passed, along with required blockchain and replay policy. |
-| `error` | Optional diagnostic for rejected inputs. |
+| `error` | Optional diagnostic for rejected inputs, including expiry, clock drift, or missing required time observations. |
 
 Replay protection is off by default. When enabled, a valid nonce is required and only accepted payloads consume a nonce. Process restarts clear this state. See [the threat model](../SECURITY.md#threat-model) for what these checks establish.
 

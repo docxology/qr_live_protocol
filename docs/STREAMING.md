@@ -16,6 +16,20 @@ Use `qrlp live --interval 10` for a slower cadence. Larger payloads and higher e
 
 The default server is for a local operator and browser sources on the same machine. A remote viewer or public deployment needs a separately configured TLS and access-control layer, a private admin token, and a review of which HTTP endpoints and origins are exposed. The viewer URL contains public QR data; it does not require a signing key.
 
+## Check a signed live frame
+
+Generate a P-256 signing key with `qrlp keys generate --algorithm ecdsa --public-key-output issuer.pem`. Set `security_settings.sign_qr_data` to `true`, set `signature_algorithm` to `ecdsa`, and set `issuer_id` and `signing_key_id` to the expected issuer and the printed key ID. Run `qrlp --config live.json live --no-browser` with the same key directory. On the verifier, register the key before scanning.
+
+```sh
+qrlp trust add --issuer studio.example --key-id KEY_ID --algorithm ecdsa \
+  --public-key issuer.pem --store trusted-issuers.json
+qrlp verify --file scanned.json --trust-store trusted-issuers.json --strict --json-output
+```
+
+Wait for the viewer to show clock observations and chain hashes. Chain lookups warm in the background, so the first frame may have fewer hashes. Submit a short test message, then scan a later frame that displays it. Save the scanner's decoded text as `scanned.json`. For an automated PNG scan, capture the image and `qr_json` from the same `GET /api/qr/current` response and compare the decoded bytes to that `qr_json`. Check that `signature_verified` is true, `trust_mode` is `public_signature`, and `valid` is true.
+
+New frames expire after 30 seconds with the defaults. For a slower workflow, set the producer's `security_settings.qr_ttl_seconds` and set an appropriate drift limit on the verifier before the test. A larger verifier tolerance still respects the signed expiry. For an OBS acceptance test, scan the composed scene or a recording at the resolution viewers will receive.
+
 ## Troubleshooting
 
 | Symptom | Check |

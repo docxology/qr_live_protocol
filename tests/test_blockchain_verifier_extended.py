@@ -6,10 +6,15 @@ All network calls are mocked.
 
 import time
 from datetime import UTC, datetime
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
+
+import pytest
 
 from src.blockchain_verifier import BlockchainInfo, BlockchainVerifier
 from src.config import BlockchainSettings
+
+
+BLOCK_HASH = '0' * 16 + 'a5' * 24
 
 
 def make_mock_response(status_code=200, json_data=None, text=None):
@@ -36,7 +41,7 @@ class TestGetBitcoinInfo:
         verifier = BlockchainVerifier(settings)
         time.sleep(0.3)  # Wait for initial bg thread
 
-        block_hash = "00000000000000000008a15c6c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4"
+        block_hash = BLOCK_HASH
         with patch('requests.get') as mock_get:
             mock_get.side_effect = [
                 make_mock_response(200, text=block_hash),
@@ -54,7 +59,7 @@ class TestGetBitcoinInfo:
         verifier = BlockchainVerifier(settings)
         time.sleep(0.3)
 
-        block_hash = "00000000000000000008a15c"
+        block_hash = BLOCK_HASH
         with patch('requests.get') as mock_get:
             mock_get.side_effect = [
                 Exception("blockstream down"),
@@ -87,13 +92,13 @@ class TestGetEthereumInfo:
         with patch('requests.get') as mock_get:
             mock_get.return_value = make_mock_response(200, json_data={
                 "height": 18000000,
-                "hash": "0x1234567890abcdef",
+                "hash": "0x" + BLOCK_HASH,
             })
             result = verifier._get_ethereum_info()
             assert result is not None
             assert result.chain == "ethereum"
             assert result.block_number == 18000000
-            assert result.block_hash == "0x1234567890abcdef"
+            assert result.block_hash == "0x" + BLOCK_HASH
 
     def test_ethereum_failure(self):
         settings = BlockchainSettings(enabled_chains=set())
@@ -116,7 +121,7 @@ class TestGetLitecoinInfo:
         with patch('requests.get') as mock_get:
             mock_get.return_value = make_mock_response(200, json_data={
                 "height": 2400000,
-                "hash": "litecoinhash123",
+                "hash": BLOCK_HASH,
             })
             result = verifier._get_litecoin_info()
             assert result is not None
@@ -216,3 +221,98 @@ class TestUpdateAllChainsSafe:
         verifier.chain_handlers["bitcoin"] = MagicMock(side_effect=Exception("fail"))
         verifier._update_all_chains_safe()
         assert verifier._updating is False
+
+
+def test_default_bitcoin_uses_blockcypher_after_esplora_failures():
+    settings = BlockchainSettings(enabled_chains=set(), api_endpoints={})
+    verifier = BlockchainVerifier(settings)
+    with patch("requests.get", side_effect=[
+        make_mock_response(503),
+        make_mock_response(503),
+        make_mock_response(200, json_data={"height": 800002, "hash": BLOCK_HASH}),
+    ]) as mock_get:
+        assert verifier.force_update("bitcoin")
+    assert verifier.cached_blocks["bitcoin"].block_hash == BLOCK_HASH
+    assert mock_get.call_args_list == [
+        call("https://blockstream.info/api/blocks/tip/hash", timeout=settings.timeout),
+        call("https://mempool.space/api/blocks/tip/hash", timeout=settings.timeout),
+        call("https://api.blockcypher.com/v1/btc/main", timeout=settings.timeout),
+    ]
+
+
+def test_configured_esplora_base_preserves_auth_query_after_path():
+    settings = BlockchainSettings(
+        enabled_chains=set(),
+        api_endpoints={"bitcoin": "https://mirror.example.test/prefix/api/?token=fixture%2F"},
+    )
+    verifier = BlockchainVerifier(settings)
+    with patch("requests.get", side_effect=[
+        make_mock_response(200, text=BLOCK_HASH + "\n"),
+        make_mock_response(200, json_data={"id": BLOCK_HASH, "height": 800003, "timestamp": 1700000000}),
+    ]) as mock_get:
+        assert verifier.force_update("bitcoin")
+    assert mock_get.call_args_list == [
+        call("https://mirror.example.test/prefix/api/blocks/tip/hash?token=fixture%2F", timeout=settings.timeout),
+        call(f"https://mirror.example.test/prefix/api/block/{BLOCK_HASH}?token=fixture%2F", timeout=settings.timeout),
+    ]
+
+
+def test_custom_bitcoin_failure_neither_falls_back_nor_logs_url(caplog):
+    endpoint = "https://user:fixture-password@mirror.example.test/api?token=fixture-key"
+    settings = BlockchainSettings(enabled_chains=set(), api_endpoints={"bitcoin": endpoint})
+    verifier = BlockchainVerifier(settings)
+    with patch("requests.get", side_effect=Exception(f"Failed request: {endpoint}")) as mock_get:
+        assert not verifier.force_update("bitcoin")
+    mock_get.assert_called_once()
+    assert "Bitcoin provider attempt 1 failed" in caplog.text
+    assert "fixture-password" not in caplog.text
+    assert "fixture-key" not in caplog.text
+
+
+def test_esplora_does_not_use_unvalidated_tip_as_a_path():
+    settings = BlockchainSettings(
+        enabled_chains=set(), api_endpoints={"bitcoin": "https://mirror.example.test/api"},
+    )
+    verifier = BlockchainVerifier(settings)
+    with patch("requests.get", return_value=make_mock_response(200, text="../other")) as mock_get:
+        assert not verifier.force_update("bitcoin")
+    mock_get.assert_called_once_with("https://mirror.example.test/api/blocks/tip/hash", timeout=settings.timeout)
+
+
+@pytest.mark.parametrize(("chain", "endpoint"), [
+    ("ethereum", "https://api.blockcypher.com/v1/eth/main"),
+    ("litecoin", "https://api.blockcypher.com/v1/ltc/main"),
+])
+def test_default_chain_info_url(chain, endpoint):
+    settings = BlockchainSettings(enabled_chains=set())
+    verifier = BlockchainVerifier(settings)
+    with patch("requests.get", return_value=make_mock_response(
+        200, json_data={"height": 800000, "hash": BLOCK_HASH},
+    )) as mock_get:
+        assert verifier.force_update(chain)
+    mock_get.assert_called_once_with(endpoint, timeout=settings.timeout)
+
+
+def test_legacy_generated_etherscan_setting_uses_existing_effective_provider():
+    settings = BlockchainSettings(
+        enabled_chains=set(), api_endpoints={"ethereum": "https://api.etherscan.io/api"},
+    )
+    verifier = BlockchainVerifier(settings)
+    with patch("requests.get", return_value=make_mock_response(
+        200, json_data={"height": 18000001, "hash": BLOCK_HASH},
+    )) as mock_get:
+        assert verifier.force_update("ethereum")
+    mock_get.assert_called_once_with("https://api.blockcypher.com/v1/eth/main", timeout=settings.timeout)
+
+
+@pytest.mark.parametrize("chain", ["ethereum", "litecoin"])
+def test_configured_chain_info_url_is_used_without_rewriting(chain):
+    endpoint = f"https://mirror.example.test/{chain}/chain-info/?token=fixture"
+    settings = BlockchainSettings(enabled_chains=set(), api_endpoints={chain: endpoint})
+    verifier = BlockchainVerifier(settings)
+    with patch("requests.get", return_value=make_mock_response(
+        200, json_data={"height": 800000, "hash": BLOCK_HASH},
+    )) as mock_get:
+        assert verifier.force_update(chain)
+    assert verifier.cached_blocks[chain].block_hash == BLOCK_HASH
+    mock_get.assert_called_once_with(endpoint, timeout=settings.timeout)
