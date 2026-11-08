@@ -197,6 +197,35 @@ def test_wrong_config_section_shape_fails_at_load(tmp_path):
         QRLPConfig.from_file(path)
 
 
+def test_live_user_data_loads_structured_values_and_snapshots_them(tmp_path):
+    path = tmp_path / "qrlp.json"
+    path.write_text(
+        '{"live_user_data":{"event":"opening","tags":["public",null],"view":{"id":2,"live":true}}}',
+        encoding="utf-8",
+    )
+    config = QRLPConfig.from_file(path)
+    snapshot = config.get_live_user_data()
+    assert snapshot == {"event": "opening", "tags": ["public", None], "view": {"id": 2, "live": True}}
+    snapshot["view"]["id"] = 3
+    assert config.to_dict()["live_user_data"]["view"]["id"] == 2
+
+
+def test_live_user_data_rejects_invalid_config_values(tmp_path):
+    import pytest
+
+    path = tmp_path / "qrlp.json"
+    for value in ('[]', '"text"', '{"nested":[NaN]}', '{"nested":{"offset":1e309}}'):
+        path.write_text('{"live_user_data":' + value + '}', encoding="utf-8")
+        with pytest.raises(ValueError, match="live_user_data must be a JSON object"):
+            QRLPConfig.from_file(path)
+
+    cyclic = {}
+    cyclic["self"] = cyclic
+    for value in ({"nested": {2: "non-string key"}}, {"nested": (1, 2)}, cyclic):
+        config = QRLPConfig(live_user_data=value)
+        assert any(issue.startswith("live_user_data must be a JSON object") for issue in config.validate())
+
+
 def test_bad_environment_number_does_not_echo_value(monkeypatch):
     import pytest
 

@@ -229,7 +229,21 @@ class TestQRLiveWebServerRoutes:
         response = client.get('/viewer')
         assert response.status_code == 200
 
-    @pytest.mark.parametrize("path", ["/", "/viewer", "/admin", "/improve"])
+    def test_obs_overlay_is_display_only_and_details_are_opt_in(self, web_server):
+        web_server.settings.admin_token = "overlay-test-token"
+        client = web_server.app.test_client()
+        plain = client.get("/overlay")
+        with_details = client.get("/overlay?details=1")
+        assert plain.status_code == with_details.status_code == 200
+        assert b'id="overlayDetails"' not in plain.data
+        assert b'id="overlayDetails"' in with_details.data
+        for response in (plain, with_details):
+            assert b'<form' not in response.data
+            assert b'/api/user-data' not in response.data
+            assert b'overlay-test-token' not in response.data
+        assert client.post("/overlay", json={}).status_code == 405
+
+    @pytest.mark.parametrize("path", ["/", "/viewer", "/overlay", "/admin", "/improve"])
     def test_dashboard_scripts_use_the_response_nonce(self, web_server, path):
         response = web_server.app.test_client().get(path)
         policy = response.headers["Content-Security-Policy"]
@@ -241,7 +255,7 @@ class TestQRLiveWebServerRoutes:
             f'nonce="{match[1]}"' in script
             for script in re.findall(r"<script[^>]+>", html)
         )
-        if path in {"/", "/viewer"}:
+        if path in {"/", "/viewer", "/overlay"}:
             assert "EventSource" in html
             assert "https://cdnjs.cloudflare.com" not in html
         if path == "/viewer":

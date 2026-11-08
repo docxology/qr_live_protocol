@@ -9,7 +9,7 @@ uv sync --locked --extra dev
 uv run --no-sync qrlp live
 ```
 
-Open <http://localhost:8080/viewer> or add that URL as an OBS Browser Source. Use the text form on `/viewer` to change the text included in subsequent QRs, and `/improve` for diagnostics. The built-in browser views use a same-origin event stream and do not need CDN JavaScript. See the [streaming guide](docs/STREAMING.md).
+Add <http://localhost:8080/overlay?details=1> as a transparent OBS Browser Source. Use the text form on `/viewer` to change the caption in subsequent QRs, and `/improve` for diagnostics. The built-in browser views use a same-origin event stream and do not need CDN JavaScript. [Streaming guide](docs/STREAMING.md)
 
 ## Generate and verify a signed QR
 

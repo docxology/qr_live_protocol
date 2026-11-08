@@ -23,6 +23,8 @@
   the working BlockCypher API. Validate tip fields before adding them to a QR.
 - Refresh NIST and Cloudflare clock observations every 60 seconds by default,
   enforce the NIST polling interval, and reject unusable NTP responses.
+- Add a transparent OBS Browser Source and sign configured live metadata
+  together with the operator's current caption.
 
 All notable changes to QR Live Protocol (QRLP) will be documented in this file.
 

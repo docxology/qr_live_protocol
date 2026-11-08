@@ -7,7 +7,7 @@ uv sync --locked
 uv run --no-sync qrlp live
 ```
 
-Visit <http://localhost:8080/viewer>. In OBS, add a **Browser** source pointing at that URL. The dashboard is at `/improve`. To bind to another local port and keep the browser closed:
+Visit <http://localhost:8080/viewer> to edit the public caption. In OBS, add an 800 × 800 **Browser** source pointing at <http://localhost:8080/overlay?details=1>. The dashboard is at `/improve`. To bind to another local port and keep the browser closed:
 
 ```sh
 uv run --no-sync qrlp live --port 9000 --no-browser

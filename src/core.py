@@ -204,7 +204,7 @@ class QRLiveProtocol:
         self._callbacks: list[Callable[[QRData, bytes], None]] = []
 
         # User data callback for external input
-        self._user_data_callback: Callable[[], str | None] | None = None
+        self._user_data_callback: Callable[[], dict[str, Any] | str | None] | None = None
 
         # Expiry notification callback
         self._expiry_callback: Callable[[QRData], None] | None = None
@@ -250,12 +250,12 @@ class QRLiveProtocol:
         """
         self._expiry_callback = callback
 
-    def set_user_data_callback(self, callback: Callable[[], str | None]) -> None:
+    def set_user_data_callback(self, callback: Callable[[], dict[str, Any] | str | None]) -> None:
         """
         Set callback function to get user data for QR generation.
 
         Args:
-            callback: Function that returns user input string or None
+            callback: Function that returns metadata, operator text, or None
         """
         self._user_data_callback = callback
 
@@ -293,7 +293,7 @@ class QRLiveProtocol:
         Generate a single QR code with current time and verification data.
 
         Args:
-            user_data: Optional additional data to include in QR
+            user_data: Explicit metadata. When omitted, use configured live metadata and callback data.
             sign_data: Whether to sign the QR data (None uses configuration)
             encrypt_data: Whether to encrypt sensitive fields (None uses configuration)
             signing_key_id: Optional local key to use for signing
@@ -636,20 +636,22 @@ class QRLiveProtocol:
         self.stop_live_generation()
 
     def _resolve_user_data(self, user_data: dict | None) -> dict | None:
-        if user_data is not None or not self._user_data_callback:
+        if user_data is not None:
             return user_data
 
+        configured = self.config.get_live_user_data()
+        if self._user_data_callback is None:
+            return configured
         try:
             callback_data = self._user_data_callback()
         except Exception as e:
             _logger.error(f"User data callback error: {e}")
-            return None
+            return configured
 
         if callback_data is None:
-            return None
-        if isinstance(callback_data, dict):
-            return callback_data
-        return {"user_text": str(callback_data)}
+            return configured
+        dynamic = callback_data if isinstance(callback_data, dict) else {"user_text": str(callback_data)}
+        return {**(configured or {}), **dynamic}
 
     def _resolve_issuer_id(self, identity_hash: str) -> str:
         return self.issuer_id or identity_hash

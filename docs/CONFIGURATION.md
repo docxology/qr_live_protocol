@@ -36,6 +36,7 @@ Generate a complete template with `config-init`. This smaller example disables e
 
 | Section | Settings |
 | --- | --- |
+| `live_user_data` | Optional public JSON object included when generation is called without explicit metadata. The viewer form overrides `user_text` for later frames. Clearing the form restores its configured value. |
 | `qr_settings` | Error correction `L`, `M`, `Q`, or `H`; border, scale, colors, image format, and the chunk planner's data budget. |
 | `time_settings` | NTP hostnames or explicit HTTP(S) JSON clock URLs, timeout, update interval, local fallback, and optional OpenTimestamps calendar and proof directory. If fallback is off and no configured source succeeds, generation fails. |
 | `blockchain_settings` | Enabled chains, `api_endpoints`, timeout, and cache duration. Use an empty chain list to disable requests. |

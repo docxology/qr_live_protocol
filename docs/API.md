@@ -37,7 +37,7 @@ In an independent receiver, load trusted key material from a controlled source w
 | `verify_qr_data(qr_json)` | Parses, decrypts as needed, verifies authenticity, then applies freshness and policy checks. Returns a result dictionary. |
 | `start_live_generation()` / `stop_live_generation()` | Control the background generation loop. An in-flight provider request is bounded by its own timeout. |
 | `add_update_callback(callback)` / `remove_update_callback(callback)` | Register or remove a callback accepting `(QRData, image_bytes)`. |
-| `set_user_data_callback(callback)` | Supplies a string or `None` for future frames. |
+| `set_user_data_callback(callback)` | Overlays a dictionary or a `user_text` string on the configured `live_user_data`. `None` keeps the configured values. Explicit `user_data` bypasses both sources. |
 | `get_current_qr_data()` / `get_statistics()` | Inspect the latest payload or component counters. |
 
 `QRData.to_json()` emits the exact compact QR wire text, without the local OpenTimestamps proof path. `QRData.to_dict()` is a diagnostic view and can include local proof metadata. `QRData.from_json()` supports forward-compatible typed reading; `verify_qr_data()` checks authenticity against the full wire object, including unknown fields.
@@ -95,7 +95,7 @@ The stamp command writes the calendar receipt for the exact bytes. Keep the orig
 
 ## REST API
 
-Default base URL: `http://localhost:8080`. The display routes are `/`, `/viewer`, `/admin`, and `/improve`.
+Default base URL is `http://localhost:8080`. Use `/overlay` for a transparent display-only OBS source, `/overlay?details=1` to include public labels, and `/viewer` for operator input. The other pages are `/`, `/admin`, and `/improve`.
 
 | Method and path | Request or response |
 | --- | --- |

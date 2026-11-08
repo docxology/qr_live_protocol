@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>QRLP OBS Overlay</title>
+    <style>
+        html, body {
+            width: 100%;
+            height: 100%;
+            background: transparent;
+        }
+
+        body {
+            --edge: clamp(4px, 2vmin, 12px);
+            margin: 0;
+            display: grid;
+            place-items: center;
+            overflow: hidden;
+            font: clamp(10px, 2.3vmin, 15px)/1.3 system-ui, sans-serif;
+        }
+
+        #overlay {
+            --details-space: 0px;
+            width: min(720px, 75vmin, calc(100vmin - var(--edge) - var(--edge) - var(--details-space)));
+            overflow: hidden;
+            border-radius: clamp(4px, 1.5vmin, 12px);
+            background: white;
+            color: #172126;
+        }
+
+        #overlay.with-details {
+            --details-space: calc(2.6em + 12px);
+        }
+
+        #qrDisplay {
+            box-sizing: border-box;
+            aspect-ratio: 1;
+            padding: 5%;
+            display: grid;
+            grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+        }
+
+        .qr-image {
+            display: block;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            image-rendering: pixelated;
+        }
+
+        #overlayDetails {
+            padding: 0 12px 12px;
+            text-align: center;
+        }
+
+        #overlayDetails p {
+            min-height: 1.3em;
+            margin: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        #overlayIdentity {
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <main id="overlay"{% if show_details %} class="with-details"{% endif %} hidden>
+        <div id="qrDisplay"></div>
+        {% if show_details %}
+        <footer id="overlayDetails">
+            <p id="overlayIdentity"></p>
+            <p id="overlayCaption"></p>
+        </footer>
+        {% endif %}
+    </main>
+    {% include "_live_qr.html" %}
+    <script nonce="{{ script_nonce }}">
+        const overlay = document.getElementById('overlay');
+        const qrDisplay = document.getElementById('qrDisplay');
+        const identity = document.getElementById('overlayIdentity');
+        const caption = document.getElementById('overlayCaption');
+        let frameRevision = 0;
+
+        qrlpLive.connect(async frame => {
+            const data = frame.qr_data;
+            const image = qrlpLive.createImage(frame.qr_image);
+            if (!data || !image) return;
+            const revision = ++frameRevision;
+            try {
+                await image.decode();
+            } catch {
+                return;
+            }
+            if (revision !== frameRevision) return;
+            qrDisplay.replaceChildren(image);
+            if (identity) {
+                const encrypted = data._encrypted_fields?.includes('user_data');
+                const title = !encrypted && data.user_data?.title;
+                const label = typeof title === 'string' && title ? title : data.event_id;
+                const publicIdentity = [label, data.issuer_id]
+                    .filter(value => typeof value === 'string' && value);
+                identity.textContent = publicIdentity.join(' · ');
+                const message = data.user_data?.user_text;
+                caption.textContent = !encrypted && typeof message === 'string' ? message : '';
+            }
+            overlay.hidden = false;
+        }, connected => {
+            if (!connected) {
+                frameRevision++;
+                overlay.hidden = true;
+            }
+        });
+    </script>
+</body>
+</html>

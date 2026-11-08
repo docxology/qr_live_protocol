@@ -160,6 +160,7 @@ class QRLPConfig:
     verification_settings: VerificationSettings = field(default_factory=VerificationSettings)
     security_settings: SecuritySettings = field(default_factory=SecuritySettings)
     logging_settings: LoggingSettings = field(default_factory=LoggingSettings)
+    live_user_data: dict[str, Any] | None = None  # Public metadata for implicit QR frames
 
     @classmethod
     def from_env(cls) -> QRLPConfig:
@@ -245,6 +246,10 @@ class QRLPConfig:
         data['blockchain_settings']['enabled_chains'] = sorted(self.blockchain_settings.enabled_chains)
         return data
 
+    def get_live_user_data(self) -> dict[str, Any] | None:
+        """Validate and snapshot public live metadata for a single frame."""
+        return _copy_live_user_data(self.live_user_data)
+
     def validate(self) -> list[str]:
         """Validate configuration and return list of issues."""
         issues = []
@@ -283,6 +288,10 @@ class QRLPConfig:
             self.security_settings.get_encryption_key()
         except ValueError as exc:
             issues.append(str(exc))
+        try:
+            self.get_live_user_data()
+        except ValueError as exc:
+            issues.append(str(exc))
 
         # Check file paths exist if specified
         if (self.identity_settings.identity_file and
@@ -306,6 +315,23 @@ def _finite_number(value: Any) -> bool:
     return type(value) is int or (type(value) is float and math.isfinite(value))
 
 
+def _copy_live_user_data(value: Any) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    message = "live_user_data must be a JSON object with string keys and finite JSON values"
+    if not isinstance(value, dict):
+        raise ValueError(message)
+    try:
+        snapshot = json.loads(json.dumps(value, allow_nan=False))
+        # Reject values Python's JSON encoder coerces, including non-string
+        # keys and tuples, so signed wire data has the same shape as the config.
+        if snapshot != value:
+            raise ValueError(message)
+    except (TypeError, ValueError, OverflowError, RecursionError):
+        raise ValueError(message) from None
+    return snapshot
+
+
 def _update_dataclass(target: Any, values: Any, section: str = '') -> None:
     """Update recognized fields, checking the shapes before applying them."""
     if not isinstance(values, dict) or not all(isinstance(key, str) for key in values):
@@ -321,7 +347,9 @@ def _update_dataclass(target: Any, values: Any, section: str = '') -> None:
             _update_dataclass(current_value, value, qualified)
             continue
 
-        if isinstance(current_value, (list, set)):
+        if qualified == "live_user_data":
+            value = _copy_live_user_data(value)
+        elif isinstance(current_value, (list, set)):
             if not isinstance(value, (list, set, tuple)) or not all(isinstance(item, str) for item in value):
                 raise ValueError(f"{qualified} must be a list of strings")
             value = set(value) if isinstance(current_value, set) else list(value)

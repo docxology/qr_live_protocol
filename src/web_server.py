@@ -519,8 +519,13 @@ class QRLiveWebServer:
 
         @self.app.route('/viewer')
         def viewer():
-            """QR viewer page for external displays."""
+            """QR viewer and message controls."""
             return render_template('viewer.html', requires_admin_token=bool(self.settings.admin_token))
+
+        @self.app.get('/overlay')
+        def overlay():
+            """Transparent, display-only QR page for OBS Browser Sources."""
+            return render_template('overlay.html', show_details=request.args.get("details") == "1")
 
         @self.app.route('/admin')
         def admin():

@@ -221,3 +221,50 @@ def test_generation_callback_can_stop_its_worker(qrlp_instance):
     finally:
         qrlp_instance.stop_live_generation()
     assert qrlp_instance.get_statistics()["running"] is False
+
+
+def test_signed_live_metadata_merges_operator_text(qrlp_instance, tmp_path):
+    config = qrlp_instance.config
+    config.security_settings.sign_qr_data = True
+    config.live_user_data = {
+        "segment": {"name": "opening", "index": 1},
+        "tags": ["livestream"],
+        "user_text": "waiting",
+    }
+    qrlp_instance.set_user_data_callback(lambda: "operator message")
+    received = Event()
+    frames = []
+
+    def collect(data, _image):
+        frames.append(data)
+        received.set()
+
+    qrlp_instance.add_update_callback(collect)
+    qrlp_instance.start_live_generation()
+    try:
+        assert received.wait(2.0)
+    finally:
+        qrlp_instance.stop_live_generation()
+
+    frame = frames[0]
+    assert frame.user_data == {
+        "segment": {"name": "opening", "index": 1},
+        "tags": ["livestream"],
+        "user_text": "operator message",
+    }
+    verifier = QRLiveProtocol(config, key_manager=KeyManager(str(tmp_path / "verifier")))
+    verifier.trust_store.add_public_key(
+        frame.issuer_id, frame.signing_key_id,
+        qrlp_instance.key_manager.export_public_key(frame.signing_key_id),
+        frame.signature_algorithm,
+    )
+    result = verifier.verify_qr_data(frame.to_json())
+    assert result["valid"] is True
+    assert result["trust_mode"] == "public_signature"
+    assert result["hmac_verified"] is False
+
+    qrlp_instance.set_user_data_callback(lambda: None)
+    fallback, _ = qrlp_instance.generate_single_qr()
+    assert fallback.user_data["user_text"] == "waiting"
+    explicit, _ = qrlp_instance.generate_single_qr(user_data={})
+    assert explicit.user_data == {}
