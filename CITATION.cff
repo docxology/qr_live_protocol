@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+message: "If you use this work, please cite it as below."
+type: software
+title: "qr_live_protocol"
+authors:
+  - family-names: Friedman
+    given-names: Daniel Ari
+    orcid: "https://orcid.org/0000-0001-6232-9096"
+repository-code: "https://github.com/docxology/qr_live_protocol"
+abstract: "QR Live Protocol (QRLP) — Python toolkit that generates live, verifiable QR codes carrying NTP-synced timestamps, Bitcoin/Ethereum block hashes, HMAC and public-key signatures, plus OpenTimestamps attestation. Flask/SocketIO server drops into OBS Studio as a browser source, with a tested codebase."
