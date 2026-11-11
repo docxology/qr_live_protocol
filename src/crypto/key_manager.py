@@ -116,9 +116,13 @@ class KeyManager:
         key_id = self._generate_key_id()
 
         if algorithm.lower() == "rsa":
+            # Only standard RSA sizes of at least 2048 bits are accepted.
+            rsa_key_sizes = {2048: 2048, 3072: 3072, 4096: 4096}
+            if key_size not in rsa_key_sizes:
+                raise ValueError("RSA key size must be 2048, 3072, or 4096")
             private_key = rsa.generate_private_key(
                 public_exponent=65537,
-                key_size=key_size,
+                key_size=rsa_key_sizes[key_size],
                 backend=default_backend()
             )
             public_key = private_key.public_key()
