@@ -158,3 +158,7 @@ All items below were implemented in that pass (doc-only) unless marked deferred.
 - [ ] **Full fresh pytest verification of badge counts** — deferred: full-suite
   run on the external drive exceeded the lane time budget (collection alone
   >280s). Human check: `python -m pytest tests/ --no-cov -q | tail -1`.
+
+## Workflowz review — 2026-11-10
+
+Coverage note: no concrete, behaviorally actionable improvement survived this bounded review. Read the supplied project guidance, README, existing TODO, packaging/dependency configuration, compatibility launchers, and 20 source excerpts; this was not a full-tree review (75 source candidates, 121 files total), and no tests or runtime probes were executed. Exception-only classes, optional-dependency compatibility paths, and explicitly logged offline/provider fallbacks were not treated as defects without behavioral evidence. Re-review on a concrete failure or relevant source change.
