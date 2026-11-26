@@ -6,7 +6,7 @@ It means the payload passed the verifier's configured authenticity, freshness, a
 
 ## Can I run offline?
 
-Yes. Use the [offline configuration](../README.md#offline-setup). QR generation then uses the local clock without polling NTP or block tips. A public-key verification still works locally if you already trust the key and the payload satisfies the freshness policy.
+Yes. Use the [offline configuration](CONFIGURATION.md#configuration-file-format). QR generation then uses the local clock without polling NTP or block tips. A public-key verification still works locally if you already trust the key and the payload satisfies the freshness policy.
 
 ## Why is a QR readable but invalid?
 

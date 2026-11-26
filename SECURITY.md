@@ -16,7 +16,7 @@ An identity hash is a local fingerprint. An event ID and a content hash are sign
 
 ## Data protection
 
-The QR, browser snapshot, and operator-entered display text should be treated as public. Do not enter secrets in the display controls. Default network use includes configured time and blockchain providers. When OpenTimestamps is enabled, a commitment is sent to a calendar. Use the [offline profile](README.md#offline-setup) to disable external time and blockchain requests.
+The QR, browser snapshot, and operator-entered display text should be treated as public. Do not enter secrets in the display controls. Default network use includes configured time and blockchain providers. When OpenTimestamps is enabled, a commitment is sent to a calendar. Use the [offline profile](docs/OFFLINE.md) to disable external time and blockchain requests.
 
 ## Best practices
 

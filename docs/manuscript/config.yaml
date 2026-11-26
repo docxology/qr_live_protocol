@@ -1,0 +1,30 @@
+paper:
+  title: "QR Live Protocol"
+  subtitle: "An Offline Issuer Verification Walkthrough"
+  description: "A local technical demonstration of trusted public-key verification and freshness for a rotating QR payload."
+
+authors:
+  - name: "Daniel Ari Friedman"
+    orcid: "0000-0001-6232-9096"
+
+publication:
+  github_repository: docxology/qr_live_protocol
+  repository_url: https://github.com/docxology/qr_live_protocol
+
+keywords:
+  - QR codes
+  - issuer verification
+  - digital signatures
+  - livestreams
+
+metadata:
+  language: en-US
+  license: CC-BY-NC-SA-4.0
+
+render:
+  formats:
+    pdf: true
+    html: true
+    docx: false
+    epub: false
+    slides: false

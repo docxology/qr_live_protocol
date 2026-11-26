@@ -75,3 +75,6 @@ qr_*.png
 key_metadata.json
 .master_key
 .master_salt
+
+# Local technical-note render artifacts
+/output/
