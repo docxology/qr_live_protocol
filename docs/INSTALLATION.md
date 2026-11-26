@@ -36,4 +36,4 @@ uv build
 uv run --no-sync python -m pytest --no-cov
 ```
 
-Install the wheel in a fresh environment and run `qrlp --version`, `qrlp --help`, and `qrlp live --no-browser` from outside the checkout. The wheel includes the browser templates under the Python package. Use [offline settings](../README.md#offline-setup) to exercise the overlay without NTP or blockchain services.
+Install the wheel in a fresh environment and run `qrlp --version`, `qrlp --help`, and `qrlp live --no-browser` from outside the checkout. The wheel includes the browser templates under the Python package. Use [offline settings](CONFIGURATION.md#configuration-file-format) to exercise the overlay without NTP or blockchain services.

@@ -14,6 +14,9 @@ qrlp config-validate config.json
 qrlp --config config.json live --no-browser
 ```
 
+For an offline example that uses separate temporary issuer and verifier stores,
+see the [offline walkthrough](OFFLINE.md).
+
 ## Configuration file format
 
 Generate a complete template with `config-init`. This smaller example disables external data sources, signs live QR payloads, and uses a short expiry:

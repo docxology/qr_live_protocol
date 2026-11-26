@@ -61,7 +61,7 @@ Record a short local clip with the same resolution, scene layout, and encoder se
 | Symptom | Check |
 | --- | --- |
 | Browser Source cannot connect | Confirm the port printed by `qrlp live` and that OBS is on the same host. |
-| Page stays on “Waiting for QR” | Check the terminal for provider timeouts, QR capacity errors, or a failed key configuration. Use the [offline profile](../README.md#offline-setup) to isolate provider failures. |
+| Page stays on “Waiting for QR” | Check the terminal for provider timeouts, QR capacity errors, or a failed key configuration. Use the [offline profile](CONFIGURATION.md#configuration-file-format) to isolate provider failures. |
 | Scan fails from a recording | Increase visible size and contrast, lower payload length, and check the platform's downscaled output. |
 | Code is readable but verification fails | Check clock drift, expiry, trusted issuer/key ID, and decryption key. Use `qrlp verify --file payload.json --json-output --strict` to inspect the result. |
 | Updating input returns unauthorized | Use the form on `/viewer` with the configured token. Cross-origin requests and unauthenticated updates on nonlocal bindings are restricted. |
